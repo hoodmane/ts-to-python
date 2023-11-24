@@ -1,11 +1,13 @@
 import * as ts from "typescript";
 import {
-  renderTopLevelSignature,
+  renderSignatureGroup,
+  renderSignature,
   renderInnerSignature,
   renderProperty,
   renderPyClass,
   PySig,
   PyParam,
+  PySigGroup,
 } from "./render.ts";
 
 function formatSyntaxKind(k: ts.Node) {
@@ -107,8 +109,8 @@ function extract(file: string, identifiers: string[]): void {
     grouped[ts.SyntaxKind.InterfaceDeclaration] || [],
     (node) => node.name.getText(),
   );
-  for (const declArray of Object.values(interfaceDecls)) {
-    output.push(convertInterface(checker, declArray));
+  for (const [name, declArray] of Object.entries(interfaceDecls)) {
+    output.push(convertInterface(checker, name, declArray.flatMap(node => node.members)));
   }
   const varDecls = (grouped[ts.SyntaxKind.VariableStatement] || []).flatMap(
     (v) => {
@@ -182,7 +184,6 @@ function convertTypeLiteralVarDecl(
     }
     return true;
   });
-
   return "";
   return renderPyClass(varDecl.name.getText(), []);
 }
@@ -246,6 +247,7 @@ function convertSignatures(
 function sigToPython(
   checker: ts.TypeChecker,
   sig: ts.SignatureDeclaration,
+  decorators: string[] = []
 ): PySig {
   const params = sig.parameters.map((param) => {
     const type = checker.getTypeFromTypeNode(param.type!);
@@ -256,7 +258,17 @@ function sigToPython(
   const retNode = sig.type!;
   const ret = checker.getTypeFromTypeNode(retNode);
   const returns = typeToPython(checker, sig, ret, false);
-  return { params, returns };
+  return { params, returns, decorators };
+}
+
+function overloadGroupToPython(
+  checker,
+  name: string,
+  signatures: ts.SignatureDeclaration[],
+  decorators: string[] = []
+): PySigGroup {
+  const sigs = signatures.map(sig => sigToPython(checker, sig, decorators));
+  return {name, sigs};
 }
 
 function convertSignature(
@@ -266,7 +278,7 @@ function convertSignature(
 ): string {
   const pySig = sigToPython(checker, sig);
   if (topLevelName) {
-    return renderTopLevelSignature(topLevelName, pySig);
+    return renderSignature(topLevelName, pySig);
   }
   return renderInnerSignature(pySig);
 }
@@ -291,6 +303,7 @@ function convertPropertySignature(
       readOnly = true;
     }
   }
+  console.log("pytype", pytype);
   const isDef = pytype.includes("def");
   if (readOnly && !isDef) {
     return renderProperty(memberName, pytype);
@@ -301,58 +314,26 @@ function convertPropertySignature(
   return `${memberName}: ${pytype}`;
 }
 
-type HasMembers = ts.Node & { members: ts.NodeArray<ts.TypeElement> };
-
-function convertHasMembers(checker: ts.TypeChecker, node: HasMembers) {
-  const grouped = groupBySyntaxKind(node.members);
-
-  const res = {
-    properties: (grouped[ts.SyntaxKind.PropertySignature] || []).map((prop) =>
-      convertPropertySignature(checker, prop),
-    ),
-    constructors: (grouped[ts.SyntaxKind.ConstructSignature] || []).map(
-      (sig) => {
-        const res = convertSignature(checker, sig, "new");
-        return "@classmethod\n" + res;
-      },
-    ),
-  };
-  return res;
-}
-
-function convertHasMembersList(
-  checker: ts.TypeChecker,
-  nodes: Iterable<HasMembers>,
-) {
-  const entriesList: {
-    properties: any[];
-    constructors: string[];
-  }[] = [];
-  for (const node of nodes) {
-    entriesList.push(convertHasMembers(checker, node));
-  }
-  return {
-    properties: entriesList.flatMap((e) => e.properties),
-    constructors: entriesList.flatMap((e) => e.constructors),
-  };
-}
 
 function convertInterface(
   checker: ts.TypeChecker,
-  nodes: ts.InterfaceDeclaration[],
+  name: string,
+  members: ts.TypeElement[],
 ) {
-  const entriesMap = convertHasMembersList(checker, nodes);
-  let convertedConstructorSigs = entriesMap.constructors.map(
-    (s) => "@classmethod\n" + s,
+  const grouped = groupBySyntaxKind(members);
+  const properties = (grouped[ts.SyntaxKind.PropertySignature] || []).map((prop) =>
+    convertPropertySignature(checker, prop),
   );
-  if (convertedConstructorSigs.length > 1) {
-    convertedConstructorSigs = convertedConstructorSigs.map(
-      (s) => "@overload\n" + s,
-    );
+  const methods = groupBy((grouped[ts.SyntaxKind.MethodSignature] || []), prop => prop.name.getText());
+  const overloadGroups = Object.entries(methods).map(([name, sigs]) =>
+    overloadGroupToPython(checker, name, sigs)
+  );
+  if (grouped[ts.SyntaxKind.ConstructSignature]) {
+    overloadGroups.push(overloadGroupToPython(checker, "new", grouped[ts.SyntaxKind.ConstructSignature], ["classmethod"]));
   }
-  const entries = entriesMap.properties.concat(convertedConstructorSigs);
-  const interfaceName = nodes[0].name.getText();
-  return renderPyClass(interfaceName, [], entries.join("\n"));
+  const pyMethods = overloadGroups.flatMap(gp => renderSignatureGroup(gp));
+  const entries = properties.concat(pyMethods);
+  return renderPyClass(name, [], entries.join("\n"));
 }
 
 function typeToPython(

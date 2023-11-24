@@ -1,5 +1,6 @@
-export type PySig = { params: PyParam[]; returns: string };
 export type PyParam = { name: string; pyType: string; optional: boolean };
+export type PySig = { params: PyParam[]; returns: string, decorators?: string[]};
+export type PySigGroup = {name: string, sigs: PySig[]};
 
 function indent(x: string, prefix: string): string {
   return x
@@ -21,10 +22,20 @@ export function renderPyClass(
   return `class ${name}${supersList}:\n${body}`;
 }
 
-export function renderTopLevelSignature(
+export function renderSignatureGroup(
+  sigGroup: PySigGroup
+): string[] {
+  const extraDecorators: string[] = [];
+  if (sigGroup.sigs.length > 1) {
+    extraDecorators.push("overload");
+  }
+  return sigGroup.sigs.map((sig) => renderSignature(sigGroup.name, sig, extraDecorators));
+}
+
+export function renderSignature(
   name: string,
   sig: PySig,
-  decorators: string[] = [],
+  extraDecorators: string[] = [],
 ): string {
   const formattedParams = sig.params.map(({ name, pyType, optional }) => {
     const maybeDefault = optional ? "=None" : "";
@@ -33,12 +44,12 @@ export function renderTopLevelSignature(
   formattedParams.unshift("self");
   formattedParams.push("/");
   const joinedParams = formattedParams.join(", ");
-  const decs = decorators.map((x) => "@" + x + "\n").join("");
+  const decs = (sig.decorators || []).concat(extraDecorators).map((x) => "@" + x + "\n").join("");
   return `${decs}def ${name}(${joinedParams}) -> ${sig.returns}: ...`;
 }
 
 export function renderProperty(name: string, type: string): string {
-  return renderTopLevelSignature(name, { params: [], returns: type }, [
+  return renderSignature(name, { params: [], returns: type }, [
     "property",
   ]);
 }
