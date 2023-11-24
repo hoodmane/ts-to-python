@@ -81,8 +81,6 @@ function* groupByGenHelper<T, K extends keyof any>(getKey: (item: T) => K) {
   }
 }
 
-type Interfaces = Record<string, ts.InterfaceDeclaration[]>;
-
 /**
  * Prints out particular nodes from a source file
  *
@@ -110,7 +108,7 @@ function extract(file: string, identifiers: string[]): void {
     (node) => node.name.getText(),
   );
   for (const [name, declArray] of Object.entries(interfaceDecls)) {
-    output.push(convertInterface(checker, name, [], declArray.flatMap(node => node.members)));
+    output.push(convertInterface(checker, name + "_interface", [], declArray.flatMap(node => node.members)));
   }
   const varDecls = (grouped[ts.SyntaxKind.VariableStatement] || []).flatMap(
     (v) => {
@@ -122,46 +120,17 @@ function extract(file: string, identifiers: string[]): void {
     },
   );
   for (const varDecl of varDecls) {
-    console.log(
-      "!!!",
-      printer.printNode(ts.EmitHint.Unspecified, varDecl, sourceFile),
-    );
-    // console.log(formatSyntaxKind(varDecl.type.kind));
     if (!varDecl.type) {
       continue;
     }
     if (ts.isTypeLiteralNode(varDecl.type)) {
       output.push(convertTypeLiteralVarDecl(checker, varDecl));
+      continue;
     }
+    // output.push()
   }
 
-  console.log(output);
-
-  //   ts.forEachChild(sourceFile, (node) => {
-  //     // This is an incomplete set of AST nodes which could have a top level identifier
-  //     // it's left to you to expand this list, which you can do by using
-  //     // https://ts-ast-viewer.com/ to see the AST of a file then use the same patterns
-  //     // as below
-  //     if (ts.isFunctionDeclaration(node)) {
-  //       name = node.name!.text;
-  //       // Hide the method body when printing
-  //       node.body = undefined;
-  //     } else if (ts.isVariableStatement(node)) {
-  //       name = node.declarationList.declarations[0].name.getText(sourceFile);
-  //     } else if (ts.isInterfaceDeclaration(node)) {
-  //       name = node.name.text;
-  //     }
-  //     if (!identifiers.includes(name)) {
-  //       return;
-  //     }
-
-  //     if (ts.isVariableStatement(node)) {
-  //       convertVariableStatement(checker, node);
-  //     }
-
-  //     const container = identifiers.includes(name) ? foundNodes : unfoundNodes;
-  //     container.push([name, node]);
-  //   });
+  console.log(output.join("\n\n"));
 }
 
 function convertTypeLiteralVarDecl(
@@ -185,7 +154,7 @@ function convertTypeLiteralVarDecl(
     }
     const proto = members.prototype[0] as ts.PropertySignature;
     if (ts.isTypeReferenceNode(proto.type!)) {
-      supers.push(proto.type.typeName.getText());
+      supers.push(proto.type.typeName.getText() + "_interface");
     } else {
       throw new Error("Excepted prototype type to be TypeReference");
     }
@@ -255,14 +224,12 @@ function sigToPython(
   decorators: string[] = []
 ): PySig {
   const params = sig.parameters.map((param) => {
-    const type = checker.getTypeFromTypeNode(param.type!);
     const optional = !!param.questionToken;
-    const pyType = typeToPython(checker, param, type, optional);
+    const pyType = typeToPython(checker, param.type!, optional);
     return { name: param.name.getText(), pyType, optional };
   });
   const retNode = sig.type!;
-  const ret = checker.getTypeFromTypeNode(retNode);
-  const returns = typeToPython(checker, sig, ret, false);
+  const returns = typeToPython(checker, retNode, false);
   return { params, returns, decorators };
 }
 
@@ -293,12 +260,10 @@ function convertPropertySignature(
   member: ts.PropertySignature,
 ): string {
   const memberName = member.name.getText();
-  const memberType = checker.getTypeAtLocation(member);
   const isOptional = !!member.questionToken;
   const pytype = typeToPython(
     checker,
-    member,
-    memberType,
+    member.type!,
     isOptional,
     memberName,
   );
@@ -308,7 +273,6 @@ function convertPropertySignature(
       readOnly = true;
     }
   }
-  console.log("pytype", pytype);
   const isDef = pytype.includes("def");
   if (readOnly && !isDef) {
     return renderProperty(memberName, pytype);
@@ -344,13 +308,12 @@ function convertInterface(
 
 function typeToPython(
   checker: ts.TypeChecker,
-  node: ts.Node,
-  type: ts.Type,
+  type: ts.TypeNode,
   isOptional: boolean,
   topLevelName?: string,
 ): string {
-  let inner = typeToPythonInner(checker, node, type, isOptional, topLevelName);
-  if (isOptional && !type.isUnion()) {
+  let inner = typeToPythonInner(checker, type, isOptional, topLevelName);
+  if (isOptional && !ts.isUnionTypeNode(type)) {
     inner += " | None";
   }
   return inner;
@@ -358,11 +321,11 @@ function typeToPython(
 
 function typeToPythonInner(
   checker: ts.TypeChecker,
-  node: ts.Node,
-  type: ts.Type,
+  typeNode: ts.TypeNode,
   isOptional: boolean,
   topLevelName?: string,
 ): string {
+  const type = checker.getTypeFromTypeNode(typeNode);
   if (type.getFlags() & ts.TypeFlags.Number) {
     return "int | float";
   }
@@ -375,9 +338,9 @@ function typeToPythonInner(
   if (type.getFlags() & ts.TypeFlags.Void) {
     return "None";
   }
-  if (type.isUnion()) {
-    const types = type.types.map(
-      (ty) => "(" + typeToPython(checker, node, ty, false) + ")",
+  if (ts.isUnionTypeNode(typeNode)) {
+    const types = typeNode.types.map(
+      (ty) => "(" + typeToPython(checker, ty, false) + ")",
     );
     if (isOptional) {
       types.push("None");
@@ -387,8 +350,18 @@ function typeToPythonInner(
   if (type.getCallSignatures().length > 0) {
     return convertSignatures(checker, type.getCallSignatures(), topLevelName);
   }
-  return "A___";
-  console.log("unknown", checker.typeToString(type));
+  if (ts.isTypeReferenceNode(typeNode)) {
+    const args = typeNode.typeArguments?.map(ty => typeToPython(checker, ty, false)).join(", ");
+    let fmtArgs = "";
+    if (args) {
+      fmtArgs = `[${args}]`;
+    }
+    if (typeNode.typeName.getText() === "Promise") {
+      return `Future${fmtArgs}`;
+    }
+    return `${typeNode.typeName.getText()}${fmtArgs}`;
+  }
+  throw new Error("No known conversion for " + checker.typeToString(type))
 }
 
 // Run the extract function with the script's arguments
