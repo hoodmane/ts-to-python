@@ -110,7 +110,7 @@ function extract(file: string, identifiers: string[]): void {
     (node) => node.name.getText(),
   );
   for (const [name, declArray] of Object.entries(interfaceDecls)) {
-    output.push(convertInterface(checker, name, declArray.flatMap(node => node.members)));
+    output.push(convertInterface(checker, name, [], declArray.flatMap(node => node.members)));
   }
   const varDecls = (grouped[ts.SyntaxKind.VariableStatement] || []).flatMap(
     (v) => {
@@ -171,21 +171,26 @@ function convertTypeLiteralVarDecl(
   if (!varDecl.type || !ts.isTypeLiteralNode(varDecl.type)) {
     throw new Error("Assertion error");
   }
-  const grouped = groupBySyntaxKind(varDecl.type.members);
-  let sigs = grouped[ts.SyntaxKind.PropertySignature] || [];
-  let super_: string;
-  sigs = sigs.filter((sig) => {
-    if (sig.name.getText() === "prototype") {
-      const prototype = sig.type!;
-      if (ts.isTypeReferenceNode(prototype)) {
-        super_ = prototype.typeName.getText();
-      }
-      return false;
+  const members = groupBy(varDecl.type.members, (m) => {
+    if (ts.isPropertySignature(m) && m.name.getText() === "prototype") {
+      return "prototype";
+    } else {
+      return "rest";
     }
-    return true;
   });
-  return "";
-  return renderPyClass(varDecl.name.getText(), []);
+  let supers : string[] = [];
+  if (members.prototype) {
+    if (members.prototype.length > 1) {
+      throw new Error("Didn't expect to see multiple prototype fields...");
+    }
+    const proto = members.prototype[0] as ts.PropertySignature;
+    if (ts.isTypeReferenceNode(proto.type!)) {
+      supers.push(proto.type.typeName.getText());
+    } else {
+      throw new Error("Excepted prototype type to be TypeReference");
+    }
+  }
+  return convertInterface(checker, varDecl.name.getText(), supers, members.rest);
 }
 
 function convertVariableStatement(
@@ -318,6 +323,7 @@ function convertPropertySignature(
 function convertInterface(
   checker: ts.TypeChecker,
   name: string,
+  supers: string[],
   members: ts.TypeElement[],
 ) {
   const grouped = groupBySyntaxKind(members);
@@ -333,7 +339,7 @@ function convertInterface(
   }
   const pyMethods = overloadGroups.flatMap(gp => renderSignatureGroup(gp));
   const entries = properties.concat(pyMethods);
-  return renderPyClass(name, [], entries.join("\n"));
+  return renderPyClass(name, supers, entries.join("\n"));
 }
 
 function typeToPython(
