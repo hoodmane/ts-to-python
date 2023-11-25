@@ -2,7 +2,7 @@ export type PyParam = { name: string; pyType: string; optional: boolean, spread?
 export type PySig = { params: PyParam[]; returns: string, decorators?: string[]};
 export type PySigGroup = {name: string, sigs: PySig[]};
 
-function uniqBy<T, S>(l: T[], key: (T) => S) {
+export function uniqBy<T, S>(l: T[], key: (k: T) => S) {
   const seen = new Set();
   return l.filter(function(item) {
       const k = key(item);
@@ -39,10 +39,11 @@ export function renderSignatureGroup(
   sigGroup: PySigGroup
 ): string[] {
   const extraDecorators: string[] = [];
-  if (sigGroup.sigs.length > 1) {
+  const uniqueSigs = uniqBy(sigGroup.sigs, (sig) => JSON.stringify(sig));
+  if (uniqueSigs.length > 1) {
     extraDecorators.push("overload");
   }
-  const uniqueSigs = uniqBy(sigGroup.sigs, (sig) => JSON.stringify(sig));
+
   return uniqueSigs.map((sig) => renderSignature(sigGroup.name, sig, extraDecorators));
 }
 
@@ -56,6 +57,8 @@ const pythonReservedWords = new Set([
   "return", "and",   "continue", "for",    "lambda", "try",     "as",
   "def",    "from",  "nonlocal", "while",  "assert", "del",     "global",
   "not",    "with",  "async",    "elif",   "if",     "or",      "yield",
+// extras
+  "float",
 ]);
 
 function sanitizeReservedWords(name) {
