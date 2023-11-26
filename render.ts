@@ -46,7 +46,11 @@ export function renderPyClass(
 
 export function renderSignatureGroup(sigGroup: PySigGroup): string[] {
   const extraDecorators: string[] = [];
-  const uniqueSigs = uniqBy(sigGroup.sigs, (sig) => JSON.stringify(sig));
+  const uniqueSigs = uniqBy(sigGroup.sigs, (sig) => {
+    sig = structuredClone(sig);
+    sig.params.map(param => delete param["name"]);
+    return JSON.stringify(sig);
+  });
   if (uniqueSigs.length > 1) {
     extraDecorators.push("overload");
   }
