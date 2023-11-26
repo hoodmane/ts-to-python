@@ -1,15 +1,24 @@
-export type PyParam = { name: string; pyType: string; optional: boolean, spread?: boolean };
-export type PySig = { params: PyParam[]; returns: string, decorators?: string[]};
-export type PySigGroup = {name: string, sigs: PySig[]};
+export type PyParam = {
+  name: string;
+  pyType: string;
+  optional: boolean;
+  spread?: boolean;
+};
+export type PySig = {
+  params: PyParam[];
+  returns: string;
+  decorators?: string[];
+};
+export type PySigGroup = { name: string; sigs: PySig[] };
 
 export function uniqBy<T, S>(l: T[], key: (k: T) => S) {
   const seen = new Set();
-  return l.filter(function(item) {
-      const k = key(item);
-      const result = !seen.has(k);
-      seen.add(k);
-      return result;
-  })
+  return l.filter(function (item) {
+    const k = key(item);
+    const result = !seen.has(k);
+    seen.add(k);
+    return result;
+  });
 }
 
 function indent(x: string, prefix: string): string {
@@ -35,16 +44,16 @@ export function renderPyClass(
   return `class ${name}${supersList}:\n${body}`;
 }
 
-export function renderSignatureGroup(
-  sigGroup: PySigGroup
-): string[] {
+export function renderSignatureGroup(sigGroup: PySigGroup): string[] {
   const extraDecorators: string[] = [];
   const uniqueSigs = uniqBy(sigGroup.sigs, (sig) => JSON.stringify(sig));
   if (uniqueSigs.length > 1) {
     extraDecorators.push("overload");
   }
 
-  return uniqueSigs.map((sig) => renderSignature(sigGroup.name, sig, extraDecorators));
+  return uniqueSigs.map((sig) =>
+    renderSignature(sigGroup.name, sig, extraDecorators),
+  );
 }
 
 function isIllegal(name) {
@@ -52,12 +61,42 @@ function isIllegal(name) {
 }
 
 const pythonReservedWords = new Set([
-  "False",  "await", "else",     "import", "pass",   "None",    "break",
-  "except", "in",    "raise",    "True",   "class",  "finally", "is",
-  "return", "and",   "continue", "for",    "lambda", "try",     "as",
-  "def",    "from",  "nonlocal", "while",  "assert", "del",     "global",
-  "not",    "with",  "async",    "elif",   "if",     "or",      "yield",
-// extras
+  "False",
+  "await",
+  "else",
+  "import",
+  "pass",
+  "None",
+  "break",
+  "except",
+  "in",
+  "raise",
+  "True",
+  "class",
+  "finally",
+  "is",
+  "return",
+  "and",
+  "continue",
+  "for",
+  "lambda",
+  "try",
+  "as",
+  "def",
+  "from",
+  "nonlocal",
+  "while",
+  "assert",
+  "del",
+  "global",
+  "not",
+  "with",
+  "async",
+  "elif",
+  "if",
+  "or",
+  "yield",
+  // extras
   "float",
 ]);
 
@@ -77,12 +116,14 @@ export function renderSignature(
     return "";
   }
   name = sanitizeReservedWords(name);
-  const formattedParams = sig.params.map(({ name, pyType, optional, spread }) => {
-    const maybeDefault = optional ? "=None" : "";
-    const maybeStar = spread ? "*" : "";
-    name = sanitizeReservedWords(name);
-    return `${maybeStar}${name}: ${pyType}${maybeDefault}`;
-  });
+  const formattedParams = sig.params.map(
+    ({ name, pyType, optional, spread }) => {
+      const maybeDefault = optional ? "=None" : "";
+      const maybeStar = spread ? "*" : "";
+      name = sanitizeReservedWords(name);
+      return `${maybeStar}${name}: ${pyType}${maybeDefault}`;
+    },
+  );
   formattedParams.unshift("self");
   if (sig.params.at(-1)?.spread) {
     formattedParams.splice(-1, 0, "/");
@@ -90,11 +131,19 @@ export function renderSignature(
     formattedParams.push("/");
   }
   const joinedParams = formattedParams.join(", ");
-  const decs = (sig.decorators || []).concat(extraDecorators).map((x) => "@" + x + "\n").join("");
+  const decs = (sig.decorators || [])
+    .concat(extraDecorators)
+    .map((x) => "@" + x + "\n")
+    .join("");
   return `${decs}def ${name}(${joinedParams}) -> ${sig.returns}: ...`;
 }
 
-export function renderProperty(name: string, type: string, readOnly: boolean, isStatic: boolean = false): string {
+export function renderProperty(
+  name: string,
+  type: string,
+  readOnly: boolean,
+  isStatic: boolean = false,
+): string {
   if (isIllegal(name)) {
     return "";
   }

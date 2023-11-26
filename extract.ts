@@ -21,6 +21,9 @@ import {
   TypeNode,
   TypeFlags,
   UnionTypeNode,
+  Identifier,
+  ImportSpecifier,
+  LiteralTypeNode,
 } from "ts-morph";
 import * as ts from "typescript";
 import {
@@ -137,35 +140,35 @@ from typing import overload, Any, Literal, Self
 
 from pyodide.ffi import JsIterable as Iterable, JsIterator as Iterator
 IterableIterator = Iterator
-`
-  .trim();
+
+class Symbol:
+  # TODO
+  pass
+`.trim();
 
 class Converter {
   project: Project;
   convertedSet: Set<string>;
-  neededSet: Set<string>;
-  ifaceDecls: Record<string, InterfaceDeclaration[]>;
+  neededSet: Set<Identifier>;
   constructor() {
-    this.project = new Project({libFolderPath: "./node_modules/typescript/lib",});
+    this.project = new Project({
+      libFolderPath: "./node_modules/typescript/lib",
+    });
     this.project.addSourceFilesAtPaths("a.ts");
     this.convertedSet = new Set(["Iterable", "Iterator", "IterableIterator"]);
     this.neededSet = new Set();
   }
 
   emit(allFiles: boolean) {
-    console.warn({allFiles});
+    console.warn({ allFiles });
     let varDecls: VariableDeclaration[];
-    let ifaces: InterfaceDeclaration[];
     if (allFiles) {
       const files = this.project.resolveSourceFileDependencies();
       varDecls = files.flatMap((file) => file.getVariableDeclarations());
-      ifaces = files.flatMap((file) => file.getInterfaces());
     } else {
       const file = this.project.getSourceFile("a.ts")!;
       varDecls = file.getVariableDeclarations();
-      ifaces = file.getInterfaces();
     }
-    this.ifaceDecls = groupBy(ifaces, (item) => item.getName());
 
     const output: string[] = [IMPORTS];
     for (const varDecl of varDecls) {
@@ -178,54 +181,95 @@ class Converter {
         continue;
       }
       this.convertedSet.add(name);
-      let typeLiteral = typeNode.asKind(SyntaxKind.TypeLiteral);
-      if (typeLiteral) {
-        output.push(this.convertVarDecl(name, typeLiteral));
+      if (Node.isTypeLiteral(typeNode)) {
+        output.push(this.convertVarDecl(name, typeNode));
         continue;
       }
-      let typeRef = typeNode.asKind(SyntaxKind.VariableDeclaration);
-      if (typeRef) {
-        //   console.warn(this.interfaceDecls[varDecl.type.typeName.getText()])
-        //   const ty = this.checker.getTypeFromTypeNode(varDecl.type) as ts.TypeReference;
-        //   ts.factory;
-        //   console.warn("node:", ty.node);
-        //   // const ty = this.checker.Reference(varDecl.type) as ts.TypeReference;
-        //   console.warn(this.checker.typeToString(ty));
-        //   continue;
+      if (Node.isTypeReference(typeNode)) {
+        const ident = typeNode.getTypeName() as Identifier;
+        const typeName = ident.getText();
+        if (
+          name !== typeName &&
+          ident.getDefinitionNodes().filter(Node.isVariableDeclaration).length
+        ) {
+          // The type has a variable declaration so we'll handle it in this same
+          // loop.
+          // We have to be careful to ensure name !== typeName or else we can
+          // pick up the decl we're currently processing.
+          const renderedType = this.typeToPython(typeNode, false);
+          output.push(`${name}: ${renderedType}`);
+          continue;
+        }
+        const typeAlias = ident
+          .getDefinitionNodes()
+          .filter(Node.isTypeAliasDeclaration)[0];
+        if (typeAlias) {
+          const renderedType = this.typeToPython(typeNode, false);
+          output.push(`${name}: ${renderedType}`);
+          continue;
+        }
+        const ifaces = ident
+          .getDefinitionNodes()
+          .filter(Node.isInterfaceDeclaration);
+        const protoIface = ifaces.filter(
+          (iface) => !!iface.getProperty("prototype"),
+        )[0];
+        if (protoIface) {
+          output.push(this.convertVarDecl(name, protoIface));
+          continue;
+        }
+        if (ifaces.length > 1) {
+          throw new Error("???");
+        }
+        output.push(this.convertVarDecl(name, ifaces[0]));
+        continue;
       }
-      console.warn("ignored varDecl:", name);
+      const intersectionRef = typeNode.asKind(SyntaxKind.IntersectionType);
+      if (intersectionRef) {
+        console.warn("intersection varDecl:", varDecl.getText());
+        continue;
+      }
+      const renderedType = this.typeToPython(typeNode, false);
+      output.push(`${name}: ${renderedType}`);
       // output.push()
     }
-    let name: string | undefined;
-    while (name = popElt(this.neededSet)) {
+    let ident: Identifier | undefined;
+    while ((ident = popElt(this.neededSet))) {
+      const name = ident.getText();
       if (this.convertedSet.has(name)) {
         continue;
       }
       this.convertedSet.add(name);
-      if ((name in this.ifaceDecls) ) {
-        const decls = this.ifaceDecls[name];
-        output.push(this.convertInterface(name, [], decls.flatMap(node => node.getMembers())));
+      if (!ident.getDefinitionNodes) {
+        console.warn("Skipped", name);
         continue;
       }
-      // if (name in typeDecls) {
-      //   const typeDecl = typeDecls[name][0];
-      //   const type = this.typeToPython(typeDecl.type, false);
-      //   output.push(`${name} = ${type}`);
-      //   continue;
-      // }
-      // if (name in namespaceDecls) {
-      //   console.warn("TODO namespace decl", name);
-      //   continue;
-      // }
-      console.warn(`Can't find ${name}`);
+      const defs = ident.getDefinitionNodes();
+      if (defs.length !== 1) {
+        throw new Error("Expected single def");
+      }
+      const def = defs[0];
+      if (Node.isTypeAliasDeclaration(def)) {
+        const renderedType = this.typeToPython(def.getTypeNode()!, false);
+        output.push(`${name} = ${renderedType}`);
+        continue;
+      }
+      if (Node.isInterfaceDeclaration(def)) {
+        output.push(this.convertInterface(name, [], def.getMembers()));
+        continue;
+      }
+      console.warn(def.getKindName());
+      console.warn(def.getText());
+      // throw new Error("Expected definition to be a TypeAlias or InterfaceDeclaration");
     }
 
     console.log(output.join("\n\n"));
   }
 
-  convertVarDecl(name: string, type: TypeLiteralNode): string {
-    type.getMembers();
-
+  convertVarDecl(
+    name: string,
+    type: { getMembers: TypeLiteralNode["getMembers"] },
+  ): string {
     const { prototype, staticMembers } = groupBy(type.getMembers(), (m) => {
       if (
         m.isKind(SyntaxKind.PropertySignature) &&
@@ -245,25 +289,27 @@ class Converter {
       const proto = prototype[0] as PropertySignature;
       const typeNode = proto.getTypeNode();
       if (typeNode?.isKind(SyntaxKind.TypeReference)) {
-        const protoname = typeNode.getTypeName().getText();
-        if (protoname === name) {
-          const declArray = this.ifaceDecls[name];
-          members = declArray.flatMap((node) => node.getMembers());
+        const ident = typeNode.getTypeName() as Identifier;
+        if (ident.getText() === name) {
+          members = ident
+            .getDefinitionNodes()
+            .filter(Node.isInterfaceDeclaration)
+            .flatMap((node) => node.getMembers());
         }
       } else {
-        throw new Error("Excepted prototype type to be TypeReference");
+        console.warn(
+          "Excepted prototype type to be TypeReference",
+          proto.getText(),
+        );
       }
     }
     return this.convertInterface(name, supers, members, staticMembers);
   }
 
-  convertSignatures(
-    sigs: readonly Signature[],
-    topLevelName?: string,
-  ): string {
+  convertSignatures(sigs: readonly Signature[], topLevelName?: string): string {
     const converted = sigs.map((sig) =>
       this.convertSignature(sig, topLevelName),
-    );  
+    );
     if (!topLevelName) {
       return converted.join(" | ");
     }
@@ -274,10 +320,7 @@ class Converter {
     return converted.map((x) => "@overload\n" + x).join("\n\n");
   }
 
-  convertSignature(
-    sig: Signature,
-    topLevelName?: string,
-  ): string {
+  convertSignature(sig: Signature, topLevelName?: string): string {
     const pySig = this.sigToPython(sig);
     if (topLevelName) {
       return renderSignature(topLevelName, pySig);
@@ -288,7 +331,7 @@ class Converter {
   sigToPython(sig: Signature, decorators: string[] = []): PySig {
     const decl = sig.getDeclaration() as SignaturedDeclaration;
     try {
-      const params = decl.getParameters().map((param) => {        
+      const params = decl.getParameters().map((param) => {
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
         const pyType = this.typeToPython(param.getTypeNode()!, optional);
@@ -299,10 +342,12 @@ class Converter {
       return { params, returns, decorators };
     } catch (e) {
       throw e;
-      console.warn("failed to convert", sig.compilerSignature.declaration?.getText());
+      console.warn(
+        "failed to convert",
+        sig.compilerSignature.declaration?.getText(),
+      );
     }
   }
-
 
   convertInterface(
     name: string,
@@ -388,7 +433,10 @@ class Converter {
 
   unionTypeNodeToPython(typeNode: UnionTypeNode, isOptional: boolean): string {
     const unionTypes = typeNode.getTypeNodes() as TypeNode[];
-    const [literals, rest] = split(unionTypes, Node.isLiteralTypeNode);
+    const [literals, rest] = split<TypeNode, LiteralTypeNode>(
+      unionTypes,
+      Node.isLiteralTypeNode,
+    );
     const types = rest.map((ty) => this.typeToPython(ty, false));
     const lits = literals
       .map((lit) => lit.getText())
@@ -513,6 +561,9 @@ class Converter {
       return `tuple[${elts}]`;
     }
     if (Node.isTypeReference(typeNode)) {
+      if (typeNode.getType().isTypeParameter()) {
+        return "Any";
+      }
       const args = typeNode
         .getTypeArguments()
         .map((ty) => this.typeToPython(ty, false))
@@ -521,13 +572,20 @@ class Converter {
       if (args) {
         fmtArgs = `[${args}]`;
       }
-      let name = typeNode.getTypeName().getText();
+      const ident = typeNode.getTypeName() as Identifier;
+      let name = ident.getText();
+      if (name.startsWith("Intl")) {
+        return "Any";
+      }
       if (name === "Promise") {
         name = "Future";
       } else if (name === "Function") {
         name = "Callable";
-      } else if (!type.isTypeParameter() && !this.convertedSet.has(name)) {
-        this.neededSet.add(name);
+      } else if (
+        !typeNode.getType().isTypeParameter() &&
+        !this.convertedSet.has(name)
+      ) {
+        this.neededSet.add(ident);
       }
       return `${name}${fmtArgs}`;
     }
@@ -535,13 +593,13 @@ class Converter {
       // Just ignore readonly
       const operator = typeNode.getOperator();
       if (
-        [ts.SyntaxKind.ReadonlyKeyword, ts.SyntaxKind.UniqueKeyword].includes(
+        [SyntaxKind.ReadonlyKeyword, SyntaxKind.UniqueKeyword].includes(
           operator,
         )
       ) {
         return this.typeToPython(typeNode.getTypeNode(), false);
       }
-      // throw new Error("Unknown type operator " + operator);
+      throw new Error("Unknown type operator " + operator);
     }
     if (Node.isTemplateLiteralTypeNode(typeNode)) {
       return "str";
@@ -567,7 +625,7 @@ class Converter {
     console.warn(
       `No known conversion for '${type.getText()}'\n ${sf.getFilePath()}:${line}:${column}`,
     );
-    return "___A";
+    return "Any";
   }
 }
 
