@@ -37,7 +37,7 @@ function* groupByGenHelper<T, K extends keyof any>(getKey: (item: T) => K) {
       }
       result[group].push(currentItem);
     }
-  } catch(e) {
+  } catch (e) {
     if (e === doneToken) {
       return result;
     }
@@ -47,7 +47,7 @@ function* groupByGenHelper<T, K extends keyof any>(getKey: (item: T) => K) {
 
 export function split<T, S extends T>(
   list: Iterable<T>,
-  cond: (t: T) => t is S
+  cond: (t: T) => t is S,
 ): [S[], T[]] {
   const ss: S[] = [];
   const ts: T[] = [];

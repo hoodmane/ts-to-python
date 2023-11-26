@@ -100,7 +100,7 @@ const pythonReservedWords = new Set([
   "float",
 ]);
 
-function sanitizeReservedWords(name) {
+export function sanitizeReservedWords(name) {
   if (pythonReservedWords.has(name)) {
     name += "_";
   }
@@ -118,7 +118,7 @@ export function renderSignature(
   name = sanitizeReservedWords(name);
   const formattedParams = sig.params.map(
     ({ name, pyType, optional, spread }) => {
-      const maybeDefault = optional ? "=None" : "";
+      const maybeDefault = optional ? " = None" : "";
       const maybeStar = spread ? "*" : "";
       name = sanitizeReservedWords(name);
       return `${maybeStar}${name}: ${pyType}${maybeDefault}`;
