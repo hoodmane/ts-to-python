@@ -37,6 +37,7 @@ import {
   PyParam,
   uniqBy,
   PySigGroup,
+  sanitizeReservedWords,
 } from "./render.ts";
 
 import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
@@ -141,10 +142,6 @@ from typing import overload, Any, Literal, Self
 
 from pyodide.ffi import JsIterable as Iterable, JsIterator as Iterator
 IterableIterator = Iterator
-
-class Symbol:
-  # TODO
-  pass
 `.trim();
 
 export class Converter {
@@ -161,7 +158,7 @@ export class Converter {
   }
 
   main(allFiles: boolean) {
-    console.warn({allFiles});
+    console.warn({ allFiles });
     let files: SourceFile[];
     this.project.addSourceFilesAtPaths("input_example/a.ts");
     if (allFiles) {
@@ -170,22 +167,19 @@ export class Converter {
     } else {
       files = [this.project.getSourceFile("input_example/a.ts")!];
     }
-    console.log(this.emit(files));
+    console.log(this.emit(files).join("\n\n"));
   }
 
-  emit(files: SourceFile[]): string {
+  emit(files: SourceFile[]): string[] {
     const varDecls = files.flatMap((file) => file.getVariableDeclarations());
 
     const output: string[] = [IMPORTS];
     for (const varDecl of varDecls) {
-      if (!varDecl.getSourceFile().getFilePath().includes("input_example")) {
-        throw new Error("???");
-      }
       const typeNode = varDecl.getTypeNode()!;
       if (!typeNode) {
         continue;
       }
-      const name = varDecl.getName();
+      const name = sanitizeReservedWords(varDecl.getName());
       if (this.convertedSet.has(name)) {
         continue;
       }
@@ -193,7 +187,7 @@ export class Converter {
       if (Node.isTypeLiteral(typeNode)) {
         try {
           output.push(this.convertVarDecl(name, typeNode));
-        } catch(e) {
+        } catch (e) {
           console.warn(varDecl.getText());
           console.warn(varDecl.getSourceFile().getFilePath());
           throw e;
@@ -238,7 +232,11 @@ export class Converter {
           output.push(this.convertVarDecl(name, protoIface));
           continue;
         }
-        output.push(this.convertVarDecl(name, { getMembers: () => ifaces.flatMap(iface => iface.getMembers()) }));
+        output.push(
+          this.convertVarDecl(name, {
+            getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
+          }),
+        );
         continue;
       }
       const intersectionRef = typeNode.asKind(SyntaxKind.IntersectionType);
@@ -263,7 +261,13 @@ export class Converter {
       }
       const defs = ident.getDefinitionNodes();
       if (defs.every(Node.isInterfaceDeclaration)) {
-        output.push(this.convertInterface(name, [], defs.flatMap(def => def.getMembers())));
+        output.push(
+          this.convertInterface(
+            name,
+            [],
+            defs.flatMap((def) => def.getMembers()),
+          ),
+        );
         continue;
       }
       if (defs.length === 1) {
@@ -275,9 +279,8 @@ export class Converter {
         }
       }
 
-
       console.warn("Skipping", ident.getText());
-      for(const def of defs) {
+      for (const def of defs) {
         // console.warn(def.getText());
         // console.warn(def.getSourceFile().getFilePath());
       }
@@ -285,7 +288,7 @@ export class Converter {
       // throw new Error("Expected definition to be a TypeAlias or InterfaceDeclaration");
     }
 
-    return output.join("\n\n");
+    return output;
   }
 
   convertVarDecl(
@@ -363,10 +366,7 @@ export class Converter {
       const returns = this.typeToPython(retNode, false);
       return { params, returns, decorators };
     } catch (e) {
-      console.warn(
-        "failed to convert",
-        sig.getDeclaration().getText(),
-      );
+      console.warn("failed to convert", sig.getDeclaration().getText());
       throw e;
     }
   }
@@ -442,12 +442,15 @@ export class Converter {
   }
 
   typeToPython(
-    type: TypeNode,
+    typeNode: TypeNode,
     isOptional: boolean,
     topLevelName?: string,
   ): string {
-    let inner = this.typeToPythonInner(type, isOptional, topLevelName);
-    if (isOptional && !Node.isUnionTypeNode(type)) {
+    if (isOptional) {
+      topLevelName = undefined;
+    }
+    let inner = this.typeToPythonInner(typeNode, isOptional, topLevelName);
+    if (isOptional && !Node.isUnionTypeNode(typeNode)) {
       inner += " | None";
     }
     return inner;
@@ -492,37 +495,32 @@ export class Converter {
     isOptional: boolean,
     topLevelName?: string,
   ): string {
-    if (!typeNode.getSourceFile().getFilePath().includes("input_example")) {
-      console.warn(typeNode.getText(), typeNode.getSourceFile().getFilePath());
-      Error.stackTraceLimit = Infinity;
-      throw new Error("???");
-    }
-
     const type = typeNode.getType();
-    if (type.isNumber()) {
+    const typeText = typeNode.getText();
+    if (typeText === "number") {
       return "int | float";
     }
     // @ts-ignore
-    if (type._hasTypeFlag(TypeFlags.BigInt)) {
+    if (typeText === "bigint") {
       return "int";
     }
-    if (type.isBoolean()) {
+    if (typeText === "boolean") {
       return "bool";
     }
-    if (type.isString()) {
+    if (typeText === "string") {
       return "str";
     }
-    if (type.isVoid() || type.isUndefined() || type.isNull()) {
+    if (["void", "undefined", "null"].includes(typeText)) {
       return "None";
     }
     // @ts-ignore
-    if (type._hasTypeFlag(TypeFlags.ESSymbol)) {
+    if (typeText === "symbol") {
       return "Symbol";
     }
-    if (type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) {
+    if (["any", "unknown"].includes(typeText)) {
       return "Any";
     }
-    if (type.getFlags() & ts.TypeFlags.NonPrimitive) {
+    if (typeText === "object") {
       // "object"...
       return "Any";
     }
@@ -541,7 +539,10 @@ export class Converter {
         .getTypeNodes()
         .filter(
           (type) =>
-            !(Node.isThisTypeNode(type) || type.getText().startsWith("ThisType<")),
+            !(
+              Node.isThisTypeNode(type) ||
+              type.getText().startsWith("ThisType<")
+            ),
         );
       if (filteredTypes.length === 1) {
         return this.typeToPython(filteredTypes[0], false);
@@ -620,7 +621,7 @@ export class Converter {
     if (Node.isTypeOperatorTypeNode(typeNode)) {
       // Just ignore readonly
       const operator = typeNode.getOperator();
-      typeNode.getOperator()
+      typeNode.getOperator();
       if (
         [SyntaxKind.ReadonlyKeyword, SyntaxKind.UniqueKeyword].includes(
           operator,
@@ -649,6 +650,9 @@ export class Converter {
     if (Node.isConditionalTypeNode(typeNode)) {
       return "Any";
     }
+    if (Node.isTypePredicate(typeNode)) {
+      return "bool";
+    }
     console.warn(typeNode.getKindName());
     const sf = typeNode.getSourceFile();
     const { line, column } = sf.getLineAndColumnAtPos(typeNode.getStart());
@@ -658,4 +662,3 @@ export class Converter {
     return "Any";
   }
 }
-
