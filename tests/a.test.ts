@@ -63,8 +63,8 @@ describe('unit types', () => {
     })
 });
 
-describe.only('property signature', () => {
-    it("", () => {
+describe('property signature', () => {
+    it("mandatory function", () => {
         const fname = "/a.ts";
         const converter = new Converter();
         converter.project.createSourceFile(fname, `
@@ -75,7 +75,7 @@ describe.only('property signature', () => {
         const res = converter.convertPropertySignature(propsig);
         expect(res).toBe("def f(self, /) -> None: ...");
     });
-    it("", () => {
+    it("optional function", () => {
         const fname = "/a.ts";
         const converter = new Converter();
         converter.project.createSourceFile(fname, `
@@ -85,6 +85,18 @@ describe.only('property signature', () => {
         const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
         const res = converter.convertPropertySignature(propsig);
         expect(res).toBe("f: Callable[[], None] | None");
+    });
+});
+
+
+describe("sanitizeReservedWords", () => {
+    it("variable name", () => {
+        const converter = new Converter();
+        converter.project.createSourceFile("/a.ts", "declare var global : string;");
+        const file = converter.project.getSourceFileOrThrow("/a.ts");
+        const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
+        const res = converter.convertVarDecl(decl);
+        expect(res).toBe("global_: str");
     });
 })
 
@@ -107,6 +119,26 @@ describe('emit', () => {
             converter.project.createSourceFile("/a.ts", "declare var a : boolean;");
             const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
             expect(res.at(-1)).toBe("a: bool");
+        });
+        it('extends', () => {
+            const converter = new Converter();
+            converter.project.createSourceFile("/a.ts", 
+                `
+                interface B {
+                    b: number;
+                }
+
+                interface A extends B {
+
+                }
+
+                declare var x: {
+                    a: A;
+                };
+                `
+            );
+            const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
+            console.log(res.join("\n\n"));
         });
     })
 })

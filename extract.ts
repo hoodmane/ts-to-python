@@ -175,78 +175,15 @@ export class Converter {
 
     const output: string[] = [IMPORTS];
     for (const varDecl of varDecls) {
-      const typeNode = varDecl.getTypeNode()!;
-      if (!typeNode) {
-        continue;
-      }
       const name = sanitizeReservedWords(varDecl.getName());
       if (this.convertedSet.has(name)) {
         continue;
       }
       this.convertedSet.add(name);
-      if (Node.isTypeLiteral(typeNode)) {
-        try {
-          output.push(this.convertVarDecl(name, typeNode));
-        } catch (e) {
-          console.warn(varDecl.getText());
-          console.warn(varDecl.getSourceFile().getFilePath());
-          throw e;
-        }
-        continue;
+      const result = this.convertVarDecl(varDecl);
+      if (result) {
+        output.push(result);
       }
-      if (Node.isTypeReference(typeNode)) {
-        const ident = typeNode.getTypeName() as Identifier;
-        if (!ident.getDefinitionNodes) {
-          console.warn(ident.getText());
-          continue;
-        }
-
-        const typeName = ident.getText();
-        if (
-          name !== typeName &&
-          ident.getDefinitionNodes().filter(Node.isVariableDeclaration).length
-        ) {
-          // The type has a variable declaration so we'll handle it in this same
-          // loop.
-          // We have to be careful to ensure name !== typeName or else we can
-          // pick up the decl we're currently processing.
-          const renderedType = this.typeToPython(typeNode, false);
-          output.push(`${name}: ${renderedType}`);
-          continue;
-        }
-        const typeAlias = ident
-          .getDefinitionNodes()
-          .filter(Node.isTypeAliasDeclaration)[0];
-        if (typeAlias) {
-          const renderedType = this.typeToPython(typeNode, false);
-          output.push(`${name}: ${renderedType}`);
-          continue;
-        }
-        const ifaces = ident
-          .getDefinitionNodes()
-          .filter(Node.isInterfaceDeclaration);
-        const protoIface = ifaces.filter(
-          (iface) => !!iface.getProperty("prototype"),
-        )[0];
-        if (protoIface) {
-          output.push(this.convertVarDecl(name, protoIface));
-          continue;
-        }
-        output.push(
-          this.convertVarDecl(name, {
-            getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
-          }),
-        );
-        continue;
-      }
-      const intersectionRef = typeNode.asKind(SyntaxKind.IntersectionType);
-      if (intersectionRef) {
-        console.warn("intersection varDecl:", varDecl.getText());
-        continue;
-      }
-      const renderedType = this.typeToPython(typeNode, false);
-      output.push(`${name}: ${renderedType}`);
-      // output.push()
     }
     let ident: Identifier | undefined;
     while ((ident = popElt(this.neededSet))) {
@@ -291,7 +228,70 @@ export class Converter {
     return output;
   }
 
-  convertVarDecl(
+  convertVarDecl(varDecl: VariableDeclaration): string | undefined {
+    const name = sanitizeReservedWords(varDecl.getName());
+    const typeNode = varDecl.getTypeNode()!;
+    if (!typeNode) {
+      return undefined;
+    }
+    if (Node.isTypeLiteral(typeNode)) {
+      try {
+        return this.convertMembersDeclaration(name, typeNode);
+      } catch (e) {
+        console.warn(varDecl.getText());
+        console.warn(varDecl.getSourceFile().getFilePath());
+        throw e;
+      }
+    }
+    if (Node.isTypeReference(typeNode)) {
+      const ident = typeNode.getTypeName() as Identifier;
+      if (!ident.getDefinitionNodes) {
+        console.warn(ident.getText());
+        return undefined;
+      }
+
+      const typeName = ident.getText();
+      if (
+        name !== typeName &&
+        ident.getDefinitionNodes().filter(Node.isVariableDeclaration).length
+      ) {
+        // The type has a variable declaration so we'll handle it in this same
+        // loop.
+        // We have to be careful to ensure name !== typeName or else we can
+        // pick up the decl we're currently processing.
+        const renderedType = this.typeToPython(typeNode, false);
+        return `${name}: ${renderedType}`;
+      }
+      const typeAlias = ident
+        .getDefinitionNodes()
+        .filter(Node.isTypeAliasDeclaration)[0];
+      if (typeAlias) {
+        const renderedType = this.typeToPython(typeNode, false);
+        return `${name}: ${renderedType}`;
+      }
+      const ifaces = ident
+        .getDefinitionNodes()
+        .filter(Node.isInterfaceDeclaration);
+      const protoIface = ifaces.filter(
+        (iface) => !!iface.getProperty("prototype"),
+      )[0];
+      if (protoIface) {
+        return this.convertMembersDeclaration(name, protoIface);
+      }
+      return this.convertMembersDeclaration(name, {
+          getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
+        });
+    }
+    const intersectionRef = typeNode.asKind(SyntaxKind.IntersectionType);
+    if (intersectionRef) {
+      console.warn("intersection varDecl:", varDecl.getText());
+      return undefined;
+    }
+    const renderedType = this.typeToPython(typeNode, false);
+    return `${name}: ${renderedType}`;
+  }
+
+  convertMembersDeclaration(
     name: string,
     type: { getMembers: TypeLiteralNode["getMembers"] },
   ): string {
