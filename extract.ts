@@ -152,10 +152,15 @@ from pyodide.ffi import JsIterable as Iterable, JsIterator as Iterator
 IterableIterator = Iterator
 `.trim();
 
+type Needed =
+  | { type: "ident"; ident: Identifier }
+  | { type: "interface"; ident: Identifier };
+
 export class Converter {
   project: Project;
   convertedSet: Set<string>;
-  neededSet: Set<Identifier>;
+  neededSet: Set<Needed>;
+  typeRefs: Set<Identifier>;
   constructor() {
     this.project = new Project({
       tsConfigFilePath: "./input_example/tsconfig.json",
@@ -178,6 +183,14 @@ export class Converter {
     console.log(this.emit(files).join("\n\n"));
   }
 
+  addNeededIdentifier(ident: Identifier) {
+    this.neededSet.add({ type: "ident", ident });
+  }
+
+  addNeededInterface(ident: Identifier) {
+    this.neededSet.add({ type: "interface", ident });
+  }
+
   getBaseNames(
     baseDeclarations: (
       | InterfaceDeclaration
@@ -190,8 +203,8 @@ export class Converter {
     // getNameNode won't exist...
     baseDeclarations = baseDeclarations.filter((b) => b.getNameNode);
     baseDeclarations = uniqBy(baseDeclarations, (base) => base.getName());
-    baseDeclarations.forEach((b) => this.neededSet.add(b.getNameNode()));
-    return baseDeclarations.map((base) => base.getName());
+    baseDeclarations.forEach((b) => this.addNeededInterface(b.getNameNode()));
+    return baseDeclarations.map((base) => base.getName() + "_iface");
   }
 
   emit(files: SourceFile[]): string[] {
@@ -209,44 +222,76 @@ export class Converter {
         output.push(result);
       }
     }
-    let ident: Identifier | undefined;
-    while ((ident = popElt(this.neededSet))) {
-      const name = ident.getText();
-      if (this.convertedSet.has(name)) {
+    let next: Needed | undefined;
+    while ((next = popElt(this.neededSet))) {
+      if (next.type === "ident") {
+        let res = this.convertNeededIdent(next.ident);
+        if (res) {
+          output.push(res);
+        }
         continue;
       }
-      this.convertedSet.add(name);
-      if (!ident.getDefinitionNodes) {
-        console.warn("Skipped", name);
-        continue;
-      }
-      const defs = ident.getDefinitionNodes();
-      if (defs.every(Node.isInterfaceDeclaration)) {
-        const baseNames = this.getBaseNames(
-          defs.flatMap((def) => def.getBaseDeclarations()),
-        );
-        output.push(
-          this.convertInterface(
+      if (next.type === "interface") {
+        const ident = next.ident;
+        const name = ident.getText() + "_iface";
+        if (this.convertedSet.has(name)) {
+          continue;
+        }
+        this.convertedSet.add(name);
+
+        const defs = ident
+          .getDefinitionNodes()
+          .filter(Node.isInterfaceDeclaration);
+        if (defs.length) {
+          const baseNames = this.getBaseNames(
+            defs.flatMap((def) => def.getBaseDeclarations()),
+          );
+          const res = this.convertInterface(
             name,
             baseNames,
             defs.flatMap((def) => def.getMembers()),
-          ),
-        );
-        continue;
-      }
-      if (defs.length === 1) {
-        const def = defs[0];
-        if (Node.isTypeAliasDeclaration(def)) {
-          const renderedType = this.typeToPython(def.getTypeNode()!, false);
-          output.push(`${name} = ${renderedType}`);
+          );
+          output.push(res);
           continue;
         }
+        // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
+        console.warn("No interface declaration for " + name);
       }
-
-      console.warn("Skipping", ident.getText());
     }
 
     return output;
+  }
+
+  convertNeededIdent(ident: Identifier): string | undefined {
+    const name = ident.getText();
+    if (this.convertedSet.has(name)) {
+      return undefined;
+    }
+    this.convertedSet.add(name);
+    if (!ident.getDefinitionNodes) {
+      console.warn("Skipped", name);
+      return undefined;
+    }
+    const defs = ident.getDefinitionNodes();
+    if (defs.every(Node.isInterfaceDeclaration)) {
+      const baseNames = this.getBaseNames(
+        defs.flatMap((def) => def.getBaseDeclarations()),
+      );
+      return this.convertInterface(
+        name,
+        baseNames,
+        defs.flatMap((def) => def.getMembers()),
+      );
+    }
+    if (defs.length === 1) {
+      const def = defs[0];
+      if (Node.isTypeAliasDeclaration(def)) {
+        const renderedType = this.typeToPython(def.getTypeNode()!, false);
+        return `${name} = ${renderedType}`;
+      }
+    }
+    console.warn("Skipping", ident.getText());
+    return undefined;
   }
 
   renderSimpleDecl(name: string, typeNode: TypeNode) {
@@ -288,6 +333,11 @@ export class Converter {
   }
 
   convertVarDeclOfReferenceType(name: string, typeNode: TypeReferenceNode) {
+    // declare var A : B;
+
+    // Cases:
+    //   A is a constructor ==> inline B
+    //   o/w don't...
     const ident = typeNode.getTypeName() as Identifier;
     if (!ident.getDefinitionNodes) {
       console.warn(ident.getText());
@@ -312,8 +362,7 @@ export class Converter {
       .getDefinitionNodes()
       .filter(Node.isTypeAliasDeclaration)[0];
     if (typeAlias) {
-      // If it's a type alias, look up the value of the
-      // aliased type and render that
+      // If it's a type alias, just put `name: TypeName`.
       return this.renderSimpleDecl(name, typeNode);
     }
     // Otherwise hopefully every definition node is an interface (possibly
@@ -321,13 +370,14 @@ export class Converter {
     const ifaces = ident
       .getDefinitionNodes()
       .filter(Node.isInterfaceDeclaration);
-    const protoIface = ifaces.filter(
-      (iface) => !!iface.getProperty("prototype"),
-    )[0];
-    if (protoIface) {
-      const bases = this.getBaseNames(protoIface.getBaseDeclarations());
-      return this.convertMembersDeclaration(name, protoIface, bases);
-    }
+    // Check if it has a prototype
+    // const protoIface = ifaces.filter(
+    //   (iface) => !!iface.getProperty("prototype"),
+    // )[0];
+    // if (protoIface) {
+    //   const bases = this.getBaseNames(protoIface.getBaseDeclarations());
+    //   return this.convertMembersDeclaration(name, protoIface, bases);
+    // }
     return this.convertMembersDeclaration(name, {
       getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
     });
@@ -338,42 +388,24 @@ export class Converter {
     type: { getMembers: TypeLiteralNode["getMembers"] },
     bases = [],
   ): string {
-    const { prototype, staticMembers } = groupBy(type.getMembers(), (m) => {
-      if (
-        m.isKind(SyntaxKind.PropertySignature) &&
-        m.getName() === "prototype"
-      ) {
-        return "prototype";
-      } else {
-        return "staticMembers";
-      }
-    });
+    const [prototypes, staticMembers] = split(
+      type.getMembers(),
+      (m): m is PropertySignature =>
+        m.isKind(SyntaxKind.PropertySignature) && m.getName() === "prototype",
+    );
     let members: TypeElementTypes[] = [];
-    if (prototype) {
-      if (prototype.length > 1) {
-        throw new Error("Didn't expect to see multiple prototype fields...");
-      }
-      const proto = prototype[0] as PropertySignature;
+    for (const proto of prototypes) {
       const typeNode = proto.getTypeNode();
-      if (typeNode?.isKind(SyntaxKind.TypeReference)) {
-        const ident = typeNode.getTypeName() as Identifier;
-        if (ident.getText() === name) {
-          const decls = ident
-            .getDefinitionNodes()
-            .filter(Node.isInterfaceDeclaration);
-          members = decls.flatMap((node) => node.getMembers());
-          bases.push(
-            ...this.getBaseNames(
-              decls.flatMap((decl) => decl.getBaseDeclarations()),
-            ),
-          );
-        }
-      } else {
+      if (!Node.isTypeReference(typeNode)) {
         console.warn(
           "Excepted prototype type to be TypeReference",
           proto.getText(),
         );
+        continue;
       }
+      let name = typeNode.getTypeName();
+      this.addNeededInterface(name as Identifier);
+      bases.push(name.getText() + "_iface");
     }
     return this.convertInterface(name, bases, members, staticMembers);
   }
@@ -661,7 +693,7 @@ export class Converter {
         !typeNode.getType().isTypeParameter() &&
         !this.convertedSet.has(name)
       ) {
-        this.neededSet.add(ident);
+        this.addNeededIdentifier(ident);
       }
       return `${name}${fmtArgs}`;
     }

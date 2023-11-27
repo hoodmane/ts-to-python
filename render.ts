@@ -64,7 +64,11 @@ export function renderSignatureGroup(sigGroup: PySigGroup): string[] {
 }
 
 function isIllegal(name) {
-  return /["[$]/.test(name) || /^[0-9]/.test(name);
+  return (
+    /["[$]/.test(name) ||
+    /^[0-9]/.test(name) ||
+    ["addEventListener", "removeEventListener"].includes(name)
+  );
 }
 
 const pythonReservedWords = new Set([

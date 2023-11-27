@@ -98,8 +98,9 @@ describe("sanitizeReservedWords", () => {
         const res = converter.convertVarDecl(decl);
         expect(res).toBe("global_: str");
     });
-    it.only("Constructor reference", () => {
+    it("Constructor reference", () => {
         const text = `
+        interface Test {}
         interface TestConstructor {
             new (): Test;
             readonly prototype: Test;
@@ -107,7 +108,7 @@ describe("sanitizeReservedWords", () => {
         declare var Test: TestConstructor;
         `;
         const expected = `\
-class Test:
+class Test(Test_iface):
     @classmethod
     def new(self, /) -> Test: ...\
 `
@@ -158,20 +159,67 @@ describe('emit', () => {
                 `
             );
             const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
-            expect(res.slice(1)).toEqual([
+            expect(res.slice(1).join("\n\n")).toEqual(
 `\
 class x:
-    a: A\
-`,
-`\
-class A(B):
-    pass\
-`,
-`\
-class B:
+    a: A
+
+class A(B_iface):
+    pass
+
+class B_iface:
     b: int | float\
 `
-            ])
+            );
         });
+
+        it("subclass with incompatible constructor type", () => {
+            const file = `
+                interface Example {
+                    name: string;
+                }
+
+                interface ExampleConstructor {
+                    new (a?: string): Example;
+                    readonly prototype: Example;
+                }
+
+                declare var Example: ExampleConstructor;
+
+                interface SubExample extends Example {
+                    field: string;
+                }
+                interface SubExampleConstructor {
+                new (b?: boolean): SubExample;
+                readonly prototype: SubExample;
+                }
+                declare var SubExample: SubExampleConstructor;
+            `;
+            const converter = new Converter();
+            converter.project.createSourceFile("/a.ts",file);
+            const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
+            expect(res.slice(1).join("\n\n")).toEqual(
+`\
+class Example(Example_iface):
+    @classmethod
+    def new(self, a: str | None = None, /) -> Example: ...
+
+class SubExample(SubExample_iface):
+    @classmethod
+    def new(self, b: bool | None = None, /) -> SubExample: ...
+
+class Example_iface:
+    name: str
+
+class SubExample_iface(Example_iface):
+    field: str
+
+class Example_iface:
+    name: str\
+`
+            );
+
+        })
+
     })
 })
