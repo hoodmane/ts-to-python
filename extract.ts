@@ -280,8 +280,7 @@ export class Converter {
       // XConstructor has a prototype and 'new' signatures. Or not...
       return this.convertVarDeclOfReferenceType(name, typeNode);
     }
-    const intersectionRef = typeNode.asKind(SyntaxKind.IntersectionType);
-    if (intersectionRef) {
+    if (Node.isIntersectionTypeNode(typeNode)) {
       console.warn("intersection varDecl:", varDecl.getText());
       return undefined;
     }
