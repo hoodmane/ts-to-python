@@ -98,6 +98,26 @@ describe("sanitizeReservedWords", () => {
         const res = converter.convertVarDecl(decl);
         expect(res).toBe("global_: str");
     });
+    it.only("Constructor reference", () => {
+        const text = `
+        interface TestConstructor {
+            new (): Test;
+            readonly prototype: Test;
+        }
+        declare var Test: TestConstructor;
+        `;
+        const expected = `\
+class Test:
+    @classmethod
+    def new(self, /) -> Test: ...\
+`
+        const converter = new Converter();
+        converter.project.createSourceFile("/a.ts", text);
+        const file = converter.project.getSourceFileOrThrow("/a.ts");
+        const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
+        const res = converter.convertVarDecl(decl);
+        expect(res).toBe(expected);
+    });
 })
 
 describe('emit', () => {

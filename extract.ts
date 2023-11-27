@@ -278,7 +278,7 @@ export class Converter {
     if (Node.isTypeReference(typeNode)) {
       // This also could be a constructor like `declare X: XConstructor` where
       // XConstructor has a prototype and 'new' signatures. Or not...
-      this.convertVarDeclOfReferenceType(name, typeNode);
+      return this.convertVarDeclOfReferenceType(name, typeNode);
     }
     const intersectionRef = typeNode.asKind(SyntaxKind.IntersectionType);
     if (intersectionRef) {
