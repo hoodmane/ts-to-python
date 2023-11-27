@@ -138,7 +138,20 @@ describe('emit', () => {
                 `
             );
             const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
-            console.log(res.join("\n\n"));
+            expect(res.slice(1)).toEqual([
+`\
+class x:
+    a: A\
+`,
+`\
+class A(B):
+    pass\
+`,
+`\
+class B:
+    b: int | float\
+`
+            ])
         });
     })
 })

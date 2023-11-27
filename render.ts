@@ -33,6 +33,9 @@ export function renderPyClass(
   supers: string[],
   body: string,
 ): string {
+  if (name === "HTMLElement") {
+    // throw new Error("OOPs");
+  }
   if (body.trim() === "") {
     body = "pass";
   }
@@ -48,7 +51,7 @@ export function renderSignatureGroup(sigGroup: PySigGroup): string[] {
   const extraDecorators: string[] = [];
   const uniqueSigs = uniqBy(sigGroup.sigs, (sig) => {
     sig = structuredClone(sig);
-    sig.params.map(param => delete param["name"]);
+    sig.params.map((param) => delete param["name"]);
     return JSON.stringify(sig);
   });
   if (uniqueSigs.length > 1) {

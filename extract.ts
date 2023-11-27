@@ -25,6 +25,8 @@ import {
   ImportSpecifier,
   LiteralTypeNode,
   SourceFile,
+  ClassDeclaration,
+  TypeReferenceNode,
 } from "ts-morph";
 import * as ts from "typescript";
 import {
@@ -41,6 +43,12 @@ import {
 } from "./render.ts";
 
 import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
+
+function getNodeLocation(node: Node) {
+  const sf = node.getSourceFile();
+  const { line, column } = sf.getLineAndColumnAtPos(node.getStart());
+  return `${sf.getFilePath()}:${line}:${column}`;
+}
 
 type SyntaxKindMap = {
   [SyntaxKind.VariableStatement]: VariableStatement;
@@ -170,6 +178,22 @@ export class Converter {
     console.log(this.emit(files).join("\n\n"));
   }
 
+  getBaseNames(
+    baseDeclarations: (
+      | InterfaceDeclaration
+      | TypeAliasDeclaration
+      | ClassDeclaration
+    )[],
+  ) {
+    // Hack: if we were "extend" a type alias then for some reason we seem to
+    // get the value of the TypeAlias, not the TypeAliasDeclaration. Then
+    // getNameNode won't exist...
+    baseDeclarations = baseDeclarations.filter((b) => b.getNameNode);
+    baseDeclarations = uniqBy(baseDeclarations, (base) => base.getName());
+    baseDeclarations.forEach((b) => this.neededSet.add(b.getNameNode()));
+    return baseDeclarations.map((base) => base.getName());
+  }
+
   emit(files: SourceFile[]): string[] {
     const varDecls = files.flatMap((file) => file.getVariableDeclarations());
 
@@ -198,10 +222,13 @@ export class Converter {
       }
       const defs = ident.getDefinitionNodes();
       if (defs.every(Node.isInterfaceDeclaration)) {
+        const baseNames = this.getBaseNames(
+          defs.flatMap((def) => def.getBaseDeclarations()),
+        );
         output.push(
           this.convertInterface(
             name,
-            [],
+            baseNames,
             defs.flatMap((def) => def.getMembers()),
           ),
         );
@@ -217,15 +244,14 @@ export class Converter {
       }
 
       console.warn("Skipping", ident.getText());
-      for (const def of defs) {
-        // console.warn(def.getText());
-        // console.warn(def.getSourceFile().getFilePath());
-      }
-      // console.warn(def.getText());
-      // throw new Error("Expected definition to be a TypeAlias or InterfaceDeclaration");
     }
 
     return output;
+  }
+
+  renderSimpleDecl(name: string, typeNode: TypeNode) {
+    const renderedType = this.typeToPython(typeNode, false);
+    return `${name}: ${renderedType}`;
   }
 
   convertVarDecl(varDecl: VariableDeclaration): string | undefined {
@@ -235,65 +261,83 @@ export class Converter {
       return undefined;
     }
     if (Node.isTypeLiteral(typeNode)) {
+      // declare X : {}
+      //
+      // If it looks like declare var X : { prototype: Blah, new(paramspec): ret}
+      // then X is the constructor for a class
+      //
+      // Otherwise it's a global namespace object?
       try {
         return this.convertMembersDeclaration(name, typeNode);
       } catch (e) {
         console.warn(varDecl.getText());
-        console.warn(varDecl.getSourceFile().getFilePath());
+        console.warn(getNodeLocation(varDecl));
         throw e;
       }
     }
     if (Node.isTypeReference(typeNode)) {
-      const ident = typeNode.getTypeName() as Identifier;
-      if (!ident.getDefinitionNodes) {
-        console.warn(ident.getText());
-        return undefined;
-      }
-
-      const typeName = ident.getText();
-      if (
-        name !== typeName &&
-        ident.getDefinitionNodes().filter(Node.isVariableDeclaration).length
-      ) {
-        // The type has a variable declaration so we'll handle it in this same
-        // loop.
-        // We have to be careful to ensure name !== typeName or else we can
-        // pick up the decl we're currently processing.
-        const renderedType = this.typeToPython(typeNode, false);
-        return `${name}: ${renderedType}`;
-      }
-      const typeAlias = ident
-        .getDefinitionNodes()
-        .filter(Node.isTypeAliasDeclaration)[0];
-      if (typeAlias) {
-        const renderedType = this.typeToPython(typeNode, false);
-        return `${name}: ${renderedType}`;
-      }
-      const ifaces = ident
-        .getDefinitionNodes()
-        .filter(Node.isInterfaceDeclaration);
-      const protoIface = ifaces.filter(
-        (iface) => !!iface.getProperty("prototype"),
-      )[0];
-      if (protoIface) {
-        return this.convertMembersDeclaration(name, protoIface);
-      }
-      return this.convertMembersDeclaration(name, {
-          getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
-        });
+      // This also could be a constructor like `declare X: XConstructor` where
+      // XConstructor has a prototype and 'new' signatures. Or not...
+      this.convertVarDeclOfReferenceType(name, typeNode);
     }
     const intersectionRef = typeNode.asKind(SyntaxKind.IntersectionType);
     if (intersectionRef) {
       console.warn("intersection varDecl:", varDecl.getText());
       return undefined;
     }
-    const renderedType = this.typeToPython(typeNode, false);
-    return `${name}: ${renderedType}`;
+    return this.renderSimpleDecl(name, typeNode);
+  }
+
+  convertVarDeclOfReferenceType(name: string, typeNode: TypeReferenceNode) {
+    const ident = typeNode.getTypeName() as Identifier;
+    if (!ident.getDefinitionNodes) {
+      console.warn(ident.getText());
+      return undefined;
+    }
+
+    const typeName = ident.getText();
+    const definitions = ident.getDefinitionNodes();
+    // We'll do casework in how the type was defined.
+    if (name !== typeName && definitions.some(Node.isVariableDeclaration)) {
+      // Assertion: definitions include one VariableDeclaration and zero or
+      // more InterfaceDeclarations.
+      //
+      // We have to be careful to ensure name !== typeName or else we can
+      // pick up the decl we're currently processing.
+      //
+      // The type has a variable declaration so we'll handle it in this same
+      // loop.
+      return this.renderSimpleDecl(name, typeNode);
+    }
+    const typeAlias = ident
+      .getDefinitionNodes()
+      .filter(Node.isTypeAliasDeclaration)[0];
+    if (typeAlias) {
+      // If it's a type alias, look up the value of the
+      // aliased type and render that
+      return this.renderSimpleDecl(name, typeNode);
+    }
+    // Otherwise hopefully every definition node is an interface (possibly
+    // excluding the current varDecl)
+    const ifaces = ident
+      .getDefinitionNodes()
+      .filter(Node.isInterfaceDeclaration);
+    const protoIface = ifaces.filter(
+      (iface) => !!iface.getProperty("prototype"),
+    )[0];
+    if (protoIface) {
+      const bases = this.getBaseNames(protoIface.getBaseDeclarations());
+      return this.convertMembersDeclaration(name, protoIface, bases);
+    }
+    return this.convertMembersDeclaration(name, {
+      getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
+    });
   }
 
   convertMembersDeclaration(
     name: string,
     type: { getMembers: TypeLiteralNode["getMembers"] },
+    bases = [],
   ): string {
     const { prototype, staticMembers } = groupBy(type.getMembers(), (m) => {
       if (
@@ -305,7 +349,6 @@ export class Converter {
         return "staticMembers";
       }
     });
-    let supers: string[] = [];
     let members: TypeElementTypes[] = [];
     if (prototype) {
       if (prototype.length > 1) {
@@ -316,10 +359,15 @@ export class Converter {
       if (typeNode?.isKind(SyntaxKind.TypeReference)) {
         const ident = typeNode.getTypeName() as Identifier;
         if (ident.getText() === name) {
-          members = ident
+          const decls = ident
             .getDefinitionNodes()
-            .filter(Node.isInterfaceDeclaration)
-            .flatMap((node) => node.getMembers());
+            .filter(Node.isInterfaceDeclaration);
+          members = decls.flatMap((node) => node.getMembers());
+          bases.push(
+            ...this.getBaseNames(
+              decls.flatMap((decl) => decl.getBaseDeclarations()),
+            ),
+          );
         }
       } else {
         console.warn(
@@ -328,7 +376,7 @@ export class Converter {
         );
       }
     }
-    return this.convertInterface(name, supers, members, staticMembers);
+    return this.convertInterface(name, bases, members, staticMembers);
   }
 
   convertSignatures(sigs: readonly Signature[], topLevelName?: string): string {
@@ -654,10 +702,10 @@ export class Converter {
       return "bool";
     }
     console.warn(typeNode.getKindName());
-    const sf = typeNode.getSourceFile();
-    const { line, column } = sf.getLineAndColumnAtPos(typeNode.getStart());
     console.warn(
-      `No known conversion for '${type.getText()}'\n ${sf.getFilePath()}:${line}:${column}`,
+      `No known conversion for '${type.getText()}'\n ${getNodeLocation(
+        typeNode,
+      )}`,
     );
     return "Any";
   }
