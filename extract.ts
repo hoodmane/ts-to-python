@@ -148,9 +148,13 @@ from collections.abc import Callable
 from asyncio import Future
 from typing import overload, Any, Literal, Self
 
-from pyodide.ffi import JsIterable as Iterable, JsIterator as Iterator
+from pyodide.ffi import JsIterable as Iterable, JsIterator as Iterator, JsArray as ArrayLike, JsMutableMap as Map, JsMap as ReadonlyMap
+from pyodide.webloop import PyodideFuture as PromiseLike
+Promise = PromiseLike
+ConcatArray = Array = ArrayLike
 IterableIterator = Iterator
 `.trim();
+const BUILTIN_NAMES = ["Iterable", "Iterator", "IterableIterator", "ArrayLike", "Array", "ConcatArray", "PromiseLike", "Promise", "Map", "ReadonlyMap"];
 
 type Needed =
   | { type: "ident"; ident: Identifier }
@@ -166,7 +170,7 @@ export class Converter {
       tsConfigFilePath: "./input_example/tsconfig.json",
       libFolderPath: "./input_example/node_modules/typescript/lib",
     });
-    this.convertedSet = new Set(["Iterable", "Iterator", "IterableIterator"]);
+    this.convertedSet = new Set(BUILTIN_NAMES);
     this.neededSet = new Set();
   }
 
