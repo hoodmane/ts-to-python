@@ -27,6 +27,8 @@ import {
   SourceFile,
   ClassDeclaration,
   TypeReferenceNode,
+  TypeParameter,
+  TypeParameterDeclaration,
 } from "ts-morph";
 import * as ts from "typescript";
 import {
@@ -219,14 +221,45 @@ export class Converter {
   }
 
   getBaseNames(defs: InterfaceDeclaration[]) {
-    // Hack: if we were "extend" a type alias then for some reason we seem to
-    // get the value of the TypeAlias, not the TypeAliasDeclaration. Then
-    // getNameNode won't exist...
-    let baseDeclarations = defs.flatMap((def) => def.getBaseDeclarations());
-    baseDeclarations = baseDeclarations.filter((b) => b.getNameNode);
-    baseDeclarations = uniqBy(baseDeclarations, (base) => base.getName());
-    baseDeclarations.forEach((b) => this.addNeededInterface(b.getNameNode()));
-    return baseDeclarations.map((base) => base.getName() + "_iface");
+    let extends_ = defs.flatMap((def) => def.getExtends());
+    extends_ = uniqBy(extends_, (base) => base.getText());
+    return extends_.map((extend) => {
+      const ident = extend.getExpression().asKindOrThrow(SyntaxKind.Identifier);
+      this.addNeededInterface(ident);
+      const name = extend.getExpression().getText();
+      const numTypeArgs = extend.getType().getTypeArguments().length;
+      const typeArgNodes = extend.getTypeArguments();
+      if (typeArgNodes.length < numTypeArgs) {
+        const seenNames: string[] = [];
+        const paramDecls: TypeParameterDeclaration[] = [];
+        const superDefs = ident
+          .getDefinitionNodes()
+          .filter(
+            (node): node is InterfaceDeclaration | TypeAliasDeclaration =>
+              Node.isInterfaceDeclaration(node) ||
+              Node.isTypeAliasDeclaration(node),
+          );
+        for (const def of superDefs) {
+          const params = def.getTypeParameters();
+          for (const param of params) {
+            const paramName = param.getName();
+            if (!seenNames.includes(paramName)) {
+              seenNames.push(paramName);
+              paramDecls.push(param);
+            }
+          }
+        }
+        const missingDecls = paramDecls.slice(
+          -(numTypeArgs - typeArgNodes.length),
+        );
+        for (const decl of missingDecls) {
+          typeArgNodes.push(decl.getDefaultOrThrow());
+        }
+      }
+      const pyArgs = typeArgNodes.map((node) => this.typeToPython(node, false));
+      const args = numTypeArgs > 0 ? `[${pyArgs.join(", ")}]` : "";
+      return name + "_iface" + args;
+    });
   }
 
   emit(files: SourceFile[]): string[] {
