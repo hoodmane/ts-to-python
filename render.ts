@@ -42,10 +42,10 @@ const CLASS_TYPE_IGNORES = " # type:ignore[misc,unused-ignore]";
 // [unused-ignore]:
 // [type-arg]:
 //    Missing type parameters for generic type "?" (could be fixed by tracking type parameter defaults)
-let METHOD_TYPE_IGNORES = " # type:ignore[override,overload-overlap,misc,type-arg,unused-ignore]";
+let METHOD_TYPE_IGNORES =
+  " # type:ignore[override,overload-overlap,misc,type-arg,unused-ignore]";
 // TYPE_IGNORES = "";
 let PROPERTY_TYPE_IGNORES = " # type:ignore[type-arg,unused-ignore]";
-
 
 export function renderPyClass(
   name: string,
@@ -134,8 +134,6 @@ export function sanitizeReservedWords(name) {
   return name;
 }
 
-
-
 export function renderSignature(
   name: string,
   sig: PySig,
@@ -164,7 +162,10 @@ export function renderSignature(
     .concat(extraDecorators)
     .map((x) => "@" + x + "\n")
     .join("");
-  return `${decs}def ${name}(${joinedParams}) -> ${sig.returns}: ...` + METHOD_TYPE_IGNORES;
+  return (
+    `${decs}def ${name}(${joinedParams}) -> ${sig.returns}: ...` +
+    METHOD_TYPE_IGNORES
+  );
 }
 
 export function renderSimpleDeclaration(name: string, type: string) {

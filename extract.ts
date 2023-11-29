@@ -162,6 +162,23 @@ ArrayLike = JsArray
 IterableIterator = Iterator
 Dispatcher = Any
 
+URL_ = URL
+
+class _URL_iface:
+  pass
+
+class _URLSearchParams_iface:
+  pass
+
+class __Blob_iface:
+  pass
+
+class __Event_iface:
+  pass
+
+class __EventTarget_iface:
+  pass
+
 class Record(JsProxy, Generic[S, T]):
   pass
 `.trim();
@@ -179,13 +196,21 @@ const BUILTIN_NAMES = [
   "Readonly",
   "Record",
   "Dispatcher",
+  "_URL_iface",
+  "_URLSearchParams_iface",
+  "__Blob_iface",
+  "__Event_iface",
+  "__EventTarget_iface",
 ];
 
 type Needed =
   | { type: "ident"; ident: Identifier }
   | { type: "interface"; ident: Identifier };
 
-function getExpressionTypeArgs(ident: Identifier, expression: TypeArgumentedNode & Node) : TypeNode[] {
+function getExpressionTypeArgs(
+  ident: Identifier,
+  expression: TypeArgumentedNode & Node,
+): TypeNode[] {
   const typeArgNodes = expression.getTypeArguments();
   const numTypeArgs = expression.getType().getTypeArguments().length;
   if (typeArgNodes.length < numTypeArgs) {
@@ -208,9 +233,7 @@ function getExpressionTypeArgs(ident: Identifier, expression: TypeArgumentedNode
         }
       }
     }
-    const missingDecls = paramDecls.slice(
-      -(numTypeArgs - typeArgNodes.length),
-    );
+    const missingDecls = paramDecls.slice(-(numTypeArgs - typeArgNodes.length));
     for (const decl of missingDecls) {
       typeArgNodes.push(decl.getDefaultOrThrow());
     }
