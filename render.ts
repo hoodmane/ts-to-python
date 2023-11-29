@@ -118,6 +118,9 @@ export function sanitizeReservedWords(name) {
   return name;
 }
 
+let TYPE_IGNORES = " # type:ignore[override,overload-overlap]";
+// TYPE_IGNORES = "";
+
 export function renderSignature(
   name: string,
   sig: PySig,
@@ -146,7 +149,7 @@ export function renderSignature(
     .concat(extraDecorators)
     .map((x) => "@" + x + "\n")
     .join("");
-  return `${decs}def ${name}(${joinedParams}) -> ${sig.returns}: ...`;
+  return `${decs}def ${name}(${joinedParams}) -> ${sig.returns}: ...` + TYPE_IGNORES;
 }
 
 export function renderProperty(

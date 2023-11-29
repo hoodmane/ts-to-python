@@ -5,6 +5,7 @@
       "allowImportingTsExtensions": true,
       "module": "NodeNext",
       "moduleResolution": "NodeNext",
-      "esModuleInterop": true
+      "esModuleInterop": true,
+      "lib": ["ES2022"]
     }
 }

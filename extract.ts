@@ -146,15 +146,21 @@ function filterSignatures(name: string, signatures: Signature[]): Signature[] {
 const IMPORTS = `
 from collections.abc import Callable
 from asyncio import Future
-from typing import overload, Any, Literal, Self
+from typing import overload, Any, Literal, Self, TypeVar, Generic
 
-from pyodide.ffi import JsIterable as Iterable, JsIterator as Iterator, JsArray as ArrayLike, JsMutableMap as Map, JsMap as ReadonlyMap
+from pyodide.ffi import JsProxy, JsIterable as Iterable, JsIterator as Iterator, JsArray, JsMutableMap as Map, JsMap as ReadonlyMap
 from pyodide.webloop import PyodideFuture as PromiseLike
 Promise = PromiseLike
-ConcatArray = Array = ArrayLike
+ConcatArray = JsArray
+Array = JsArray
+ArrayLike = JsArray
 IterableIterator = Iterator
+Dispatcher = Any
+
+class Record(JsProxy, Generic[S, T]):
+  pass
 `.trim();
-const BUILTIN_NAMES = ["Iterable", "Iterator", "IterableIterator", "ArrayLike", "Array", "ConcatArray", "PromiseLike", "Promise", "Map", "ReadonlyMap"];
+const BUILTIN_NAMES = ["Iterable", "Iterator", "IterableIterator", "ArrayLike", "Array", "ConcatArray", "PromiseLike", "Promise", "Map", "ReadonlyMap", "Readonly", "Record", "Dispatcher"];
 
 type Needed =
   | { type: "ident"; ident: Identifier }
@@ -165,6 +171,7 @@ export class Converter {
   convertedSet: Set<string>;
   neededSet: Set<Needed>;
   typeRefs: Set<Identifier>;
+  typeParams: Set<string>
   constructor() {
     this.project = new Project({
       tsConfigFilePath: "./input_example/tsconfig.json",
@@ -172,6 +179,7 @@ export class Converter {
     });
     this.convertedSet = new Set(BUILTIN_NAMES);
     this.neededSet = new Set();
+    this.typeParams = new Set();
   }
 
   main(allFiles: boolean) {
@@ -180,7 +188,7 @@ export class Converter {
     this.project.addSourceFilesAtPaths("input_example/a.ts");
     if (allFiles) {
       files = this.project.resolveSourceFileDependencies();
-      // console.warn(files.map(file => file.getFilePath()));
+      console.warn(files.map(file => file.getFilePath()));
     } else {
       files = [this.project.getSourceFile("input_example/a.ts")!];
     }
@@ -249,11 +257,14 @@ export class Converter {
         if (defs.length) {
           const baseNames = this.getBaseNames(
             defs.flatMap((def) => def.getBaseDeclarations()),
-          );
+          ).filter(base => base !== name);
+          const typeParams = defs.flatMap(i => i.getTypeParameters()).map(p => p.getName());
           const res = this.convertInterface(
             name,
             baseNames,
             defs.flatMap((def) => def.getMembers()),
+            [],
+            typeParams
           );
           output.push(res);
           continue;
@@ -262,8 +273,17 @@ export class Converter {
         console.warn("No interface declaration for " + name);
       }
     }
-
+    const typevarDecls = Array.from(this.typeParams, (x) => `${x} = TypeVar("${x}")`).join("\n");
+    output.splice(1, 0, typevarDecls);
     return output;
+  }
+
+  getInterfaceTypeParams(ident: Identifier): string[] {
+    return Array.from(new Set(ident
+    .getDefinitionNodes()
+    .filter(Node.isInterfaceDeclaration)
+    .flatMap(def => def.getTypeParameters())
+    .map(param => param.getName())));
   }
 
   convertNeededIdent(ident: Identifier): string | undefined {
@@ -281,10 +301,14 @@ export class Converter {
       const baseNames = this.getBaseNames(
         defs.flatMap((def) => def.getBaseDeclarations()),
       );
+      const typeParams = defs.flatMap(i => i.getTypeParameters()).map(p => p.getName());
+      
       return this.convertInterface(
         name,
         baseNames,
         defs.flatMap((def) => def.getMembers()),
+        [],
+        typeParams
       );
     }
     if (defs.length === 1) {
@@ -295,6 +319,7 @@ export class Converter {
       }
     }
     console.warn("Skipping", ident.getText());
+    console.warn("Skipping", defs.map(def => def.getKindName()));
     return undefined;
   }
 
@@ -310,14 +335,14 @@ export class Converter {
       return undefined;
     }
     if (Node.isTypeLiteral(typeNode)) {
-      // declare X : {}
+      // declare var X : {}
       //
       // If it looks like declare var X : { prototype: Blah, new(paramspec): ret}
       // then X is the constructor for a class
       //
       // Otherwise it's a global namespace object?
       try {
-        return this.convertMembersDeclaration(name, typeNode);
+        return this.convertMembersDeclaration(name, typeNode, [], []);
       } catch (e) {
         console.warn(varDecl.getText());
         console.warn(getNodeLocation(varDecl));
@@ -374,23 +399,17 @@ export class Converter {
     const ifaces = ident
       .getDefinitionNodes()
       .filter(Node.isInterfaceDeclaration);
-    // Check if it has a prototype
-    // const protoIface = ifaces.filter(
-    //   (iface) => !!iface.getProperty("prototype"),
-    // )[0];
-    // if (protoIface) {
-    //   const bases = this.getBaseNames(protoIface.getBaseDeclarations());
-    //   return this.convertMembersDeclaration(name, protoIface, bases);
-    // }
+    const typeParams = ifaces.flatMap(i => i.getTypeParameters()).map(p => p.getName());
     return this.convertMembersDeclaration(name, {
       getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
-    });
+    }, [], typeParams);
   }
 
   convertMembersDeclaration(
     name: string,
     type: { getMembers: TypeLiteralNode["getMembers"] },
     bases = [],
+    typeParams: string[],
   ): string {
     const [prototypes, staticMembers] = split(
       type.getMembers(),
@@ -407,11 +426,15 @@ export class Converter {
         );
         continue;
       }
-      let name = typeNode.getTypeName();
-      this.addNeededInterface(name as Identifier);
-      bases.push(name.getText() + "_iface");
+      const ident = typeNode.getTypeName() as Identifier;
+      this.addNeededInterface(ident);
+      const name = ident.getText() + "_iface"
+      const typeParams = this.getInterfaceTypeParams(ident);
+      const arg = typeParams.length ? `[${typeParams.join(",")}]` : "";
+      const base = name + arg;
+      bases.push(base);
     }
-    return this.convertInterface(name, bases, members, staticMembers);
+    return this.convertInterface(name, bases, members, staticMembers, typeParams);
   }
 
   convertSignatures(sigs: readonly Signature[], topLevelName?: string): string {
@@ -442,7 +465,7 @@ export class Converter {
       const params = decl.getParameters().map((param) => {
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
-        const pyType = this.typeToPython(param.getTypeNode()!, optional);
+        const pyType = this.typeToPython(param.getTypeNode()!, optional).replace(/^JsArray/, "list");
         return { name: param.getName(), pyType, optional, spread };
       });
       const retNode = decl.getReturnTypeNode()!;
@@ -458,7 +481,8 @@ export class Converter {
     name: string,
     supers: string[],
     members: TypeElementTypes[],
-    staticMembers: TypeElementTypes[] = [],
+    staticMembers: TypeElementTypes[],
+    typeParams: string[],
   ) {
     const { methods, properties } = groupMembers(members);
     const {
@@ -468,6 +492,10 @@ export class Converter {
     } = groupMembers(staticMembers);
     for (const key of Object.keys(staticMethods)) {
       delete methods[key];
+    }
+    if (typeParams.length > 0) {
+      const typeParamsList = Array.from(new Set(typeParams)).join(",");
+      supers.push(`Generic[${typeParamsList}]`);
     }
 
     const overloadGroups = Object.entries(methods)
@@ -533,7 +561,7 @@ export class Converter {
       topLevelName = undefined;
     }
     let inner = this.typeToPythonInner(typeNode, isOptional, topLevelName);
-    if (isOptional && !Node.isUnionTypeNode(typeNode)) {
+    if (isOptional && !Node.isUnionTypeNode(typeNode) && !typeNode.getType().isAny()) {
       inner += " | None";
     }
     return inner;
@@ -660,7 +688,7 @@ export class Converter {
     }
     if (Node.isArrayTypeNode(typeNode)) {
       const eltType = this.typeToPython(typeNode.getElementTypeNode(), false);
-      return `list[${eltType}]`;
+      return `JsArray[${eltType}]`;
     }
     if (Node.isTupleTypeNode(typeNode)) {
       let elts = typeNode
@@ -673,8 +701,11 @@ export class Converter {
       return `tuple[${elts}]`;
     }
     if (Node.isTypeReference(typeNode)) {
+      const ident = typeNode.getTypeName() as Identifier;
+      let name = ident.getText();
       if (typeNode.getType().isTypeParameter()) {
-        return "Any";
+        this.typeParams.add(name);
+        return name;
       }
       const args = typeNode
         .getTypeArguments()
@@ -684,10 +715,12 @@ export class Converter {
       if (args) {
         fmtArgs = `[${args}]`;
       }
-      const ident = typeNode.getTypeName() as Identifier;
-      let name = ident.getText();
-      if (name.startsWith("Intl")) {
+
+      if (name.startsWith("Intl") || ["console.ConsoleConstructor", "NodeJS.CallSite", "FlatArray"].includes(name)) {
         return "Any";
+      }
+      if (["Exclude", "Readonly"].includes(name)) {
+        return args[0];
       }
       if (name === "Promise") {
         name = "Future";

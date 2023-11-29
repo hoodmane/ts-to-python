@@ -10,6 +10,10 @@ function getTypeNode(converter: Converter, type) {
     return alias.getTypeNode();
 }
 
+function removeTypeIgnores(a: string) {
+    return a.replaceAll(/\s*#.*$/gm, "");
+}
+
 describe('unit types', () => {
     it('convert string', async () => {
         const converter = new Converter();
@@ -39,26 +43,32 @@ describe('unit types', () => {
         it('toplevel', async () => {
             const converter = new Converter();
             const typeNode = getTypeNode(converter, "() => void");
-            const conversion = converter.typeToPython(typeNode, false, "myFunc");
+            const conversion = removeTypeIgnores(converter.typeToPython(typeNode, false, "myFunc"));
             expect(conversion).toBe("def myFunc(self, /) -> None: ...");
         });
         it('optional args', async () => {
             const converter = new Converter();
             const typeNode = getTypeNode(converter, "(a?: string) => void");
-            const conversion = converter.typeToPython(typeNode, false, "myFunc");
+            const conversion = removeTypeIgnores(converter.typeToPython(typeNode, false, "myFunc"));
             expect(conversion).toBe("def myFunc(self, a: str | None = None, /) -> None: ...");
         });
         it('optional or null', async () => {
             const converter = new Converter();
             const typeNode = getTypeNode(converter, "(a?: string | null) => void;");
-            const conversion = converter.typeToPython(typeNode, false, "myFunc");
+            const conversion = removeTypeIgnores(converter.typeToPython(typeNode, false, "myFunc"));
             expect(conversion).toBe("def myFunc(self, a: str | None = None, /) -> None: ...");
         });
         it('type predicate', async () => {
             const converter = new Converter();
             const typeNode = getTypeNode(converter, "(a: any) => a is string;");
-            const conversion = converter.typeToPython(typeNode, false, "myFunc");
+            const conversion = removeTypeIgnores(converter.typeToPython(typeNode, false, "myFunc"));
             expect(conversion).toBe("def myFunc(self, a: Any, /) -> bool: ...");
+        });
+        it('dotdotdot arg', async () => {
+            const converter = new Converter();
+            const typeNode = getTypeNode(converter, "(...a: string[][]) => void;");
+            const conversion = removeTypeIgnores(converter.typeToPython(typeNode, false, "myFunc"));
+            expect(conversion).toBe("def myFunc(self, /, *a: list[JsArray[str]]) -> None: ...");
         });
     })
 });
@@ -72,7 +82,7 @@ describe('property signature', () => {
         `);
         const file = converter.project.getSourceFileOrThrow(fname);
         const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
-        const res = converter.convertPropertySignature(propsig);
+        const res = removeTypeIgnores(converter.convertPropertySignature(propsig));
         expect(res).toBe("def f(self, /) -> None: ...");
     });
     it("optional function", () => {
@@ -98,28 +108,53 @@ describe("sanitizeReservedWords", () => {
         const res = converter.convertVarDecl(decl);
         expect(res).toBe("global_: str");
     });
-    it("Constructor reference", () => {
-        const text = `
-        interface Test {}
-        interface TestConstructor {
-            new (): Test;
-            readonly prototype: Test;
-        }
-        declare var Test: TestConstructor;
-        `;
-        const expected = `\
+})
+
+it("Constructor reference", () => {
+    const text = `
+    interface Test {}
+    interface TestConstructor {
+        new (): Test;
+        readonly prototype: Test;
+    }
+    declare var Test: TestConstructor;
+    `;
+    const expected = `\
 class Test(Test_iface):
     @classmethod
     def new(self, /) -> Test: ...\
 `
-        const converter = new Converter();
-        converter.project.createSourceFile("/a.ts", text);
-        const file = converter.project.getSourceFileOrThrow("/a.ts");
-        const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-        const res = converter.convertVarDecl(decl);
-        expect(res).toBe(expected);
-    });
-})
+    const converter = new Converter();
+    converter.project.createSourceFile("/a.ts", text);
+    const file = converter.project.getSourceFileOrThrow("/a.ts");
+    const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
+    const res = removeTypeIgnores(converter.convertVarDecl(decl));
+    expect(res).toBe(expected);
+});
+
+
+it("Type variable", () => {
+    const text = `
+    interface Test<T> {}
+    interface TestConstructor {
+        new<T> (): Test<T>;
+        readonly prototype: Test;
+    }
+    declare var Test: TestConstructor;
+    `;
+    const expected = `\
+class Test(Test_iface[T]):
+    @classmethod
+    def new(self, /) -> Test[T]: ...\
+`
+    const converter = new Converter();
+    converter.project.createSourceFile("/a.ts", text);
+    const file = converter.project.getSourceFileOrThrow("/a.ts");
+    const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
+    const res = removeTypeIgnores(converter.convertVarDecl(decl));
+    expect(res).toBe(expected);
+});
+
 
 describe('emit', () => {
     describe('Basic conversions', () => {
@@ -159,7 +194,7 @@ describe('emit', () => {
                 `
             );
             const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
-            expect(res.slice(1).join("\n\n")).toEqual(
+            expect(res.slice(1).filter(x => x.trim()).join("\n\n")).toEqual(
 `\
 class x:
     a: A
@@ -198,7 +233,7 @@ class B_iface:
             const converter = new Converter();
             converter.project.createSourceFile("/a.ts",file);
             const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
-            expect(res.slice(1).join("\n\n")).toEqual(
+            expect(removeTypeIgnores(res.slice(1).filter(x => x.trim()).join("\n\n"))).toEqual(
 `\
 class Example(Example_iface):
     @classmethod
@@ -212,14 +247,34 @@ class Example_iface:
     name: str
 
 class SubExample_iface(Example_iface):
-    field: str
-
-class Example_iface:
-    name: str\
+    field: str\
 `
             );
-
-        })
-
+        });
     })
+
+    it("type var", () => {
+        const file = `
+        interface Test<T> {}
+        interface TestConstructor {
+            new<T> (): Test<T>;
+            readonly prototype: Test;
+        }
+        declare var Test: TestConstructor;
+        `;
+        const expected = `\
+T = TypeVar("T")
+
+class Test(Test_iface[T]):
+    @classmethod
+    def new(self, /) -> Test[T]: ...
+
+class Test_iface(Generic[T]):
+    pass\
+`
+        const converter = new Converter();
+        converter.project.createSourceFile("/a.ts",file);
+        const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
+        expect(removeTypeIgnores(res.slice(1).filter(x => x.trim()).join("\n\n"))).toEqual(expected);
+    });
 })
