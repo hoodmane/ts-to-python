@@ -93,7 +93,7 @@ describe('property signature', () => {
         `);
         const file = converter.project.getSourceFileOrThrow(fname);
         const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
-        const res = converter.convertPropertySignature(propsig);
+        const res = removeTypeIgnores(converter.convertPropertySignature(propsig));
         expect(res).toBe("f: Callable[[], None] | None");
     });
 });
@@ -105,7 +105,7 @@ describe("sanitizeReservedWords", () => {
         converter.project.createSourceFile("/a.ts", "declare var global : string;");
         const file = converter.project.getSourceFileOrThrow("/a.ts");
         const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-        const res = converter.convertVarDecl(decl);
+        const res = removeTypeIgnores(converter.convertVarDecl(decl));
         expect(res).toBe("global_: str");
     });
 })
@@ -162,19 +162,19 @@ describe('emit', () => {
             const converter = new Converter();
             converter.project.createSourceFile("/a.ts", "declare var a : string;");
             const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
-            expect(res.at(-1)).toBe("a: str");
+            expect(removeTypeIgnores(res.at(-1))).toBe("a: str");
         });
         it('number type', async () => {
             const converter = new Converter();
             converter.project.createSourceFile("/a.ts", "declare var a : number;");
             const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
-            expect(res.at(-1)).toBe("a: int | float");
+            expect(removeTypeIgnores(res.at(-1))).toBe("a: int | float");
         });
         it('boolean type', async () => {
             const converter = new Converter();
             converter.project.createSourceFile("/a.ts", "declare var a : boolean;");
             const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
-            expect(res.at(-1)).toBe("a: bool");
+            expect(removeTypeIgnores(res.at(-1))).toBe("a: bool");
         });
         it('extends', () => {
             const converter = new Converter();
@@ -194,10 +194,10 @@ describe('emit', () => {
                 `
             );
             const res = converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
-            expect(res.slice(1).filter(x => x.trim()).join("\n\n")).toEqual(
+            expect(removeTypeIgnores(res.slice(1).filter(x => x.trim()).join("\n\n"))).toEqual(
 `\
 class x:
-    a: A
+    a: ClassVar[A]
 
 class A(B_iface):
     pass

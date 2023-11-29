@@ -28,14 +28,30 @@ function indent(x: string, prefix: string): string {
     .join("\n");
 }
 
+// ignores: Cannot determine consistent method resolution order (MRO)
+const CLASS_TYPE_IGNORES = " # type:ignore[misc,unused-ignore]";
+// Ignores:
+// [misc]:
+//    Overloaded function signature 2 will never be matched: signature 1's parameter type(s) are the same or broader
+// [override]:
+//    Argument 1 of "someMethod" is incompatible with supertype "superType"
+//    Cannot override writeable attribute with read-only property
+//    Signature of "someMethod" incompatible with supertype "superType"
+// [overload-overlap]:
+//    Overloaded function signatures 1 and 6 overlap with incompatible return types
+// [unused-ignore]:
+// [type-arg]:
+//    Missing type parameters for generic type "?" (could be fixed by tracking type parameter defaults)
+let METHOD_TYPE_IGNORES = " # type:ignore[override,overload-overlap,misc,type-arg,unused-ignore]";
+// TYPE_IGNORES = "";
+let PROPERTY_TYPE_IGNORES = " # type:ignore[type-arg,unused-ignore]";
+
+
 export function renderPyClass(
   name: string,
   supers: string[],
   body: string,
 ): string {
-  if (name === "HTMLElement") {
-    // throw new Error("OOPs");
-  }
   if (body.trim() === "") {
     body = "pass";
   }
@@ -44,7 +60,7 @@ export function renderPyClass(
   if (supers.length > 0) {
     supersList = `(${supers.join(", ")})`;
   }
-  return `class ${name}${supersList}:\n${body}`;
+  return `class ${name}${supersList}:${CLASS_TYPE_IGNORES}\n${body}`;
 }
 
 export function renderSignatureGroup(sigGroup: PySigGroup): string[] {
@@ -118,8 +134,7 @@ export function sanitizeReservedWords(name) {
   return name;
 }
 
-let TYPE_IGNORES = " # type:ignore[override,overload-overlap]";
-// TYPE_IGNORES = "";
+
 
 export function renderSignature(
   name: string,
@@ -149,7 +164,11 @@ export function renderSignature(
     .concat(extraDecorators)
     .map((x) => "@" + x + "\n")
     .join("");
-  return `${decs}def ${name}(${joinedParams}) -> ${sig.returns}: ...` + TYPE_IGNORES;
+  return `${decs}def ${name}(${joinedParams}) -> ${sig.returns}: ...` + METHOD_TYPE_IGNORES;
+}
+
+export function renderSimpleDeclaration(name: string, type: string) {
+  return `${name}: ${type}` + PROPERTY_TYPE_IGNORES;
 }
 
 export function renderProperty(
@@ -173,7 +192,10 @@ export function renderProperty(
     }
     return type;
   }
-  return `${name}: ${type}`;
+  if (isStatic) {
+    type = `ClassVar[${type}]`;
+  }
+  return renderSimpleDeclaration(name, type);
 }
 
 export function renderInnerSignature(sig: PySig): string {

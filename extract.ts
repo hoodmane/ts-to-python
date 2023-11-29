@@ -35,6 +35,7 @@ import {
   renderInnerSignature,
   renderProperty,
   renderPyClass,
+  renderSimpleDeclaration,
   PySig,
   PyParam,
   uniqBy,
@@ -146,7 +147,7 @@ function filterSignatures(name: string, signatures: Signature[]): Signature[] {
 const IMPORTS = `
 from collections.abc import Callable
 from asyncio import Future
-from typing import overload, Any, Literal, Self, TypeVar, Generic
+from typing import overload, Any, Literal, Self, TypeVar, Generic, ClassVar
 
 from pyodide.ffi import JsProxy, JsIterable as Iterable, JsIterator as Iterator, JsArray, JsMutableMap as Map, JsMap as ReadonlyMap
 from pyodide.webloop import PyodideFuture as PromiseLike
@@ -160,7 +161,21 @@ Dispatcher = Any
 class Record(JsProxy, Generic[S, T]):
   pass
 `.trim();
-const BUILTIN_NAMES = ["Iterable", "Iterator", "IterableIterator", "ArrayLike", "Array", "ConcatArray", "PromiseLike", "Promise", "Map", "ReadonlyMap", "Readonly", "Record", "Dispatcher"];
+const BUILTIN_NAMES = [
+  "Iterable",
+  "Iterator",
+  "IterableIterator",
+  "ArrayLike",
+  "Array",
+  "ConcatArray",
+  "PromiseLike",
+  "Promise",
+  "Map",
+  "ReadonlyMap",
+  "Readonly",
+  "Record",
+  "Dispatcher",
+];
 
 type Needed =
   | { type: "ident"; ident: Identifier }
@@ -171,7 +186,7 @@ export class Converter {
   convertedSet: Set<string>;
   neededSet: Set<Needed>;
   typeRefs: Set<Identifier>;
-  typeParams: Set<string>
+  typeParams: Set<string>;
   constructor() {
     this.project = new Project({
       tsConfigFilePath: "./input_example/tsconfig.json",
@@ -188,7 +203,7 @@ export class Converter {
     this.project.addSourceFilesAtPaths("input_example/a.ts");
     if (allFiles) {
       files = this.project.resolveSourceFileDependencies();
-      console.warn(files.map(file => file.getFilePath()));
+      console.warn(files.map((file) => file.getFilePath()));
     } else {
       files = [this.project.getSourceFile("input_example/a.ts")!];
     }
@@ -255,16 +270,16 @@ export class Converter {
           .getDefinitionNodes()
           .filter(Node.isInterfaceDeclaration);
         if (defs.length) {
-          const baseNames = this.getBaseNames(
-            defs.flatMap((def) => def.getBaseDeclarations()),
-          ).filter(base => base !== name);
-          const typeParams = defs.flatMap(i => i.getTypeParameters()).map(p => p.getName());
+          const baseNames = this.getBaseNames(defs.flatMap(def => def.getBaseDeclarations())).filter((base) => base !== name);
+          const typeParams = defs
+            .flatMap((i) => i.getTypeParameters())
+            .map((p) => p.getName());
           const res = this.convertInterface(
             name,
             baseNames,
             defs.flatMap((def) => def.getMembers()),
             [],
-            typeParams
+            typeParams,
           );
           output.push(res);
           continue;
@@ -273,17 +288,24 @@ export class Converter {
         console.warn("No interface declaration for " + name);
       }
     }
-    const typevarDecls = Array.from(this.typeParams, (x) => `${x} = TypeVar("${x}")`).join("\n");
+    const typevarDecls = Array.from(
+      this.typeParams,
+      (x) => `${x} = TypeVar("${x}")`,
+    ).join("\n");
     output.splice(1, 0, typevarDecls);
     return output;
   }
 
   getInterfaceTypeParams(ident: Identifier): string[] {
-    return Array.from(new Set(ident
-    .getDefinitionNodes()
-    .filter(Node.isInterfaceDeclaration)
-    .flatMap(def => def.getTypeParameters())
-    .map(param => param.getName())));
+    return Array.from(
+      new Set(
+        ident
+          .getDefinitionNodes()
+          .filter(Node.isInterfaceDeclaration)
+          .flatMap((def) => def.getTypeParameters())
+          .map((param) => param.getName()),
+      ),
+    );
   }
 
   convertNeededIdent(ident: Identifier): string | undefined {
@@ -319,13 +341,16 @@ export class Converter {
       }
     }
     console.warn("Skipping", ident.getText());
-    console.warn("Skipping", defs.map(def => def.getKindName()));
+    console.warn(
+      "Skipping",
+      defs.map((def) => def.getKindName()),
+    );
     return undefined;
   }
 
   renderSimpleDecl(name: string, typeNode: TypeNode) {
     const renderedType = this.typeToPython(typeNode, false);
-    return `${name}: ${renderedType}`;
+    return renderSimpleDeclaration(name, renderedType);
   }
 
   convertVarDecl(varDecl: VariableDeclaration): string | undefined {
@@ -399,10 +424,17 @@ export class Converter {
     const ifaces = ident
       .getDefinitionNodes()
       .filter(Node.isInterfaceDeclaration);
-    const typeParams = ifaces.flatMap(i => i.getTypeParameters()).map(p => p.getName());
-    return this.convertMembersDeclaration(name, {
-      getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
-    }, [], typeParams);
+    const typeParams = ifaces
+      .flatMap((i) => i.getTypeParameters())
+      .map((p) => p.getName());
+    return this.convertMembersDeclaration(
+      name,
+      {
+        getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
+      },
+      [],
+      typeParams,
+    );
   }
 
   convertMembersDeclaration(
@@ -465,7 +497,10 @@ export class Converter {
       const params = decl.getParameters().map((param) => {
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
-        const pyType = this.typeToPython(param.getTypeNode()!, optional).replace(/^JsArray/, "list");
+        const pyType = this.typeToPython(
+          param.getTypeNode()!,
+          optional,
+        ).replace(/^JsArray/, "list");
         return { name: param.getName(), pyType, optional, spread };
       });
       const retNode = decl.getReturnTypeNode()!;
@@ -561,7 +596,11 @@ export class Converter {
       topLevelName = undefined;
     }
     let inner = this.typeToPythonInner(typeNode, isOptional, topLevelName);
-    if (isOptional && !Node.isUnionTypeNode(typeNode) && !typeNode.getType().isAny()) {
+    if (
+      isOptional &&
+      !Node.isUnionTypeNode(typeNode) &&
+      !typeNode.getType().isAny()
+    ) {
       inner += " | None";
     }
     return inner;
@@ -716,16 +755,25 @@ export class Converter {
         fmtArgs = `[${args}]`;
       }
 
-      if (name.startsWith("Intl") || ["console.ConsoleConstructor", "NodeJS.CallSite", "FlatArray"].includes(name)) {
+      if (
+        name.startsWith("Intl") ||
+        ["console.ConsoleConstructor", "NodeJS.CallSite", "FlatArray"].includes(
+          name,
+        )
+      ) {
         return "Any";
       }
       if (["Exclude", "Readonly"].includes(name)) {
         return args[0];
       }
+      if (name === "URL") {
+        return "URL_";
+      }
+      if (name === "Function") {
+        return "Callable[..., Any]";
+      }
       if (name === "Promise") {
         name = "Future";
-      } else if (name === "Function") {
-        name = "Callable";
       } else if (
         !typeNode.getType().isTypeParameter() &&
         !this.convertedSet.has(name)
