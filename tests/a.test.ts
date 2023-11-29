@@ -15,32 +15,38 @@ function removeTypeIgnores(a: string) {
 }
 
 describe("unit types", () => {
-  it("convert string", async () => {
+  it("convert string", () => {
     const converter = new Converter();
     const typeNode = getTypeNode(converter, "string");
     const conversion = converter.typeToPython(typeNode, false);
     expect(conversion).toBe("str");
   });
-  it("convert number", async () => {
+  it("convert number", () => {
     const converter = new Converter();
     const typeNode = getTypeNode(converter, "number");
     const conversion = converter.typeToPython(typeNode, false);
     expect(conversion).toBe("int | float");
   });
-  it("convert union", async () => {
+  it("convert union", () => {
     const converter = new Converter();
     const typeNode = getTypeNode(converter, "string | boolean");
     const conversion = converter.typeToPython(typeNode, false);
     expect(conversion).toBe("str | bool");
   });
+  it("default type param", () => {
+    const converter = new Converter();
+    const typeNode = getTypeNode(converter, "ReadableStream");
+    const conversion = converter.typeToPython(typeNode, false);
+    expect(conversion).toBe("ReadableStream[Any]");
+  });
   describe("callable types", () => {
-    it("basic", async () => {
+    it("basic", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "() => void");
       const conversion = converter.typeToPython(typeNode, false);
       expect(conversion).toBe("Callable[[], None]");
     });
-    it("toplevel", async () => {
+    it("toplevel", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "() => void");
       const conversion = removeTypeIgnores(
@@ -48,7 +54,7 @@ describe("unit types", () => {
       );
       expect(conversion).toBe("def myFunc(self, /) -> None: ...");
     });
-    it("optional args", async () => {
+    it("optional args", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "(a?: string) => void");
       const conversion = removeTypeIgnores(
@@ -58,7 +64,7 @@ describe("unit types", () => {
         "def myFunc(self, a: str | None = None, /) -> None: ...",
       );
     });
-    it("optional or null", async () => {
+    it("optional or null", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "(a?: string | null) => void;");
       const conversion = removeTypeIgnores(
@@ -68,7 +74,7 @@ describe("unit types", () => {
         "def myFunc(self, a: str | None = None, /) -> None: ...",
       );
     });
-    it("type predicate", async () => {
+    it("type predicate", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "(a: any) => a is string;");
       const conversion = removeTypeIgnores(
@@ -76,7 +82,7 @@ describe("unit types", () => {
       );
       expect(conversion).toBe("def myFunc(self, a: Any, /) -> bool: ...");
     });
-    it("dotdotdot arg", async () => {
+    it("dotdotdot arg", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "(...a: string[][]) => void;");
       const conversion = removeTypeIgnores(
@@ -214,7 +220,7 @@ class Test(Test_iface[T]):
 
 describe("emit", () => {
   describe("Basic conversions", () => {
-    it("string type", async () => {
+    it("string type", () => {
       const converter = new Converter();
       converter.project.createSourceFile("/a.ts", "declare var a : string;");
       const res = converter.emit([
@@ -222,7 +228,7 @@ describe("emit", () => {
       ]);
       expect(removeTypeIgnores(res.at(-1))).toBe("a: str");
     });
-    it("number type", async () => {
+    it("number type", () => {
       const converter = new Converter();
       converter.project.createSourceFile("/a.ts", "declare var a : number;");
       const res = converter.emit([
@@ -230,7 +236,7 @@ describe("emit", () => {
       ]);
       expect(removeTypeIgnores(res.at(-1))).toBe("a: int | float");
     });
-    it("boolean type", async () => {
+    it("boolean type", () => {
       const converter = new Converter();
       converter.project.createSourceFile("/a.ts", "declare var a : boolean;");
       const res = converter.emit([

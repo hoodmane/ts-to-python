@@ -29,6 +29,8 @@ import {
   TypeReferenceNode,
   TypeParameter,
   TypeParameterDeclaration,
+  ExpressionWithTypeArguments,
+  TypeArgumentedNode,
 } from "ts-morph";
 import * as ts from "typescript";
 import {
@@ -183,6 +185,39 @@ type Needed =
   | { type: "ident"; ident: Identifier }
   | { type: "interface"; ident: Identifier };
 
+function getExpressionTypeArgs(ident: Identifier, expression: TypeArgumentedNode & Node) : TypeNode[] {
+  const typeArgNodes = expression.getTypeArguments();
+  const numTypeArgs = expression.getType().getTypeArguments().length;
+  if (typeArgNodes.length < numTypeArgs) {
+    const seenNames: string[] = [];
+    const paramDecls: TypeParameterDeclaration[] = [];
+    const defs = ident
+      .getDefinitionNodes()
+      .filter(
+        (node): node is InterfaceDeclaration | TypeAliasDeclaration =>
+          Node.isInterfaceDeclaration(node) ||
+          Node.isTypeAliasDeclaration(node),
+      );
+    for (const def of defs) {
+      const params = def.getTypeParameters();
+      for (const param of params) {
+        const paramName = param.getName();
+        if (!seenNames.includes(paramName)) {
+          seenNames.push(paramName);
+          paramDecls.push(param);
+        }
+      }
+    }
+    const missingDecls = paramDecls.slice(
+      -(numTypeArgs - typeArgNodes.length),
+    );
+    for (const decl of missingDecls) {
+      typeArgNodes.push(decl.getDefaultOrThrow());
+    }
+  }
+  return typeArgNodes;
+}
+
 export class Converter {
   project: Project;
   convertedSet: Set<string>;
@@ -223,41 +258,16 @@ export class Converter {
   getBaseNames(defs: InterfaceDeclaration[]) {
     let extends_ = defs.flatMap((def) => def.getExtends());
     extends_ = uniqBy(extends_, (base) => base.getText());
-    return extends_.map((extend) => {
-      const ident = extend.getExpression().asKindOrThrow(SyntaxKind.Identifier);
+    return extends_.flatMap((extend) => {
+      let ident = extend.getExpression();
+      if (!Node.isIdentifier(ident)) {
+        return [];
+      }
       this.addNeededInterface(ident);
       const name = extend.getExpression().getText();
-      const numTypeArgs = extend.getType().getTypeArguments().length;
-      const typeArgNodes = extend.getTypeArguments();
-      if (typeArgNodes.length < numTypeArgs) {
-        const seenNames: string[] = [];
-        const paramDecls: TypeParameterDeclaration[] = [];
-        const superDefs = ident
-          .getDefinitionNodes()
-          .filter(
-            (node): node is InterfaceDeclaration | TypeAliasDeclaration =>
-              Node.isInterfaceDeclaration(node) ||
-              Node.isTypeAliasDeclaration(node),
-          );
-        for (const def of superDefs) {
-          const params = def.getTypeParameters();
-          for (const param of params) {
-            const paramName = param.getName();
-            if (!seenNames.includes(paramName)) {
-              seenNames.push(paramName);
-              paramDecls.push(param);
-            }
-          }
-        }
-        const missingDecls = paramDecls.slice(
-          -(numTypeArgs - typeArgNodes.length),
-        );
-        for (const decl of missingDecls) {
-          typeArgNodes.push(decl.getDefaultOrThrow());
-        }
-      }
+      const typeArgNodes = getExpressionTypeArgs(ident, extend);
       const pyArgs = typeArgNodes.map((node) => this.typeToPython(node, false));
-      const args = numTypeArgs > 0 ? `[${pyArgs.join(", ")}]` : "";
+      const args = pyArgs.length > 0 ? `[${pyArgs.join(", ")}]` : "";
       return name + "_iface" + args;
     });
   }
@@ -782,8 +792,7 @@ export class Converter {
         this.typeParams.add(name);
         return name;
       }
-      const args = typeNode
-        .getTypeArguments()
+      const args = getExpressionTypeArgs(ident, typeNode)
         .map((ty) => this.typeToPython(ty, false))
         .join(", ");
       let fmtArgs = "";
