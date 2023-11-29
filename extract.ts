@@ -218,16 +218,11 @@ export class Converter {
     this.neededSet.add({ type: "interface", ident });
   }
 
-  getBaseNames(
-    baseDeclarations: (
-      | InterfaceDeclaration
-      | TypeAliasDeclaration
-      | ClassDeclaration
-    )[],
-  ) {
+  getBaseNames(defs: InterfaceDeclaration[]) {
     // Hack: if we were "extend" a type alias then for some reason we seem to
     // get the value of the TypeAlias, not the TypeAliasDeclaration. Then
     // getNameNode won't exist...
+    let baseDeclarations = defs.flatMap((def) => def.getBaseDeclarations());
     baseDeclarations = baseDeclarations.filter((b) => b.getNameNode);
     baseDeclarations = uniqBy(baseDeclarations, (base) => base.getName());
     baseDeclarations.forEach((b) => this.addNeededInterface(b.getNameNode()));
@@ -270,7 +265,9 @@ export class Converter {
           .getDefinitionNodes()
           .filter(Node.isInterfaceDeclaration);
         if (defs.length) {
-          const baseNames = this.getBaseNames(defs.flatMap(def => def.getBaseDeclarations())).filter((base) => base !== name);
+          const baseNames = this.getBaseNames(defs).filter(
+            (base) => base !== name,
+          );
           const typeParams = defs
             .flatMap((i) => i.getTypeParameters())
             .map((p) => p.getName());
@@ -320,17 +317,17 @@ export class Converter {
     }
     const defs = ident.getDefinitionNodes();
     if (defs.every(Node.isInterfaceDeclaration)) {
-      const baseNames = this.getBaseNames(
-        defs.flatMap((def) => def.getBaseDeclarations()),
-      );
-      const typeParams = defs.flatMap(i => i.getTypeParameters()).map(p => p.getName());
-      
+      const baseNames = this.getBaseNames(defs);
+      const typeParams = defs
+        .flatMap((i) => i.getTypeParameters())
+        .map((p) => p.getName());
+
       return this.convertInterface(
         name,
         baseNames,
         defs.flatMap((def) => def.getMembers()),
         [],
-        typeParams
+        typeParams,
       );
     }
     if (defs.length === 1) {
@@ -460,13 +457,19 @@ export class Converter {
       }
       const ident = typeNode.getTypeName() as Identifier;
       this.addNeededInterface(ident);
-      const name = ident.getText() + "_iface"
+      const name = ident.getText() + "_iface";
       const typeParams = this.getInterfaceTypeParams(ident);
       const arg = typeParams.length ? `[${typeParams.join(",")}]` : "";
       const base = name + arg;
       bases.push(base);
     }
-    return this.convertInterface(name, bases, members, staticMembers, typeParams);
+    return this.convertInterface(
+      name,
+      bases,
+      members,
+      staticMembers,
+      typeParams,
+    );
   }
 
   convertSignatures(sigs: readonly Signature[], topLevelName?: string): string {
