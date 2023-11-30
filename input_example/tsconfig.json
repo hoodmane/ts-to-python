@@ -1,12 +1,12 @@
 {
-    "compilerOptions": {
-      "target": "es2022",
-      "noEmit": true,
-      "allowImportingTsExtensions": true,
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "esModuleInterop": true,
-      "lib": ["ES2022", "DOM", "DOM.Iterable"],
-      "types" : []
-    }
+  "compilerOptions": {
+    "target": "es2022",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": []
+  }
 }

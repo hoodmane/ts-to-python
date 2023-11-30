@@ -204,29 +204,33 @@ function getExpressionTypeArgs(
 }
 
 type InterfacesIdentifier = {
-  kind: "interfaces",
-  name: string,
-  ifaces: InterfaceDeclaration[]
+  kind: "interfaces";
+  name: string;
+  ifaces: InterfaceDeclaration[];
 };
 type TypeAliasIdentifier = {
-  kind: "typeAlias",
-  name: string,
-  decl: TypeAliasDeclaration
+  kind: "typeAlias";
+  name: string;
+  decl: TypeAliasDeclaration;
 };
 type ClassIdentifier = {
-  kind: "class",
-  name: string,
-  decl: ClassDeclaration,
-  ifaces: InterfaceDeclaration[],
+  kind: "class";
+  name: string;
+  decl: ClassDeclaration;
+  ifaces: InterfaceDeclaration[];
 };
 type VarDeclIdentifier = {
-  kind: "varDecl",
-  name: string,
-  decl: VariableDeclaration
-  ifaces: InterfaceDeclaration[],
+  kind: "varDecl";
+  name: string;
+  decl: VariableDeclaration;
+  ifaces: InterfaceDeclaration[];
 };
 
-type ClassifiedIdentifier = InterfacesIdentifier | TypeAliasIdentifier | ClassIdentifier | VarDeclIdentifier;
+type ClassifiedIdentifier =
+  | InterfacesIdentifier
+  | TypeAliasIdentifier
+  | ClassIdentifier
+  | VarDeclIdentifier;
 
 function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
   let name = ident.getText();
@@ -262,11 +266,11 @@ function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
   }
 
   if (Node.isTypeAliasDeclaration(decl)) {
-    if (ifaces.length > 0) { 
+    if (ifaces.length > 0) {
       throw new Error("Both interfaces and type aliases with same name...");
     }
     return {
-      kind : "typeAlias",
+      kind: "typeAlias",
       name,
       decl,
     };
@@ -441,7 +445,7 @@ export class Converter {
         const typeParams = ifaces
           .flatMap((i) => i.getTypeParameters())
           .map((p) => p.getName());
-  
+
         return this.convertInterface(
           name,
           baseNames,
@@ -455,7 +459,10 @@ export class Converter {
         }
         return this.convertClass(classified.decl);
       case "typeAlias":
-        const renderedType = this.typeToPython(classified.decl.getTypeNode()!, false);
+        const renderedType = this.typeToPython(
+          classified.decl.getTypeNode()!,
+          false,
+        );
         return `${name} = ${renderedType}`;
       case "varDecl":
         console.warn("Skipping varDecl", ident.getText());
@@ -523,10 +530,10 @@ export class Converter {
       return this.renderSimpleDecl(name, typeNode);
     }
     if (classified.kind === "varDecl" || classified.kind === "interfaces") {
-      const {ifaces} = classified;
+      const { ifaces } = classified;
       const typeParams = ifaces
-      .flatMap((i) => i.getTypeParameters())
-      .map((p) => p.getName());
+        .flatMap((i) => i.getTypeParameters())
+        .map((p) => p.getName());
       return this.convertMembersDeclaration(
         name,
         {
@@ -946,7 +953,7 @@ export class Converter {
           return "Any";
         }
         let kind: ClassifiedIdentifier["kind"];
-        ({name, kind} = classifyIdentifier(ident));
+        ({ name, kind } = classifyIdentifier(ident));
         if (kind === "interfaces") {
           this.addNeededInterface(ident);
         } else {
