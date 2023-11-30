@@ -146,11 +146,6 @@ const BUILTIN_NAMES = [
   "Readonly",
   "Record",
   "Dispatcher",
-  "_URL_iface",
-  "_URLSearchParams_iface",
-  "__Blob_iface",
-  "__Event_iface",
-  "__EventTarget_iface",
 ];
 
 type Needed =
