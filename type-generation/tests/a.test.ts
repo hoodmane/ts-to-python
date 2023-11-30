@@ -15,6 +15,25 @@ function removeTypeIgnores(a: string) {
   return a.replaceAll(/\s*#.*$/gm, "");
 }
 
+function dedent(s) {
+  const lines = s.split("\n");
+  let numSpaces = Infinity;
+  for (const line of lines) {
+    if (/^\s*$/.test(line)) {
+      continue;
+    }
+    numSpaces = Math.min(numSpaces, /^\s*/.exec(line)[0].length);
+  }
+  return lines
+    .map((line) => {
+      if (/^\s*$/.test(line)) {
+        return "";
+      }
+      return line.slice(numSpaces);
+    })
+    .join("\n");
+}
+
 describe("unit types", () => {
   it("convert string", () => {
     const converter = new Converter();
@@ -149,11 +168,11 @@ it("Constructor reference", () => {
     }
     declare var Test: TestConstructor;
     `;
-  const expected = `\
-class Test(Test_iface):
-    @classmethod
-    def new(self, /) -> Test: ...\
-`;
+  const expected = dedent(`\
+    class Test(Test_iface):
+        @classmethod
+        def new(self, /) -> Test: ...\
+  `).trim();
   const converter = new Converter();
   converter.project.createSourceFile("/a.ts", text);
   const file = converter.project.getSourceFileOrThrow("/a.ts");
@@ -166,10 +185,10 @@ class Test(Test_iface):
 describe("getBaseNames", () => {
   it("extends deduplcation", () => {
     const text = `
-        interface X {}
-        interface S extends X {}
-        interface S extends X {}
-        `;
+      interface X {}
+      interface S extends X {}
+      interface S extends X {}
+      `;
     const converter = new Converter();
     converter.project.createSourceFile("/a.ts", text);
     const file = converter.project.getSourceFileOrThrow("/a.ts");
@@ -181,13 +200,13 @@ describe("getBaseNames", () => {
 
   it("type argument defaults", () => {
     const text = `
-        interface X<Q = number> {}
-        interface X<S = string> {}
+      interface X<Q = number> {}
+      interface X<S = string> {}
 
-        interface S1 extends X {}
-        interface S2 extends X<boolean> {}
-        interface S3 extends X<boolean, symbol> {}
-        `;
+      interface S1 extends X {}
+      interface S2 extends X<boolean> {}
+      interface S3 extends X<boolean, symbol> {}
+      `;
     const converter = new Converter();
     converter.project.createSourceFile("/a.ts", text);
     const file = converter.project.getSourceFileOrThrow("/a.ts");
@@ -209,11 +228,11 @@ it("Type variable", () => {
     }
     declare var Test: TestConstructor;
     `;
-  const expected = `\
-class Test(Test_iface[T]):
-    @classmethod
-    def new(self, /) -> Test[T]: ...\
-`;
+  const expected = dedent(`
+    class Test(Test_iface[T]):
+        @classmethod
+        def new(self, /) -> Test[T]: ...
+  `).trim();
   const converter = new Converter();
   converter.project.createSourceFile("/a.ts", text);
   const file = converter.project.getSourceFileOrThrow("/a.ts");
@@ -254,18 +273,18 @@ describe("emit", () => {
       converter.project.createSourceFile(
         "/a.ts",
         `
-                interface B {
-                    b: number;
-                }
+        interface B {
+            b: number;
+        }
 
-                interface A extends B {
+        interface A extends B {
 
-                }
+        }
 
-                declare var x: {
-                    a: A;
-                };
-                `,
+        declare var x: {
+            a: A;
+        };
+        `,
       );
       const res = converter.emit([
         converter.project.getSourceFileOrThrow("/a.ts"),
@@ -278,41 +297,41 @@ describe("emit", () => {
             .join("\n\n"),
         ),
       ).toEqual(
-        `\
-class x:
-    a: ClassVar[A_iface] = ...
+        dedent(`
+          class x:
+              a: ClassVar[A_iface] = ...
 
-class A_iface(B_iface, Protocol):
-    pass
+          class A_iface(B_iface, Protocol):
+              pass
 
-class B_iface(Protocol):
-    b: int | float = ...\
-`,
+          class B_iface(Protocol):
+              b: int | float = ...
+        `).trim(),
       );
     });
 
     it("subclass with incompatible constructor type", () => {
       const file = `
-                interface Example {
-                    name: string;
-                }
+        interface Example {
+            name: string;
+        }
 
-                interface ExampleConstructor {
-                    new (a?: string): Example;
-                    readonly prototype: Example;
-                }
+        interface ExampleConstructor {
+            new (a?: string): Example;
+            readonly prototype: Example;
+        }
 
-                declare var Example: ExampleConstructor;
+        declare var Example: ExampleConstructor;
 
-                interface SubExample extends Example {
-                    field: string;
-                }
-                interface SubExampleConstructor {
-                new (b?: boolean): SubExample;
-                readonly prototype: SubExample;
-                }
-                declare var SubExample: SubExampleConstructor;
-            `;
+        interface SubExample extends Example {
+            field: string;
+        }
+        interface SubExampleConstructor {
+        new (b?: boolean): SubExample;
+        readonly prototype: SubExample;
+        }
+        declare var SubExample: SubExampleConstructor;
+      `;
       const converter = new Converter();
       converter.project.createSourceFile("/a.ts", file);
       const res = converter.emit([
@@ -326,44 +345,46 @@ class B_iface(Protocol):
             .join("\n\n"),
         ),
       ).toEqual(
-        `\
-class Example(Example_iface):
-    @classmethod
-    def new(self, a: str | None = None, /) -> Example: ...
+        dedent(
+          `
+          class Example(Example_iface):
+              @classmethod
+              def new(self, a: str | None = None, /) -> Example: ...
 
-class SubExample(SubExample_iface):
-    @classmethod
-    def new(self, b: bool | None = None, /) -> SubExample: ...
+          class SubExample(SubExample_iface):
+              @classmethod
+              def new(self, b: bool | None = None, /) -> SubExample: ...
 
-class Example_iface(Protocol):
-    name: str = ...
+          class Example_iface(Protocol):
+              name: str = ...
 
-class SubExample_iface(Example_iface, Protocol):
-    field: str = ...\
-`,
+          class SubExample_iface(Example_iface, Protocol):
+              field: str = ...
+          `,
+        ).trim(),
       );
     });
   });
 
   it("type var", () => {
     const file = `
-        interface Test<T> {}
-        interface TestConstructor {
-            new<T> (): Test<T>;
-            readonly prototype: Test;
-        }
-        declare var Test: TestConstructor;
-        `;
-    const expected = `\
-T = TypeVar("T")
+      interface Test<T> {}
+      interface TestConstructor {
+          new<T> (): Test<T>;
+          readonly prototype: Test;
+      }
+      declare var Test: TestConstructor;
+    `;
+    const expected = dedent(`
+      T = TypeVar("T")
 
-class Test(Test_iface[T]):
-    @classmethod
-    def new(self, /) -> Test[T]: ...
+      class Test(Test_iface[T]):
+          @classmethod
+          def new(self, /) -> Test[T]: ...
 
-class Test_iface(Generic[T], Protocol):
-    pass\
-`;
+      class Test_iface(Generic[T], Protocol):
+          pass
+    `).trim();
     const converter = new Converter();
     converter.project.createSourceFile("/a.ts", file);
     const res = converter.emit([
@@ -398,17 +419,17 @@ class Test_iface(Generic[T], Protocol):
     const res = converter.emit([
       converter.project.getSourceFileOrThrow("/a.ts"),
     ]);
-    const expected = `\
-class X(X_iface):
-    @classmethod
-    def new(self, message: str | None = None, options: XOptions_iface | None = None, /) -> X: ...
+    const expected = dedent(`
+      class X(X_iface):
+          @classmethod
+          def new(self, message: str | None = None, options: XOptions_iface | None = None, /) -> X: ...
 
-class X_iface(Protocol):
-    pass
+      class X_iface(Protocol):
+          pass
 
-class XOptions_iface(Protocol):
-    cause: Any | None = ...\
-`;
+      class XOptions_iface(Protocol):
+          cause: Any | None = ...
+    `).trim();
     expect(
       removeTypeIgnores(
         res
