@@ -52,6 +52,9 @@ export function renderPyClass(
   supers: string[],
   body: string,
 ): string {
+  if (name.endsWith("_iface")) {
+    supers.push("Protocol");
+  }
   if (body.trim() === "") {
     body = "pass";
   }
@@ -63,7 +66,10 @@ export function renderPyClass(
   return `class ${name}${supersList}:${CLASS_TYPE_IGNORES}\n${body}`;
 }
 
-export function renderSignatureGroup(sigGroup: PySigGroup): string[] {
+export function renderSignatureGroup(
+  sigGroup: PySigGroup,
+  isMethod: boolean,
+): string[] {
   const extraDecorators: string[] = [];
   const uniqueSigs = uniqBy(sigGroup.sigs, (sig) => {
     sig = structuredClone(sig);
@@ -75,7 +81,7 @@ export function renderSignatureGroup(sigGroup: PySigGroup): string[] {
   }
 
   return uniqueSigs.map((sig) =>
-    renderSignature(sigGroup.name, sig, extraDecorators),
+    renderSignature(sigGroup.name, sig, extraDecorators, isMethod),
   );
 }
 
@@ -138,6 +144,7 @@ export function renderSignature(
   name: string,
   sig: PySig,
   extraDecorators: string[] = [],
+  isMethod: boolean = true,
 ): string {
   if (isIllegal(name)) {
     return "";
@@ -151,10 +158,12 @@ export function renderSignature(
       return `${maybeStar}${name}: ${pyType}${maybeDefault}`;
     },
   );
-  formattedParams.unshift("self");
+  if (isMethod) {
+    formattedParams.unshift("self");
+  }
   if (sig.params.at(-1)?.spread) {
     formattedParams.splice(-1, 0, "/");
-  } else {
+  } else if (formattedParams.length) {
     formattedParams.push("/");
   }
   const joinedParams = formattedParams.join(", ");

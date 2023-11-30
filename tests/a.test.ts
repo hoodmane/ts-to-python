@@ -275,9 +275,9 @@ describe("emit", () => {
       ).toEqual(
         `\
 class x:
-    a: ClassVar[A]
+    a: ClassVar[A_iface]
 
-class A(B_iface):
+class A_iface(B_iface):
     pass
 
 class B_iface:
@@ -364,6 +364,46 @@ class Test_iface(Generic[T]):
     const res = converter.emit([
       converter.project.getSourceFileOrThrow("/a.ts"),
     ]);
+    expect(
+      removeTypeIgnores(
+        res
+          .slice(1)
+          .filter((x) => x.trim())
+          .join("\n\n"),
+      ),
+    ).toEqual(expected);
+  });
+  it("options param", () => {
+    const file = `
+    interface XOptions {
+      cause?: unknown;
+    }
+
+    interface X {}
+
+    interface XConstructor {
+      new (message?: string, options?: XOptions): X;
+      readonly prototype: X;
+    }
+
+    declare var X: XConstructor;
+    `;
+    const converter = new Converter();
+    converter.project.createSourceFile("/a.ts", file);
+    const res = converter.emit([
+      converter.project.getSourceFileOrThrow("/a.ts"),
+    ]);
+    const expected = `\
+class X(X_iface):
+    @classmethod
+    def new(self, message: str | None = None, options: XOptions_iface | None = None, /) -> X: ...
+
+class X_iface:
+    pass
+
+class XOptions_iface:
+    cause: Any | None\
+`;
     expect(
       removeTypeIgnores(
         res

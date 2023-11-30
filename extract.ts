@@ -31,6 +31,8 @@ import {
   TypeParameterDeclaration,
   ExpressionWithTypeArguments,
   TypeArgumentedNode,
+  FunctionDeclaration,
+  EntityName,
 } from "ts-morph";
 import * as ts from "typescript";
 import {
@@ -48,6 +50,8 @@ import {
 } from "./render.ts";
 
 import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
+
+Error.stackTraceLimit = Infinity;
 
 function getNodeLocation(node: Node) {
   const sf = node.getSourceFile();
@@ -151,7 +155,7 @@ function filterSignatures(name: string, signatures: Signature[]): Signature[] {
 const IMPORTS = `
 from collections.abc import Callable
 from asyncio import Future
-from typing import overload, Any, Literal, Self, TypeVar, Generic, ClassVar
+from typing import overload, Any, Literal, Self, TypeVar, Generic, ClassVar, Never, Protocol
 
 from pyodide.ffi import JsProxy, JsIterable as Iterable, JsIterator as Iterator, JsArray, JsMutableMap as Map, JsMap as ReadonlyMap
 from pyodide.webloop import PyodideFuture as PromiseLike
@@ -159,7 +163,6 @@ Promise = PromiseLike
 ConcatArray = JsArray
 Array = JsArray
 ArrayLike = JsArray
-IterableIterator = Iterator
 Dispatcher = Any
 
 URL_ = URL
@@ -180,6 +183,9 @@ class __EventTarget_iface:
   pass
 
 class Record(JsProxy, Generic[S, T]):
+  pass
+
+class IterableIterator(Iterator[T], Iterable[T], Generic[T]):
   pass
 `.trim();
 const BUILTIN_NAMES = [
@@ -208,9 +214,12 @@ type Needed =
   | { type: "interface"; ident: Identifier };
 
 function getExpressionTypeArgs(
-  ident: Identifier,
+  ident: EntityName,
   expression: TypeArgumentedNode & Node,
 ): TypeNode[] {
+  if (Node.isQualifiedName(ident)) {
+    ident = ident.getRight();
+  }
   const typeArgNodes = expression.getTypeArguments();
   const numTypeArgs = expression.getType().getTypeArguments().length;
   if (typeArgNodes.length < numTypeArgs) {
@@ -263,7 +272,11 @@ export class Converter {
     this.project.addSourceFilesAtPaths("input_example/a.ts");
     if (allFiles) {
       files = this.project.resolveSourceFileDependencies();
-      console.warn(files.map((file) => file.getFilePath()));
+      console.warn(
+        files
+          .map((file) => file.getFilePath())
+          .filter((f) => f.includes("lib.dom.d.ts")),
+      );
     } else {
       files = [this.project.getSourceFile("input_example/a.ts")!];
     }
@@ -271,6 +284,9 @@ export class Converter {
   }
 
   addNeededIdentifier(ident: Identifier) {
+    if (Node.isQualifiedName(ident)) {
+      throw new Error("Qualified name! " + ident.getText());
+    }
     this.neededSet.add({ type: "ident", ident });
   }
 
@@ -278,8 +294,8 @@ export class Converter {
     this.neededSet.add({ type: "interface", ident });
   }
 
-  getBaseNames(defs: InterfaceDeclaration[]) {
-    let extends_ = defs.flatMap((def) => def.getExtends());
+  getBaseNames(defs: (InterfaceDeclaration | ClassDeclaration)[]) {
+    let extends_ = defs.flatMap((def) => def.getExtends() || []);
     extends_ = uniqBy(extends_, (base) => base.getText());
     return extends_.flatMap((extend) => {
       let ident = extend.getExpression();
@@ -309,6 +325,19 @@ export class Converter {
       if (result) {
         output.push(result);
       }
+    }
+    const funcDecls = files.flatMap((file) => file.getFunctions());
+    const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName());
+    for (const [name, decls] of Object.entries(funcDeclsByName)) {
+      output.push(
+        ...renderSignatureGroup(
+          this.overloadGroupToPython(
+            name,
+            decls.map((x) => x.getSignature()),
+          ),
+          false,
+        ),
+      );
     }
     let next: Needed | undefined;
     while ((next = popElt(this.neededSet))) {
@@ -377,9 +406,8 @@ export class Converter {
       return undefined;
     }
     this.convertedSet.add(name);
-    if (!ident.getDefinitionNodes) {
-      console.warn("Skipped", name);
-      return undefined;
+    if (Node.isQualifiedName(ident)) {
+      throw new Error("Qualified name!");
     }
     const defs = ident.getDefinitionNodes();
     if (defs.every(Node.isInterfaceDeclaration)) {
@@ -401,6 +429,9 @@ export class Converter {
       if (Node.isTypeAliasDeclaration(def)) {
         const renderedType = this.typeToPython(def.getTypeNode()!, false);
         return `${name} = ${renderedType}`;
+      }
+      if (Node.isClassDeclaration(def)) {
+        return this.convertClass(def);
       }
     }
     console.warn("Skipping", ident.getText());
@@ -443,6 +474,9 @@ export class Converter {
       return this.convertVarDeclOfReferenceType(name, typeNode);
     }
     if (Node.isIntersectionTypeNode(typeNode)) {
+      if (varDecl.getTypeNode().getText() === "Window & typeof globalThis") {
+        return renderSimpleDeclaration(name, "Window");
+      }
       console.warn("intersection varDecl:", varDecl.getText());
       return undefined;
     }
@@ -581,6 +615,55 @@ export class Converter {
     }
   }
 
+  convertClass(decl: ClassDeclaration): string | undefined {
+    // MethodDeclaration | PropertyDeclaration | GetAccessorDeclaration | SetAccessorDeclaration | ConstructorDeclaration | ClassStaticBlockDeclaration;
+    const name = decl.getName();
+    const supers = this.getBaseNames([decl]);
+    const staticMembers = decl.getStaticMembers();
+    const members = decl.getInstanceMembers();
+    const [methodDecls, rest] = split(members, Node.isMethodDeclaration);
+    const methodGroups = groupBy(methodDecls, (d) => d.getName());
+    const methodEntries = Object.entries(methodGroups).flatMap(([name, sigs]) =>
+      renderSignatureGroup(
+        this.overloadGroupToPython(
+          name,
+          sigs.map((decl) => decl.getSignature()),
+        ),
+        true,
+      ),
+    );
+    const [staticMethodDecls, staticRest] = split(
+      staticMembers,
+      Node.isMethodDeclaration,
+    );
+    const staticMethodGroups = groupBy(staticMethodDecls, (d) => d.getName());
+    const staticMethodEntries = Object.entries(staticMethodGroups).flatMap(
+      ([name, sigs]) =>
+        renderSignatureGroup(
+          this.overloadGroupToPython(
+            name,
+            sigs.map((decl) => decl.getSignature()),
+            ["classmethod"],
+          ),
+          true,
+        ),
+    );
+    for (const member of rest) {
+      if (Node.isPropertyDeclaration(member)) {
+        methodEntries.push(
+          this.renderSimpleDecl(member.getName(), member.getTypeNode()),
+        );
+        continue;
+      }
+      throw new Error(`Unhandled member kind ${member.getKindName()}`);
+    }
+    for (const member of staticRest) {
+      throw new Error(`Unhandled static member kind ${member.getKindName()}`);
+    }
+    const entries = methodEntries.concat(staticMethodEntries);
+    return renderPyClass(name, supers, entries.join("\n"));
+  }
+
   convertInterface(
     name: string,
     supers: string[],
@@ -626,7 +709,7 @@ export class Converter {
     );
     const pyMethods = overloadGroups
       .concat(staticOverloadGroups)
-      .flatMap((gp) => renderSignatureGroup(gp));
+      .flatMap((gp) => renderSignatureGroup(gp, true));
     const entries = props.concat(pyMethods);
     return renderPyClass(name, supers, entries.join("\n"));
   }
@@ -743,6 +826,9 @@ export class Converter {
       // "object"...
       return "Any";
     }
+    if (typeText === "never") {
+      return "Never";
+    }
     if (Node.isThisTypeNode(typeNode)) {
       return "Self";
     }
@@ -809,7 +895,7 @@ export class Converter {
       return `tuple[${elts}]`;
     }
     if (Node.isTypeReference(typeNode)) {
-      const ident = typeNode.getTypeName() as Identifier;
+      const ident = typeNode.getTypeName();
       let name = ident.getText();
       if (typeNode.getType().isTypeParameter()) {
         this.typeParams.add(name);
@@ -846,7 +932,15 @@ export class Converter {
         !typeNode.getType().isTypeParameter() &&
         !this.convertedSet.has(name)
       ) {
-        this.addNeededIdentifier(ident);
+        if (Node.isQualifiedName(ident)) {
+          return "Any";
+        }
+        if (ident.getDefinitionNodes().every(Node.isInterfaceDeclaration)) {
+          this.addNeededInterface(ident);
+          name += "_iface";
+        } else {
+          this.addNeededIdentifier(ident);
+        }
       }
       return `${name}${fmtArgs}`;
     }
