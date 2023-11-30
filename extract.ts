@@ -53,6 +53,10 @@ import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
 
 Error.stackTraceLimit = Infinity;
 
+function assertUnreachable(_value: never): never {
+  throw new Error("Statement should be unreachable");
+}
+
 function getNodeLocation(node: Node) {
   const sf = node.getSourceFile();
   const { line, column } = sf.getLineAndColumnAtPos(node.getStart());
@@ -197,6 +201,77 @@ function getExpressionTypeArgs(
     }
   }
   return typeArgNodes;
+}
+
+type InterfacesIdentifier = {
+  kind: "interfaces",
+  name: string,
+  ifaces: InterfaceDeclaration[]
+};
+type TypeAliasIdentifier = {
+  kind: "typeAlias",
+  name: string,
+  decl: TypeAliasDeclaration
+};
+type ClassIdentifier = {
+  kind: "class",
+  name: string,
+  decl: ClassDeclaration,
+  ifaces: InterfaceDeclaration[],
+};
+type VarDeclIdentifier = {
+  kind: "varDecl",
+  name: string,
+  decl: VariableDeclaration
+  ifaces: InterfaceDeclaration[],
+};
+
+type ClassifiedIdentifier = InterfacesIdentifier | TypeAliasIdentifier | ClassIdentifier | VarDeclIdentifier;
+
+function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
+  let name = ident.getText();
+  const defs = ident.getDefinitionNodes();
+  const [ifaces, rest] = split(defs, Node.isInterfaceDeclaration);
+  if (rest.length === 0) {
+    name += "_iface";
+    return {
+      kind: "interfaces",
+      name,
+      ifaces,
+    };
+  }
+  if (rest.length > 1) {
+    throw new Error("Oops!");
+  }
+  const decl = rest[0];
+  if (Node.isClassDeclaration(decl)) {
+    return {
+      kind: "class",
+      name,
+      decl,
+      ifaces,
+    };
+  }
+  if (Node.isVariableDeclaration(decl)) {
+    return {
+      kind: "varDecl",
+      name,
+      decl,
+      ifaces,
+    };
+  }
+
+  if (Node.isTypeAliasDeclaration(decl)) {
+    if (ifaces.length > 0) { 
+      throw new Error("Both interfaces and type aliases with same name...");
+    }
+    return {
+      kind : "typeAlias",
+      name,
+      decl,
+    };
+  }
+  throw new Error("Unrecognized ident!");
 }
 
 export class Converter {
@@ -358,36 +433,33 @@ export class Converter {
     if (Node.isQualifiedName(ident)) {
       throw new Error("Qualified name!");
     }
-    const defs = ident.getDefinitionNodes();
-    if (defs.every(Node.isInterfaceDeclaration)) {
-      const baseNames = this.getBaseNames(defs);
-      const typeParams = defs
-        .flatMap((i) => i.getTypeParameters())
-        .map((p) => p.getName());
-
-      return this.convertInterface(
-        name,
-        baseNames,
-        defs.flatMap((def) => def.getMembers()),
-        [],
-        typeParams,
-      );
-    }
-    if (defs.length === 1) {
-      const def = defs[0];
-      if (Node.isTypeAliasDeclaration(def)) {
-        const renderedType = this.typeToPython(def.getTypeNode()!, false);
+    const classified = classifyIdentifier(ident);
+    switch (classified.kind) {
+      case "interfaces":
+        const ifaces = classified.ifaces;
+        const baseNames = this.getBaseNames(ifaces);
+        const typeParams = ifaces
+          .flatMap((i) => i.getTypeParameters())
+          .map((p) => p.getName());
+  
+        return this.convertInterface(
+          name,
+          baseNames,
+          ifaces.flatMap((def) => def.getMembers()),
+          [],
+          typeParams,
+        );
+      case "class":
+        if (classified.ifaces.length > 0) {
+          throw new Error("Unhandled");
+        }
+        return this.convertClass(classified.decl);
+      case "typeAlias":
+        const renderedType = this.typeToPython(classified.decl.getTypeNode()!, false);
         return `${name} = ${renderedType}`;
-      }
-      if (Node.isClassDeclaration(def)) {
-        return this.convertClass(def);
-      }
+      case "varDecl":
+        console.warn("Skipping varDecl", ident.getText());
     }
-    console.warn("Skipping", ident.getText());
-    console.warn(
-      "Skipping",
-      defs.map((def) => def.getKindName()),
-    );
     return undefined;
   }
 
@@ -444,43 +516,33 @@ export class Converter {
       return undefined;
     }
 
-    const typeName = ident.getText();
-    const definitions = ident.getDefinitionNodes();
-    // We'll do casework in how the type was defined.
-    if (name !== typeName && definitions.some(Node.isVariableDeclaration)) {
-      // Assertion: definitions include one VariableDeclaration and zero or
-      // more InterfaceDeclarations.
-      //
-      // We have to be careful to ensure name !== typeName or else we can
-      // pick up the decl we're currently processing.
-      //
-      // The type has a variable declaration so we'll handle it in this same
-      // loop.
+    const classified = classifyIdentifier(ident);
+    if (classified.kind === "varDecl" && name !== classified.name) {
+      // We have to check that name !== typeName or else we can pick up the decl
+      // we're currently processing.
       return this.renderSimpleDecl(name, typeNode);
     }
-    const typeAlias = ident
-      .getDefinitionNodes()
-      .filter(Node.isTypeAliasDeclaration)[0];
-    if (typeAlias) {
-      // If it's a type alias, just put `name: TypeName`.
-      return this.renderSimpleDecl(name, typeNode);
-    }
-    // Otherwise hopefully every definition node is an interface (possibly
-    // excluding the current varDecl)
-    const ifaces = ident
-      .getDefinitionNodes()
-      .filter(Node.isInterfaceDeclaration);
-    const typeParams = ifaces
+    if (classified.kind === "varDecl" || classified.kind === "interfaces") {
+      const {ifaces} = classified;
+      const typeParams = ifaces
       .flatMap((i) => i.getTypeParameters())
       .map((p) => p.getName());
-    return this.convertMembersDeclaration(
-      name,
-      {
-        getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
-      },
-      [],
-      typeParams,
-    );
+      return this.convertMembersDeclaration(
+        name,
+        {
+          getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
+        },
+        [],
+        typeParams,
+      );
+    }
+    if (classified.kind === "class") {
+      return renderSimpleDeclaration(name, classified.decl.getName());
+    }
+    if (classified.kind === "typeAlias") {
+      return this.renderSimpleDecl(name, classified.decl.getTypeNode());
+    }
+    assertUnreachable(classified);
   }
 
   convertMembersDeclaration(
@@ -883,9 +945,10 @@ export class Converter {
         if (Node.isQualifiedName(ident)) {
           return "Any";
         }
-        if (ident.getDefinitionNodes().every(Node.isInterfaceDeclaration)) {
+        let kind: ClassifiedIdentifier["kind"];
+        ({name, kind} = classifyIdentifier(ident));
+        if (kind === "interfaces") {
           this.addNeededInterface(ident);
-          name += "_iface";
         } else {
           this.addNeededIdentifier(ident);
         }
