@@ -122,7 +122,7 @@ describe("property signature", () => {
     const file = converter.project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
     const res = removeTypeIgnores(converter.convertPropertySignature(propsig));
-    expect(res).toBe("f: Callable[[], None] | None");
+    expect(res).toBe("f: Callable[[], None] | None = ...");
   });
 });
 
@@ -133,7 +133,7 @@ describe("sanitizeReservedWords", () => {
     const file = converter.project.getSourceFileOrThrow("/a.ts");
     const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
     const res = removeTypeIgnores(converter.convertVarDecl(decl));
-    expect(res).toBe("global_: str");
+    expect(res).toBe("global_: str = ...");
   });
 });
 
@@ -226,7 +226,7 @@ describe("emit", () => {
       const res = converter.emit([
         converter.project.getSourceFileOrThrow("/a.ts"),
       ]);
-      expect(removeTypeIgnores(res.at(-1))).toBe("a: str");
+      expect(removeTypeIgnores(res.at(-1))).toBe("a: str = ...");
     });
     it("number type", () => {
       const converter = new Converter();
@@ -234,7 +234,7 @@ describe("emit", () => {
       const res = converter.emit([
         converter.project.getSourceFileOrThrow("/a.ts"),
       ]);
-      expect(removeTypeIgnores(res.at(-1))).toBe("a: int | float");
+      expect(removeTypeIgnores(res.at(-1))).toBe("a: int | float = ...");
     });
     it("boolean type", () => {
       const converter = new Converter();
@@ -242,7 +242,7 @@ describe("emit", () => {
       const res = converter.emit([
         converter.project.getSourceFileOrThrow("/a.ts"),
       ]);
-      expect(removeTypeIgnores(res.at(-1))).toBe("a: bool");
+      expect(removeTypeIgnores(res.at(-1))).toBe("a: bool = ...");
     });
     it("extends", () => {
       const converter = new Converter();
@@ -275,13 +275,13 @@ describe("emit", () => {
       ).toEqual(
         `\
 class x:
-    a: ClassVar[A_iface]
+    a: ClassVar[A_iface] = ...
 
 class A_iface(B_iface, Protocol):
     pass
 
 class B_iface(Protocol):
-    b: int | float\
+    b: int | float = ...\
 `,
       );
     });
@@ -331,10 +331,10 @@ class SubExample(SubExample_iface):
     def new(self, b: bool | None = None, /) -> SubExample: ...
 
 class Example_iface(Protocol):
-    name: str
+    name: str = ...
 
 class SubExample_iface(Example_iface, Protocol):
-    field: str\
+    field: str = ...\
 `,
       );
     });
@@ -402,7 +402,7 @@ class X_iface(Protocol):
     pass
 
 class XOptions_iface(Protocol):
-    cause: Any | None\
+    cause: Any | None = ...\
 `;
     expect(
       removeTypeIgnores(

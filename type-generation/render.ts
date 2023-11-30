@@ -1,3 +1,5 @@
+import { getExtraBases, CLASS_TYPE_IGNORES, METHOD_TYPE_IGNORES, PROPERTY_TYPE_IGNORES } from "./adjustments.ts";
+
 export type PyParam = {
   name: string;
   pyType: string;
@@ -28,33 +30,12 @@ function indent(x: string, prefix: string): string {
     .join("\n");
 }
 
-// ignores: Cannot determine consistent method resolution order (MRO)
-const CLASS_TYPE_IGNORES = " # type:ignore[misc,unused-ignore]";
-// Ignores:
-// [misc]:
-//    Overloaded function signature 2 will never be matched: signature 1's parameter type(s) are the same or broader
-// [override]:
-//    Argument 1 of "someMethod" is incompatible with supertype "superType"
-//    Cannot override writeable attribute with read-only property
-//    Signature of "someMethod" incompatible with supertype "superType"
-// [overload-overlap]:
-//    Overloaded function signatures 1 and 6 overlap with incompatible return types
-// [unused-ignore]:
-// [type-arg]:
-//    Missing type parameters for generic type "?" (could be fixed by tracking type parameter defaults)
-let METHOD_TYPE_IGNORES =
-  " # type:ignore[override,overload-overlap,misc,type-arg,unused-ignore]";
-// TYPE_IGNORES = "";
-let PROPERTY_TYPE_IGNORES = " # type:ignore[type-arg,unused-ignore]";
-
 export function renderPyClass(
   name: string,
   supers: string[],
   body: string,
 ): string {
-  if (name.endsWith("_iface")) {
-    supers.push("Protocol");
-  }
+  supers.push(...getExtraBases(name));
   if (body.trim() === "") {
     body = "pass";
   }
@@ -178,7 +159,7 @@ export function renderSignature(
 }
 
 export function renderSimpleDeclaration(name: string, type: string) {
-  return `${name}: ${type}` + PROPERTY_TYPE_IGNORES;
+  return `${name}: ${type} = ...` + PROPERTY_TYPE_IGNORES;
 }
 
 export function renderProperty(

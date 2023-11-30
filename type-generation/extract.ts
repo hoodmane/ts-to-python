@@ -38,6 +38,7 @@ import {
   sanitizeReservedWords,
   uniqBy,
 } from "./render.ts";
+import { BUILTIN_NAMES, IMPORTS } from "./adjustments.ts";
 
 import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
 
@@ -111,42 +112,6 @@ function groupMembers(members: TypeElementTypes[]): {
   const constructors = grouped[SyntaxKind.ConstructSignature] || [];
   return { methods, properties, constructors };
 }
-
-const IMPORTS = `
-from collections.abc import Callable
-from asyncio import Future
-from typing import overload, Any, Literal, Self, TypeVar, Generic, ClassVar, Never, Protocol
-
-from pyodide.ffi import JsProxy, JsIterable as Iterable, JsIterator as Iterator, JsArray, JsMutableMap as Map, JsMap as ReadonlyMap
-from pyodide.webloop import PyodideFuture as PromiseLike
-Promise = PromiseLike
-ConcatArray = JsArray
-Array = JsArray
-ArrayLike = JsArray
-Dispatcher = Any
-URL_ = URL
-
-class Record(JsProxy, Generic[S, T]):
-  pass
-
-class IterableIterator(Iterator[T], Iterable[T], Generic[T]):
-  pass
-`.trim();
-const BUILTIN_NAMES = [
-  "Iterable",
-  "Iterator",
-  "IterableIterator",
-  "ArrayLike",
-  "Array",
-  "ConcatArray",
-  "PromiseLike",
-  "Promise",
-  "Map",
-  "ReadonlyMap",
-  "Readonly",
-  "Record",
-  "Dispatcher",
-];
 
 type Needed =
   | { type: "ident"; ident: Identifier }
