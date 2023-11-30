@@ -277,10 +277,10 @@ describe("emit", () => {
 class x:
     a: ClassVar[A_iface]
 
-class A_iface(B_iface):
+class A_iface(B_iface, Protocol):
     pass
 
-class B_iface:
+class B_iface(Protocol):
     b: int | float\
 `,
       );
@@ -330,10 +330,10 @@ class SubExample(SubExample_iface):
     @classmethod
     def new(self, b: bool | None = None, /) -> SubExample: ...
 
-class Example_iface:
+class Example_iface(Protocol):
     name: str
 
-class SubExample_iface(Example_iface):
+class SubExample_iface(Example_iface, Protocol):
     field: str\
 `,
       );
@@ -356,7 +356,7 @@ class Test(Test_iface[T]):
     @classmethod
     def new(self, /) -> Test[T]: ...
 
-class Test_iface(Generic[T]):
+class Test_iface(Generic[T], Protocol):
     pass\
 `;
     const converter = new Converter();
@@ -398,10 +398,10 @@ class X(X_iface):
     @classmethod
     def new(self, message: str | None = None, options: XOptions_iface | None = None, /) -> X: ...
 
-class X_iface:
+class X_iface(Protocol):
     pass
 
-class XOptions_iface:
+class XOptions_iface(Protocol):
     cause: Any | None\
 `;
     expect(
