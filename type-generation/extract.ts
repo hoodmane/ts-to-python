@@ -134,6 +134,7 @@ ConcatArray = JsArray
 Array = JsArray
 ArrayLike = JsArray
 Dispatcher = Any
+URL_ = URL
 
 class Record(JsProxy, Generic[S, T]):
   pass
@@ -292,23 +293,6 @@ export class Converter {
     this.convertedSet = new Set(BUILTIN_NAMES);
     this.neededSet = new Set();
     this.typeParams = new Set();
-  }
-
-  main(allFiles: boolean) {
-    console.warn({ allFiles });
-    let files: SourceFile[];
-    this.project.addSourceFilesAtPaths("../../input_example/a.ts");
-    if (allFiles) {
-      files = this.project.resolveSourceFileDependencies();
-      console.warn(
-        files
-          .map((file) => file.getFilePath())
-          .filter((f) => f.includes("lib.dom.d.ts")),
-      );
-    } else {
-      files = [this.project.getSourceFile("../../input_example/a.ts")!];
-    }
-    console.log(this.emit(files).join("\n\n"));
   }
 
   addNeededIdentifier(ident: Identifier) {
