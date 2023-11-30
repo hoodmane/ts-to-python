@@ -286,8 +286,8 @@ export class Converter {
   typeParams: Set<string>;
   constructor() {
     this.project = new Project({
-      tsConfigFilePath: "./input_example/tsconfig.json",
-      libFolderPath: "./input_example/node_modules/typescript/lib",
+      tsConfigFilePath: "../../input_example/tsconfig.json",
+      libFolderPath: "../../input_example/node_modules/typescript/lib",
     });
     this.convertedSet = new Set(BUILTIN_NAMES);
     this.neededSet = new Set();
@@ -297,7 +297,7 @@ export class Converter {
   main(allFiles: boolean) {
     console.warn({ allFiles });
     let files: SourceFile[];
-    this.project.addSourceFilesAtPaths("input_example/a.ts");
+    this.project.addSourceFilesAtPaths("../../input_example/a.ts");
     if (allFiles) {
       files = this.project.resolveSourceFileDependencies();
       console.warn(
@@ -306,7 +306,7 @@ export class Converter {
           .filter((f) => f.includes("lib.dom.d.ts")),
       );
     } else {
-      files = [this.project.getSourceFile("input_example/a.ts")!];
+      files = [this.project.getSourceFile("../../input_example/a.ts")!];
     }
     console.log(this.emit(files).join("\n\n"));
   }
