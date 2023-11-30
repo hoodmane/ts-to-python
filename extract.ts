@@ -118,40 +118,6 @@ function groupMembers(members: TypeElementTypes[]): {
   return { methods, properties, constructors };
 }
 
-function filterSignatures(name: string, signatures: Signature[]): Signature[] {
-  // if (["assign", "fromEntries"].includes(name)) {
-  //   signatures = signatures.filter(
-  //     (sig) => !sig.typeParameters || sig.typeParameters.length === 0,
-  //   );
-  // }
-  // if (name === "getOwnPropertyDescriptors") {
-  //   const anyNode = ts.factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword);
-  //   // @ts-ignore
-  //   signatures[0].type = anyNode;
-  // }
-  // if (name === "bind") {
-  //   const anyNode = ts.factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword);
-  //   const thisArgId = ts.factory.createIdentifier("thisArg");
-  //   const thisArg = ts.factory.createParameterDeclaration(
-  //     undefined,
-  //     undefined,
-  //     thisArgId,
-  //     undefined,
-  //     anyNode,
-  //   );
-  //   const decl = ts.factory.createMethodSignature(
-  //     undefined,
-  //     "bind",
-  //     undefined,
-  //     undefined,
-  //     [thisArg],
-  //     anyNode,
-  //   );
-  //   return [decl];
-  // }
-  return signatures;
-}
-
 const IMPORTS = `
 from collections.abc import Callable
 from asyncio import Future
@@ -164,23 +130,6 @@ ConcatArray = JsArray
 Array = JsArray
 ArrayLike = JsArray
 Dispatcher = Any
-
-URL_ = URL
-
-class _URL_iface:
-  pass
-
-class _URLSearchParams_iface:
-  pass
-
-class __Blob_iface:
-  pass
-
-class __Event_iface:
-  pass
-
-class __EventTarget_iface:
-  pass
 
 class Record(JsProxy, Generic[S, T]):
   pass
@@ -734,7 +683,6 @@ export class Converter {
     signatures: Signature[],
     decorators: string[] = [],
   ): PySigGroup {
-    signatures = filterSignatures(name, signatures);
     const sigs = signatures.map((sig) => this.sigToPython(sig, decorators));
     return { name, sigs };
   }
