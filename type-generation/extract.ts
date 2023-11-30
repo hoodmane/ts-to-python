@@ -37,18 +37,17 @@ import {
   renderSimpleDeclaration,
   sanitizeReservedWords,
   uniqBy,
+  PyClass,
 } from "./render.ts";
 import { BUILTIN_NAMES, IMPORTS } from "./adjustments.ts";
 
 import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
 
-Error.stackTraceLimit = Infinity;
-
 function assertUnreachable(_value: never): never {
   throw new Error("Statement should be unreachable");
 }
 
-function getNodeLocation(node: Node) {
+function getNodeLocation(node: Node): string {
   const sf = node.getSourceFile();
   const { line, column } = sf.getLineAndColumnAtPos(node.getStart());
   return `${sf.getFilePath()}:${line}:${column}`;
@@ -229,6 +228,29 @@ function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
   throw new Error("Unrecognized ident!");
 }
 
+function pyClass(name: string, supers: string[], body: string): PyClass {
+  return {
+    kind: "class",
+    name,
+    supers,
+    body,
+  };
+}
+
+export interface PyOther {
+  kind: "other";
+  text: string;
+}
+
+function pyOther(text: string): PyOther {
+  return {
+    kind: "other",
+    text,
+  };
+}
+
+type PyTopLevel = PyClass | PyOther;
+
 export class Converter {
   project: Project;
   convertedSet: Set<string>;
@@ -245,21 +267,21 @@ export class Converter {
     this.typeParams = new Set();
   }
 
-  addNeededIdentifier(ident: Identifier) {
+  addNeededIdentifier(ident: Identifier): void {
     if (Node.isQualifiedName(ident)) {
       throw new Error("Qualified name! " + ident.getText());
     }
     this.neededSet.add({ type: "ident", ident });
   }
 
-  addNeededInterface(ident: Identifier) {
+  addNeededInterface(ident: Identifier): void {
     this.neededSet.add({ type: "interface", ident });
   }
 
-  getBaseNames(defs: (InterfaceDeclaration | ClassDeclaration)[]) {
+  getBaseNames(defs: (InterfaceDeclaration | ClassDeclaration)[]): string[] {
     let extends_ = defs.flatMap((def) => def.getExtends() || []);
     extends_ = uniqBy(extends_, (base) => base.getText());
-    return extends_.flatMap((extend) => {
+    return extends_.flatMap((extend): string | [] => {
       let ident = extend.getExpression();
       if (!Node.isIdentifier(ident)) {
         return [];
@@ -276,7 +298,7 @@ export class Converter {
   emit(files: SourceFile[]): string[] {
     const varDecls = files.flatMap((file) => file.getVariableDeclarations());
 
-    const output: string[] = [IMPORTS];
+    const topLevels: PyTopLevel[] = [];
     for (const varDecl of varDecls) {
       const name = sanitizeReservedWords(varDecl.getName());
       if (this.convertedSet.has(name)) {
@@ -285,20 +307,20 @@ export class Converter {
       this.convertedSet.add(name);
       const result = this.convertVarDecl(varDecl);
       if (result) {
-        output.push(result);
+        topLevels.push(result);
       }
     }
     const funcDecls = files.flatMap((file) => file.getFunctions());
     const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName());
     for (const [name, decls] of Object.entries(funcDeclsByName)) {
-      output.push(
+      topLevels.push(
         ...renderSignatureGroup(
           this.overloadGroupToPython(
             name,
             decls.map((x) => x.getSignature()),
           ),
           false,
-        ),
+        ).map(pyOther),
       );
     }
     let next: Needed | undefined;
@@ -306,7 +328,7 @@ export class Converter {
       if (next.type === "ident") {
         let res = this.convertNeededIdent(next.ident);
         if (res) {
-          output.push(res);
+          topLevels.push(res);
         }
         continue;
       }
@@ -335,7 +357,7 @@ export class Converter {
             [],
             typeParams,
           );
-          output.push(res);
+          topLevels.push(res);
           continue;
         }
         // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
@@ -346,7 +368,19 @@ export class Converter {
       this.typeParams,
       (x) => `${x} = TypeVar("${x}")`,
     ).join("\n");
-    output.splice(1, 0, typevarDecls);
+    const output = [IMPORTS, typevarDecls];
+    for (const topLevel of topLevels) {
+      switch (topLevel.kind) {
+        case "class":
+          output.push(renderPyClass(topLevel));
+          break;
+
+        case "other":
+          const { text } = topLevel;
+          output.push(text);
+          break;
+      }
+    }
     return output;
   }
 
@@ -362,7 +396,7 @@ export class Converter {
     );
   }
 
-  convertNeededIdent(ident: Identifier): string | undefined {
+  convertNeededIdent(ident: Identifier): PyTopLevel | undefined {
     const name = ident.getText();
     if (this.convertedSet.has(name)) {
       return undefined;
@@ -397,19 +431,19 @@ export class Converter {
           classified.decl.getTypeNode()!,
           false,
         );
-        return `${name} = ${renderedType}`;
+        return pyOther(`${name} = ${renderedType}`);
       case "varDecl":
         console.warn("Skipping varDecl", ident.getText());
     }
     return undefined;
   }
 
-  renderSimpleDecl(name: string, typeNode: TypeNode) {
+  renderSimpleDecl(name: string, typeNode: TypeNode): string {
     const renderedType = this.typeToPython(typeNode, false);
     return renderSimpleDeclaration(name, renderedType);
   }
 
-  convertVarDecl(varDecl: VariableDeclaration): string | undefined {
+  convertVarDecl(varDecl: VariableDeclaration): PyTopLevel | undefined {
     const name = sanitizeReservedWords(varDecl.getName());
     const typeNode = varDecl.getTypeNode()!;
     if (!typeNode) {
@@ -437,15 +471,18 @@ export class Converter {
     }
     if (Node.isIntersectionTypeNode(typeNode)) {
       if (varDecl.getTypeNode().getText() === "Window & typeof globalThis") {
-        return renderSimpleDeclaration(name, "Window");
+        return pyOther(renderSimpleDeclaration(name, "Window"));
       }
       console.warn("intersection varDecl:", varDecl.getText());
       return undefined;
     }
-    return this.renderSimpleDecl(name, typeNode);
+    return pyOther(this.renderSimpleDecl(name, typeNode));
   }
 
-  convertVarDeclOfReferenceType(name: string, typeNode: TypeReferenceNode) {
+  convertVarDeclOfReferenceType(
+    name: string,
+    typeNode: TypeReferenceNode,
+  ): PyTopLevel {
     // declare var A : B;
 
     // Cases:
@@ -461,7 +498,7 @@ export class Converter {
     if (classified.kind === "varDecl" && name !== classified.name) {
       // We have to check that name !== typeName or else we can pick up the decl
       // we're currently processing.
-      return this.renderSimpleDecl(name, typeNode);
+      return pyOther(this.renderSimpleDecl(name, typeNode));
     }
     if (classified.kind === "varDecl" || classified.kind === "interfaces") {
       const { ifaces } = classified;
@@ -478,10 +515,12 @@ export class Converter {
       );
     }
     if (classified.kind === "class") {
-      return renderSimpleDeclaration(name, classified.decl.getName());
+      return pyOther(renderSimpleDeclaration(name, classified.decl.getName()));
     }
     if (classified.kind === "typeAlias") {
-      return this.renderSimpleDecl(name, classified.decl.getTypeNode());
+      return pyOther(
+        this.renderSimpleDecl(name, classified.decl.getTypeNode()),
+      );
     }
     assertUnreachable(classified);
   }
@@ -491,7 +530,7 @@ export class Converter {
     type: { getMembers: TypeLiteralNode["getMembers"] },
     bases = [],
     typeParams: string[],
-  ): string {
+  ): PyClass {
     const [prototypes, staticMembers] = split(
       type.getMembers(),
       (m): m is PropertySignature =>
@@ -567,7 +606,7 @@ export class Converter {
     }
   }
 
-  convertClass(decl: ClassDeclaration): string | undefined {
+  convertClass(decl: ClassDeclaration): PyClass {
     // MethodDeclaration | PropertyDeclaration | GetAccessorDeclaration | SetAccessorDeclaration | ConstructorDeclaration | ClassStaticBlockDeclaration;
     const name = decl.getName();
     const supers = this.getBaseNames([decl]);
@@ -613,7 +652,7 @@ export class Converter {
       throw new Error(`Unhandled static member kind ${member.getKindName()}`);
     }
     const entries = methodEntries.concat(staticMethodEntries);
-    return renderPyClass(name, supers, entries.join("\n"));
+    return pyClass(name, supers, entries.join("\n"));
   }
 
   convertInterface(
@@ -622,7 +661,7 @@ export class Converter {
     members: TypeElementTypes[],
     staticMembers: TypeElementTypes[],
     typeParams: string[],
-  ) {
+  ): PyClass {
     const { methods, properties } = groupMembers(members);
     const {
       methods: staticMethods,
@@ -663,7 +702,7 @@ export class Converter {
       .concat(staticOverloadGroups)
       .flatMap((gp) => renderSignatureGroup(gp, true));
     const entries = props.concat(pyMethods);
-    return renderPyClass(name, supers, entries.join("\n"));
+    return pyClass(name, supers, entries.join("\n"));
   }
 
   convertPropertySignature(
@@ -907,7 +946,6 @@ export class Converter {
       ) {
         return this.typeToPython(typeNode.getTypeNode(), false);
       }
-      return "Any";
       throw new Error("Unknown type operator " + operator);
     }
     if (Node.isTemplateLiteralTypeNode(typeNode)) {

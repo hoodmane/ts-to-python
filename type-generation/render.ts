@@ -1,4 +1,9 @@
-import { getExtraBases, CLASS_TYPE_IGNORES, METHOD_TYPE_IGNORES, PROPERTY_TYPE_IGNORES } from "./adjustments.ts";
+import {
+  getExtraBases,
+  CLASS_TYPE_IGNORES,
+  METHOD_TYPE_IGNORES,
+  PROPERTY_TYPE_IGNORES,
+} from "./adjustments.ts";
 
 export type PyParam = {
   name: string;
@@ -30,11 +35,14 @@ function indent(x: string, prefix: string): string {
     .join("\n");
 }
 
-export function renderPyClass(
-  name: string,
-  supers: string[],
-  body: string,
-): string {
+export interface PyClass {
+  kind: "class";
+  name: string;
+  supers: string[];
+  body: string;
+}
+
+export function renderPyClass({ name, supers, body }: PyClass): string {
   supers.push(...getExtraBases(name));
   if (body.trim() === "") {
     body = "pass";

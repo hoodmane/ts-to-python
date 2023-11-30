@@ -1,5 +1,6 @@
 import { SyntaxKind } from "ts-morph";
-import { Converter } from "../extract.ts";
+import { Converter, PyOther } from "../extract.ts";
+import { PyClass, renderPyClass } from "../render.ts";
 
 let n = 0;
 function getTypeNode(converter: Converter, type) {
@@ -132,7 +133,9 @@ describe("sanitizeReservedWords", () => {
     converter.project.createSourceFile("/a.ts", "declare var global : string;");
     const file = converter.project.getSourceFileOrThrow("/a.ts");
     const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-    const res = removeTypeIgnores(converter.convertVarDecl(decl));
+    const res = removeTypeIgnores(
+      (converter.convertVarDecl(decl) as PyOther).text,
+    );
     expect(res).toBe("global_: str = ...");
   });
 });
@@ -155,7 +158,8 @@ class Test(Test_iface):
   converter.project.createSourceFile("/a.ts", text);
   const file = converter.project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-  const res = removeTypeIgnores(converter.convertVarDecl(decl));
+  const cls = converter.convertVarDecl(decl) as PyClass;
+  const res = removeTypeIgnores(renderPyClass(cls));
   expect(res).toBe(expected);
 });
 
@@ -214,7 +218,8 @@ class Test(Test_iface[T]):
   converter.project.createSourceFile("/a.ts", text);
   const file = converter.project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-  const res = removeTypeIgnores(converter.convertVarDecl(decl));
+  const cls = converter.convertVarDecl(decl) as PyClass;
+  const res = removeTypeIgnores(renderPyClass(cls));
   expect(res).toBe(expected);
 });
 

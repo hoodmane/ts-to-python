@@ -2,6 +2,8 @@ import { SourceFile } from "ts-morph";
 import { Converter } from "./extract.ts";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 
+Error.stackTraceLimit = Infinity;
+
 function main() {
   const converter = new Converter();
   let files: SourceFile[];
