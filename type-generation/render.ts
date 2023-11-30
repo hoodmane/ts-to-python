@@ -38,6 +38,7 @@ function indent(x: string, prefix: string): string {
 export interface PyClass {
   kind: "class";
   name: string;
+  superStems: string[];
   supers: string[];
   body: string;
 }

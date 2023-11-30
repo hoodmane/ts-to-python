@@ -409,4 +409,33 @@ describe("emit", () => {
       ),
     ).toEqual(expected);
   });
+  it("MRO", () => {
+    const res = emitFile(`
+      interface A {}
+      interface B extends A {}
+      interface C extends A, B {}
+      declare var c: { c: C };
+    `);
+    const expected = dedent(`
+      class c:
+          c: ClassVar[C_iface] = ...
+
+      class C_iface(B_iface, A_iface, Protocol):
+          pass
+
+      class A_iface(Protocol):
+          pass
+
+      class B_iface(A_iface, Protocol):
+          pass
+    `).trim();
+    expect(
+      removeTypeIgnores(
+        res
+          .slice(1)
+          .filter((x) => x.trim())
+          .join("\n\n"),
+      ),
+    ).toEqual(expected);
+  });
 });

@@ -39,7 +39,7 @@ import {
   uniqBy,
   PyClass,
 } from "./render.ts";
-import { BUILTIN_NAMES, IMPORTS } from "./adjustments.ts";
+import { BUILTIN_NAMES, IMPORTS, getExtraBases } from "./adjustments.ts";
 
 import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
 
@@ -229,9 +229,13 @@ function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
 }
 
 function pyClass(name: string, supers: string[], body: string): PyClass {
+  const superStems = supers
+    .map((sup) => sup.split("[")[0])
+    .filter((x) => x !== "Generic");
   return {
     kind: "class",
     name,
+    superStems,
     supers,
     body,
   };
@@ -250,6 +254,37 @@ function pyOther(text: string): PyOther {
 }
 
 type PyTopLevel = PyClass | PyOther;
+
+function topologicalSortClasses(classes: PyClass[]): PyClass[] {
+  type AnotatedClass = PyClass & { sorted?: boolean; visited?: boolean };
+  const result: PyClass[] = [];
+  const nameToCls = new Map(classes.map((cls) => [cls.name, cls]));
+  if (nameToCls.size < classes.length) {
+    throw new Error("Name clash?");
+  }
+  function visit(cls: AnotatedClass) {
+    if (cls.sorted) {
+      return;
+    }
+    if (cls.visited) {
+      throw new Error("Cycle");
+    }
+    cls.visited = true;
+    for (const name of cls.superStems) {
+      const superClass = nameToCls.get(name);
+      if (!superClass) {
+        throw new Error(`Unknown super: ${cls.name} < ${name}`);
+      }
+      visit(superClass);
+    }
+    cls.sorted = true;
+    result.push(cls);
+  }
+  for (const cls of classes) {
+    visit(cls);
+  }
+  return result;
+}
 
 export class Converter {
   project: Project;
@@ -369,9 +404,21 @@ export class Converter {
       (x) => `${x} = TypeVar("${x}")`,
     ).join("\n");
     const output = [IMPORTS, typevarDecls];
+    // We need to ensure that the supers are topologically sorted so that we respect the MRO.
+    const classes = topologicalSortClasses(
+      topLevels.filter((x): x is PyClass => x.kind === "class"),
+    );
+    const classNameToIndex = new Map(
+      classes.map((cls, idx) => [cls.name, idx]),
+    );
     for (const topLevel of topLevels) {
       switch (topLevel.kind) {
         case "class":
+          topLevel.supers.sort((a, b) => {
+            a = a.split("[")[0];
+            b = b.split("[")[0];
+            return classNameToIndex.get(b) - classNameToIndex.get(a);
+          });
           output.push(renderPyClass(topLevel));
           break;
 
