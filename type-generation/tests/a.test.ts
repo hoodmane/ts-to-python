@@ -242,37 +242,28 @@ it("Type variable", () => {
   expect(res).toBe(expected);
 });
 
+function emitFile(text) {
+  const converter = new Converter();
+  converter.project.createSourceFile("/a.ts", text);
+  return converter.emit([converter.project.getSourceFileOrThrow("/a.ts")]);
+}
+
 describe("emit", () => {
   describe("Basic conversions", () => {
     it("string type", () => {
-      const converter = new Converter();
-      converter.project.createSourceFile("/a.ts", "declare var a : string;");
-      const res = converter.emit([
-        converter.project.getSourceFileOrThrow("/a.ts"),
-      ]);
+      const res = emitFile("declare var a : string;");
       expect(removeTypeIgnores(res.at(-1))).toBe("a: str = ...");
     });
     it("number type", () => {
-      const converter = new Converter();
-      converter.project.createSourceFile("/a.ts", "declare var a : number;");
-      const res = converter.emit([
-        converter.project.getSourceFileOrThrow("/a.ts"),
-      ]);
+      const res = emitFile("declare var a : number;");
       expect(removeTypeIgnores(res.at(-1))).toBe("a: int | float = ...");
     });
     it("boolean type", () => {
-      const converter = new Converter();
-      converter.project.createSourceFile("/a.ts", "declare var a : boolean;");
-      const res = converter.emit([
-        converter.project.getSourceFileOrThrow("/a.ts"),
-      ]);
+      const res = emitFile("declare var a : boolean;");
       expect(removeTypeIgnores(res.at(-1))).toBe("a: bool = ...");
     });
     it("extends", () => {
-      const converter = new Converter();
-      converter.project.createSourceFile(
-        "/a.ts",
-        `
+      const res = emitFile(`
         interface B {
             b: number;
         }
@@ -284,11 +275,7 @@ describe("emit", () => {
         declare var x: {
             a: A;
         };
-        `,
-      );
-      const res = converter.emit([
-        converter.project.getSourceFileOrThrow("/a.ts"),
-      ]);
+      `);
       expect(
         removeTypeIgnores(
           res
@@ -311,7 +298,7 @@ describe("emit", () => {
     });
 
     it("subclass with incompatible constructor type", () => {
-      const file = `
+      const res = emitFile(`
         interface Example {
             name: string;
         }
@@ -331,12 +318,7 @@ describe("emit", () => {
         readonly prototype: SubExample;
         }
         declare var SubExample: SubExampleConstructor;
-      `;
-      const converter = new Converter();
-      converter.project.createSourceFile("/a.ts", file);
-      const res = converter.emit([
-        converter.project.getSourceFileOrThrow("/a.ts"),
-      ]);
+      `);
       expect(
         removeTypeIgnores(
           res
@@ -345,8 +327,7 @@ describe("emit", () => {
             .join("\n\n"),
         ),
       ).toEqual(
-        dedent(
-          `
+        dedent(`
           class Example(Example_iface):
               @classmethod
               def new(self, a: str | None = None, /) -> Example: ...
@@ -360,21 +341,20 @@ describe("emit", () => {
 
           class SubExample_iface(Example_iface, Protocol):
               field: str = ...
-          `,
-        ).trim(),
+        `).trim(),
       );
     });
   });
 
   it("type var", () => {
-    const file = `
+    const res = emitFile(`
       interface Test<T> {}
       interface TestConstructor {
           new<T> (): Test<T>;
           readonly prototype: Test;
       }
       declare var Test: TestConstructor;
-    `;
+    `);
     const expected = dedent(`
       T = TypeVar("T")
 
@@ -385,11 +365,6 @@ describe("emit", () => {
       class Test_iface(Generic[T], Protocol):
           pass
     `).trim();
-    const converter = new Converter();
-    converter.project.createSourceFile("/a.ts", file);
-    const res = converter.emit([
-      converter.project.getSourceFileOrThrow("/a.ts"),
-    ]);
     expect(
       removeTypeIgnores(
         res
@@ -400,25 +375,20 @@ describe("emit", () => {
     ).toEqual(expected);
   });
   it("options param", () => {
-    const file = `
-    interface XOptions {
-      cause?: unknown;
-    }
+    const res = emitFile(`
+      interface XOptions {
+        cause?: unknown;
+      }
 
-    interface X {}
+      interface X {}
 
-    interface XConstructor {
-      new (message?: string, options?: XOptions): X;
-      readonly prototype: X;
-    }
+      interface XConstructor {
+        new (message?: string, options?: XOptions): X;
+        readonly prototype: X;
+      }
 
-    declare var X: XConstructor;
-    `;
-    const converter = new Converter();
-    converter.project.createSourceFile("/a.ts", file);
-    const res = converter.emit([
-      converter.project.getSourceFileOrThrow("/a.ts"),
-    ]);
+      declare var X: XConstructor;
+    `);
     const expected = dedent(`
       class X(X_iface):
           @classmethod
