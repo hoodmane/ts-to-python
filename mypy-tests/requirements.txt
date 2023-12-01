@@ -1,0 +1,4 @@
+pytest
+pyodide-py
+pytest-mypy-testing
+typing-extensions >= 4.6.0
