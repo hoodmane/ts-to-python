@@ -37,11 +37,18 @@ import {
   renderSimpleDeclaration,
   sanitizeReservedWords,
   uniqBy,
-  PyClass,
 } from "./render.ts";
+import { PyClass } from "./types.ts";
 import { BUILTIN_NAMES, IMPORTS, getExtraBases } from "./adjustments.ts";
 
 import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
+import {
+  ClassifiedIdentifier,
+  GroupedBySyntaxKind,
+  Needed,
+  PyOther,
+  PyTopLevel,
+} from "./types.ts";
 
 function assertUnreachable(_value: never): never {
   throw new Error("Statement should be unreachable");
@@ -52,19 +59,6 @@ function getNodeLocation(node: Node): string {
   const { line, column } = sf.getLineAndColumnAtPos(node.getStart());
   return `${sf.getFilePath()}:${line}:${column}`;
 }
-
-type SyntaxKindMap = {
-  [SyntaxKind.VariableStatement]: VariableStatement;
-  [SyntaxKind.VariableDeclaration]: VariableDeclaration;
-  [SyntaxKind.PropertySignature]: PropertySignature;
-  [SyntaxKind.MethodSignature]: MethodSignature;
-  [SyntaxKind.ConstructSignature]: ConstructSignatureDeclaration;
-  [SyntaxKind.InterfaceDeclaration]: InterfaceDeclaration;
-  [SyntaxKind.TypeAliasDeclaration]: TypeAliasDeclaration;
-  [SyntaxKind.ModuleDeclaration]: ModuleDeclaration;
-};
-
-type GroupedBySyntaxKind = { [K in keyof SyntaxKindMap]?: SyntaxKindMap[K][] };
 
 function groupBySyntaxKind(list: Iterable<Node>): GroupedBySyntaxKind {
   const gen = groupBySyntaxKindGen();
@@ -112,10 +106,6 @@ function groupMembers(members: TypeElementTypes[]): {
   return { methods, properties, constructors };
 }
 
-type Needed =
-  | { type: "ident"; ident: Identifier }
-  | { type: "interface"; ident: Identifier };
-
 function getExpressionTypeArgs(
   ident: EntityName,
   expression: TypeArgumentedNode & Node,
@@ -152,35 +142,6 @@ function getExpressionTypeArgs(
   }
   return typeArgNodes;
 }
-
-type InterfacesIdentifier = {
-  kind: "interfaces";
-  name: string;
-  ifaces: InterfaceDeclaration[];
-};
-type TypeAliasIdentifier = {
-  kind: "typeAlias";
-  name: string;
-  decl: TypeAliasDeclaration;
-};
-type ClassIdentifier = {
-  kind: "class";
-  name: string;
-  decl: ClassDeclaration;
-  ifaces: InterfaceDeclaration[];
-};
-type VarDeclIdentifier = {
-  kind: "varDecl";
-  name: string;
-  decl: VariableDeclaration;
-  ifaces: InterfaceDeclaration[];
-};
-
-type ClassifiedIdentifier =
-  | InterfacesIdentifier
-  | TypeAliasIdentifier
-  | ClassIdentifier
-  | VarDeclIdentifier;
 
 function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
   let name = ident.getText();
@@ -241,19 +202,12 @@ function pyClass(name: string, supers: string[], body: string): PyClass {
   };
 }
 
-export interface PyOther {
-  kind: "other";
-  text: string;
-}
-
 function pyOther(text: string): PyOther {
   return {
     kind: "other",
     text,
   };
 }
-
-type PyTopLevel = PyClass | PyOther;
 
 function topologicalSortClasses(nameToCls: Map<string, PyClass>): PyClass[] {
   type AnotatedClass = PyClass & { sorted?: boolean; visited?: boolean };

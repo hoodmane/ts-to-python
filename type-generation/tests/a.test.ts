@@ -1,6 +1,7 @@
 import { SyntaxKind } from "ts-morph";
-import { Converter, PyOther } from "../extract.ts";
-import { PyClass, renderPyClass } from "../render.ts";
+import { Converter } from "../extract.ts";
+import { renderPyClass } from "../render.ts";
+import { PyClass, PyOther } from "../types.ts";
 
 let n = 0;
 function getTypeNode(converter: Converter, type) {
