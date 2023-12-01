@@ -7,7 +7,6 @@ import {
   InterfaceDeclaration,
   LiteralTypeNode,
   MethodSignature,
-  ModuleDeclaration,
   Node,
   Project,
   PropertySignature,
@@ -24,7 +23,6 @@ import {
   TypeReferenceNode,
   UnionTypeNode,
   VariableDeclaration,
-  VariableStatement,
 } from "ts-morph";
 import {
   PySig,
@@ -39,7 +37,13 @@ import {
   uniqBy,
 } from "./render.ts";
 import { PyClass } from "./types.ts";
-import { BUILTIN_NAMES, IMPORTS, TYPE_TEXT_MAP, getExtraBases } from "./adjustments.ts";
+import {
+  BUILTIN_NAMES,
+  IMPORTS,
+  TYPE_TEXT_MAP,
+  getExtraBases,
+  typeReferenceSubsitutions,
+} from "./adjustments.ts";
 
 import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
 import {
@@ -48,6 +52,8 @@ import {
   Needed,
   PyOther,
   PyTopLevel,
+  Variance,
+  reverseVariance,
 } from "./types.ts";
 
 function assertUnreachable(_value: never): never {
@@ -274,7 +280,11 @@ export class Converter {
       this.addNeededInterface(ident);
       const name = extend.getExpression().getText();
       const typeArgNodes = getExpressionTypeArgs(ident, extend);
-      const pyArgs = typeArgNodes.map((node) => this.typeToPython(node, false));
+      // Unfortunately typescript doesn't expose getVariances on the type
+      // checker, so we probably can't figure out what to put here.
+      const pyArgs = typeArgNodes.map((node) =>
+        this.typeToPython(node, false, Variance.none),
+      );
       const args = pyArgs.length > 0 ? `[${pyArgs.join(", ")}]` : "";
       return name + "_iface" + args;
     });
@@ -450,6 +460,7 @@ export class Converter {
         const renderedType = this.typeToPython(
           classified.decl.getTypeNode()!,
           false,
+          Variance.covar,
         );
         return pyOther(`${name} = ${renderedType}`);
       case "varDecl":
@@ -459,7 +470,7 @@ export class Converter {
   }
 
   renderSimpleDecl(name: string, typeNode: TypeNode): string {
-    const renderedType = this.typeToPython(typeNode, false);
+    const renderedType = this.typeToPython(typeNode, false, Variance.covar);
     return renderSimpleDeclaration(name, renderedType);
   }
 
@@ -583,9 +594,13 @@ export class Converter {
     );
   }
 
-  convertSignatures(sigs: readonly Signature[], topLevelName?: string): string {
+  convertSignatures(
+    sigs: readonly Signature[],
+    variance: Variance,
+    topLevelName?: string,
+  ): string {
     const converted = sigs.map((sig) =>
-      this.convertSignature(sig, topLevelName),
+      this.convertSignature(sig, variance, topLevelName),
     );
     if (!topLevelName) {
       return converted.join(" | ");
@@ -597,28 +612,45 @@ export class Converter {
     return converted.map((x) => "@overload\n" + x).join("\n\n");
   }
 
-  convertSignature(sig: Signature, topLevelName?: string): string {
-    const pySig = this.sigToPython(sig);
+  convertSignature(
+    sig: Signature,
+    variance: Variance,
+    topLevelName?: string,
+  ): string {
+    const pySig = this.sigToPython(sig, variance);
     if (topLevelName) {
       return renderSignature(topLevelName, pySig);
     }
     return renderInnerSignature(pySig);
   }
 
-  sigToPython(sig: Signature, decorators: string[] = []): PySig {
+  sigToPython(
+    sig: Signature,
+    variance: Variance,
+    decorators: string[] = [],
+  ): PySig {
     const decl = sig.getDeclaration() as SignaturedDeclaration;
     try {
+      const paramVariance = reverseVariance(variance);
       const params = decl.getParameters().map((param) => {
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
-        const pyType = this.typeToPython(
+        let pyType = this.typeToPython(
           param.getTypeNode()!,
           optional,
-        ).replace(/^JsArray/, "list");
+          paramVariance,
+        );
+        if (spread) {
+          const prefix =
+            paramVariance === Variance.contra
+              ? "PyMutableSequence["
+              : "JsArray[";
+          pyType = pyType.slice(prefix.length, -"]".length);
+        }
         return { name: param.getName(), pyType, optional, spread };
       });
       const retNode = decl.getReturnTypeNode()!;
-      const returns = this.typeToPython(retNode, false);
+      const returns = this.typeToPython(retNode, false, variance);
       return { params, returns, decorators };
     } catch (e) {
       console.warn("failed to convert", sig.getDeclaration().getText());
@@ -654,7 +686,7 @@ export class Converter {
           this.overloadGroupToPython(
             name,
             sigs.map((decl) => decl.getSignature()),
-            ["classmethod"],
+            Variance.covar["classmethod"],
           ),
           true,
         ),
@@ -734,6 +766,7 @@ export class Converter {
     const pytype = this.typeToPython(
       member.getTypeNode()!,
       isOptional,
+      Variance.covar,
       memberName,
     );
     let readOnly = member.isReadonly();
@@ -745,19 +778,27 @@ export class Converter {
     signatures: Signature[],
     decorators: string[] = [],
   ): PySigGroup {
-    const sigs = signatures.map((sig) => this.sigToPython(sig, decorators));
+    const sigs = signatures.map((sig) =>
+      this.sigToPython(sig, Variance.covar, decorators),
+    );
     return { name, sigs };
   }
 
   typeToPython(
     typeNode: TypeNode,
     isOptional: boolean,
+    variance: Variance,
     topLevelName?: string,
   ): string {
     if (isOptional) {
       topLevelName = undefined;
     }
-    let inner = this.typeToPythonInner(typeNode, isOptional, topLevelName);
+    let inner = this.typeToPythonInner(
+      typeNode,
+      isOptional,
+      variance,
+      topLevelName,
+    );
     if (
       isOptional &&
       !Node.isUnionTypeNode(typeNode) &&
@@ -768,13 +809,17 @@ export class Converter {
     return inner;
   }
 
-  unionTypeNodeToPython(typeNode: UnionTypeNode, isOptional: boolean): string {
+  unionTypeNodeToPython(
+    typeNode: UnionTypeNode,
+    isOptional: boolean,
+    variance: Variance,
+  ): string {
     const unionTypes = typeNode.getTypeNodes() as TypeNode[];
     const [literals, rest] = split<TypeNode, LiteralTypeNode>(
       unionTypes,
       Node.isLiteralTypeNode,
     );
-    const types = rest.map((ty) => this.typeToPython(ty, false));
+    const types = rest.map((ty) => this.typeToPython(ty, false, variance));
     const lits = literals
       .map((lit) => lit.getText())
       .filter((txt) => {
@@ -805,6 +850,7 @@ export class Converter {
   typeToPythonInner(
     typeNode: TypeNode,
     isOptional: boolean,
+    variance: Variance,
     topLevelName?: string,
   ): string {
     const type = typeNode.getType();
@@ -816,10 +862,10 @@ export class Converter {
       return "Self";
     }
     if (Node.isUnionTypeNode(typeNode)) {
-      return this.unionTypeNodeToPython(typeNode, isOptional);
+      return this.unionTypeNodeToPython(typeNode, isOptional, variance);
     }
     if (Node.isParenthesizedTypeNode(typeNode)) {
-      const ty = this.typeToPython(typeNode.getTypeNode(), false);
+      const ty = this.typeToPython(typeNode.getTypeNode(), false, variance);
       return `(${ty})`;
     }
     if (Node.isIntersectionTypeNode(typeNode)) {
@@ -833,7 +879,7 @@ export class Converter {
             ),
         );
       if (filteredTypes.length === 1) {
-        return this.typeToPython(filteredTypes[0], false);
+        return this.typeToPython(filteredTypes[0], false, variance);
       }
       const typeString = type.getText();
       if (typeString === "Window & typeof globalThis") {
@@ -861,16 +907,27 @@ export class Converter {
       return `Literal[${text}]`;
     }
     if (type.getCallSignatures().length > 0) {
-      return this.convertSignatures(type.getCallSignatures(), topLevelName);
+      return this.convertSignatures(
+        type.getCallSignatures(),
+        variance,
+        topLevelName,
+      );
     }
     if (Node.isArrayTypeNode(typeNode)) {
-      const eltType = this.typeToPython(typeNode.getElementTypeNode(), false);
+      const eltType = this.typeToPython(
+        typeNode.getElementTypeNode(),
+        false,
+        variance,
+      );
+      if (variance === Variance.contra) {
+        return `PyMutableSequence[${eltType}]`;
+      }
       return `JsArray[${eltType}]`;
     }
     if (Node.isTupleTypeNode(typeNode)) {
       let elts = typeNode
         .getElements()
-        .map((elt) => this.typeToPython(elt, false))
+        .map((elt) => this.typeToPython(elt, false, variance))
         .join(", ");
       if (elts === "") {
         elts = "()";
@@ -884,34 +941,12 @@ export class Converter {
         this.typeParams.add(name);
         return name;
       }
-      const args = getExpressionTypeArgs(ident, typeNode)
-        .map((ty) => this.typeToPython(ty, false))
-        .join(", ");
-      let fmtArgs = "";
-      if (args) {
-        fmtArgs = `[${args}]`;
+      const origArgs = getExpressionTypeArgs(ident, typeNode);
+      const res = typeReferenceSubsitutions(this, name, origArgs, variance);
+      if (res) {
+        return res;
       }
-
       if (
-        name.startsWith("Intl") ||
-        ["console.ConsoleConstructor", "NodeJS.CallSite", "FlatArray"].includes(
-          name,
-        )
-      ) {
-        return "Any";
-      }
-      if (["Exclude", "Readonly"].includes(name)) {
-        return args[0];
-      }
-      if (name === "URL") {
-        return "URL_";
-      }
-      if (name === "Function") {
-        return "Callable[..., Any]";
-      }
-      if (name === "Promise") {
-        name = "Future";
-      } else if (
         !typeNode.getType().isTypeParameter() &&
         !this.convertedSet.has(name)
       ) {
@@ -926,10 +961,20 @@ export class Converter {
           this.addNeededIdentifier(ident);
         }
       }
+      const args = origArgs.map((ty) =>
+        this.typeToPython(ty, false, Variance.none),
+      );
+      let fmtArgs = "";
+      if (args.length) {
+        fmtArgs = `[${args.join(", ")}]`;
+      }
       return `${name}${fmtArgs}`;
     }
     if (Node.isTypeOperatorTypeNode(typeNode)) {
       // Just ignore readonly
+
+      // TODO: if we passed readonly down, we could use it to choose between
+      // MutableSequence and Sequence for arrays...
       const operator = typeNode.getOperator();
       typeNode.getOperator();
       if (
@@ -937,7 +982,7 @@ export class Converter {
           operator,
         )
       ) {
-        return this.typeToPython(typeNode.getTypeNode(), false);
+        return this.typeToPython(typeNode.getTypeNode(), false, variance);
       }
       throw new Error("Unknown type operator " + operator);
     }
