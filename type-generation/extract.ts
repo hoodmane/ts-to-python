@@ -255,13 +255,9 @@ function pyOther(text: string): PyOther {
 
 type PyTopLevel = PyClass | PyOther;
 
-function topologicalSortClasses(classes: PyClass[]): PyClass[] {
+function topologicalSortClasses(nameToCls: Map<string, PyClass>): PyClass[] {
   type AnotatedClass = PyClass & { sorted?: boolean; visited?: boolean };
   const result: PyClass[] = [];
-  const nameToCls = new Map(classes.map((cls) => [cls.name, cls]));
-  if (nameToCls.size < classes.length) {
-    throw new Error("Name clash?");
-  }
   function visit(cls: AnotatedClass) {
     if (cls.sorted) {
       return;
@@ -280,7 +276,7 @@ function topologicalSortClasses(classes: PyClass[]): PyClass[] {
     cls.sorted = true;
     result.push(cls);
   }
-  for (const cls of classes) {
+  for (const cls of nameToCls.values()) {
     visit(cls);
   }
   return result;
@@ -404,13 +400,36 @@ export class Converter {
       (x) => `${x} = TypeVar("${x}")`,
     ).join("\n");
     const output = [IMPORTS, typevarDecls];
-    // We need to ensure that the supers are topologically sorted so that we respect the MRO.
-    const classes = topologicalSortClasses(
-      topLevels.filter((x): x is PyClass => x.kind === "class"),
+    const unsortedClasses = topLevels.filter(
+      (x): x is PyClass => x.kind === "class",
     );
+    const nameToCls = new Map(unsortedClasses.map((cls) => [cls.name, cls]));
+    if (nameToCls.size < unsortedClasses.length) {
+      throw new Error("Duplicate");
+    }
+    // We need to ensure that the supers are topologically sorted so that we respect the MRO.
+    const classes = topologicalSortClasses(nameToCls);
     const classNameToIndex = new Map(
       classes.map((cls, idx) => [cls.name, idx]),
     );
+    for (const cls of classes) {
+      const extraBases = getExtraBases(cls.name);
+      if (extraBases) {
+        cls.supers.push(...extraBases);
+        cls.concrete = true;
+      } else {
+        for (const sName of cls.superStems) {
+          const s = nameToCls.get(sName);
+          if (s.concrete) {
+            cls.concrete = true;
+            break;
+          }
+        }
+      }
+      if (cls.name.endsWith("_iface") && !cls.concrete) {
+        cls.supers.push("Protocol");
+      }
+    }
     for (const topLevel of topLevels) {
       switch (topLevel.kind) {
         case "class":

@@ -438,4 +438,39 @@ describe("emit", () => {
       ),
     ).toEqual(expected);
   });
+  it("concrete classes", () => {
+    const res = emitFile(`
+      interface A extends Error {}
+      interface B extends A, Error {}
+      interface C extends A, B, Error {}
+      declare var c: { c: C };
+    `);
+    const expected = dedent(`
+      class c:
+          c: ClassVar[C_iface] = ...
+
+      class C_iface(B_iface, A_iface, Error_iface):
+          pass
+
+      class A_iface(Error_iface):
+          pass
+
+      class B_iface(A_iface, Error_iface):
+          pass
+
+      class Error_iface(Exception):
+          name: str = ...
+          message: str = ...
+          stack: str | None = ...
+          cause: Any | None = ...
+    `).trim();
+    expect(
+      removeTypeIgnores(
+        res
+          .slice(1)
+          .filter((x) => x.trim())
+          .join("\n\n"),
+      ),
+    ).toEqual(expected);
+  });
 });

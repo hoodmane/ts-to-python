@@ -1,4 +1,3 @@
-
 export const IMPORTS = `
 from collections.abc import Callable
 from asyncio import Future
@@ -33,36 +32,26 @@ export const BUILTIN_NAMES = [
   "Dispatcher",
 ];
 
-const EXTRA_BASES : Record<string, string[]> = {
-    "Error_iface" : ["Exception"],
-    "Uint8Array_iface": ["JsBuffer"],
-    "Array_iface": ["JsArray"],
+const EXTRA_BASES: Record<string, string[]> = {
+  Error_iface: ["Exception"],
+  Uint8Array_iface: ["JsBuffer"],
+  Array_iface: ["JsArray"],
 };
 
-export function getExtraBases(name: string): string[] {
-    if (name in EXTRA_BASES) {
-        return EXTRA_BASES[name];
-    }
-    if (name.endsWith("_iface")) {
-        return ["Protocol"];
-    }
-    return [];
+export function getExtraBases(name: string): string[] | undefined {
+  return EXTRA_BASES[name];
 }
-
 
 export const CLASS_TYPE_IGNORES = "";
 // Ignores:
 // [misc]:
 //    Overloaded function signature 2 will never be matched: signature 1's parameter type(s) are the same or broader
+// [overload-overlap]:
+//    Overloaded function signatures 1 and 6 overlap with incompatible return types
 // [override]:
 //    Argument 1 of "someMethod" is incompatible with supertype "superType"
 //    Cannot override writeable attribute with read-only property
 //    Signature of "someMethod" incompatible with supertype "superType"
-// [overload-overlap]:
-//    Overloaded function signatures 1 and 6 overlap with incompatible return types
-// [unused-ignore]:
-// [type-arg]:
-//    Missing type parameters for generic type "?" (could be fixed by tracking type parameter defaults)
 export let METHOD_TYPE_IGNORES =
-  " # type:ignore[override,overload-overlap,misc,type-arg,unused-ignore]";
-export let PROPERTY_TYPE_IGNORES = " # type:ignore[type-arg,unused-ignore]";
+  " # type:ignore[misc,overload-overlap,override,unused-ignore]";
+export let PROPERTY_TYPE_IGNORES = " # type:ignore[assignment,unused-ignore]";

@@ -1,5 +1,4 @@
 import {
-  getExtraBases,
   CLASS_TYPE_IGNORES,
   METHOD_TYPE_IGNORES,
   PROPERTY_TYPE_IGNORES,
@@ -41,10 +40,10 @@ export interface PyClass {
   superStems: string[];
   supers: string[];
   body: string;
+  concrete?: boolean;
 }
 
 export function renderPyClass({ name, supers, body }: PyClass): string {
-  supers.push(...getExtraBases(name));
   if (body.trim() === "") {
     body = "pass";
   }
