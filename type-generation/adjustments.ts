@@ -55,3 +55,19 @@ export const CLASS_TYPE_IGNORES = "";
 export let METHOD_TYPE_IGNORES =
   " # type:ignore[misc,overload-overlap,override,unused-ignore]";
 export let PROPERTY_TYPE_IGNORES = " # type:ignore[assignment,unused-ignore]";
+
+export const TYPE_TEXT_MAP: Record<string, string> = {
+  number:  "int | float",
+  bigint: "int",
+  boolean : "bool",
+  string: "str",
+  void: "None",
+  undefined: "None",
+  null: "None",
+  symbol: "Symbol",
+  any: "Any",
+  unknown: "Any",
+  object: "Any",
+  never: "Never",
+  "Window & typeof globalThis": "Any",
+};

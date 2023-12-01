@@ -39,7 +39,7 @@ import {
   uniqBy,
 } from "./render.ts";
 import { PyClass } from "./types.ts";
-import { BUILTIN_NAMES, IMPORTS, getExtraBases } from "./adjustments.ts";
+import { BUILTIN_NAMES, IMPORTS, TYPE_TEXT_MAP, getExtraBases } from "./adjustments.ts";
 
 import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
 import {
@@ -809,35 +809,8 @@ export class Converter {
   ): string {
     const type = typeNode.getType();
     const typeText = typeNode.getText();
-    if (typeText === "number") {
-      return "int | float";
-    }
-    // @ts-ignore
-    if (typeText === "bigint") {
-      return "int";
-    }
-    if (typeText === "boolean") {
-      return "bool";
-    }
-    if (typeText === "string") {
-      return "str";
-    }
-    if (["void", "undefined", "null"].includes(typeText)) {
-      return "None";
-    }
-    // @ts-ignore
-    if (typeText === "symbol") {
-      return "Symbol";
-    }
-    if (["any", "unknown"].includes(typeText)) {
-      return "Any";
-    }
-    if (typeText === "object") {
-      // "object"...
-      return "Any";
-    }
-    if (typeText === "never") {
-      return "Never";
+    if (typeText in TYPE_TEXT_MAP) {
+      return TYPE_TEXT_MAP[typeText];
     }
     if (Node.isThisTypeNode(typeNode)) {
       return "Self";
