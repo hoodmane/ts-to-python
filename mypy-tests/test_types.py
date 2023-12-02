@@ -208,3 +208,19 @@ def type_headers() -> None:
 
     a: Iterable[tuple[str, str]] = []
     Headers.new(a)
+
+
+@pytest.mark.mypy_testing
+def type_request() -> None:
+    from js import Request, Headers, AbortController
+
+    path = "a"
+    method = "GET"
+    sig = AbortController.new()
+    Request.new(
+        path,
+        method=method,
+        headers=Headers.new(),
+        body="abc",
+        signal=sig.signal,
+    )

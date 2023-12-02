@@ -626,6 +626,53 @@ export class Converter {
     return renderInnerSignature(pySig);
   }
 
+  getInterfaceDeclToDestructure(
+    sig: Signature,
+  ): InterfaceDeclaration | undefined {
+    const decl = sig.getDeclaration() as SignaturedDeclaration;
+    const defs = decl
+      .getParameters()
+      .at(-1)
+      ?.getTypeNode()
+      .asKind(SyntaxKind.TypeReference)
+      ?.getTypeName()
+      ?.asKind(SyntaxKind.Identifier)
+      ?.getDefinitionNodes();
+    if (defs?.length !== 1) {
+      return undefined;
+    }
+    return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
+  }
+
+  sigToPythonDestructure(
+    sig: Signature,
+    variance: Variance,
+    decorators: string[] = [],
+  ): PySig[] {
+    const pySig = this.sigToPython(sig, variance, decorators);
+
+    const toDestructure = this.getInterfaceDeclToDestructure(sig);
+    if (!toDestructure) {
+      return [pySig];
+    }
+    const pySigDestructured = structuredClone(pySig);
+    pySigDestructured.params.pop();
+    const paramVariance = reverseVariance(variance);
+    const kwargs: PyParam[] = [];
+    for (const prop of toDestructure.getProperties()) {
+      const name = prop.getName();
+      const optional = !!prop.getQuestionTokenNode();
+      const pyType = this.typeToPython(
+        prop.getTypeNode()!,
+        optional,
+        paramVariance,
+      );
+      kwargs.push({ name, pyType, optional });
+    }
+    pySigDestructured.kwparams = kwargs;
+    return [pySig, pySigDestructured];
+  }
+
   sigToPython(
     sig: Signature,
     variance: Variance,
@@ -786,7 +833,7 @@ export class Converter {
     decorators: string[] = [],
   ): PySigGroup {
     const sigs = signatures.flatMap((sig) =>
-      this.sigToPython(sig, Variance.covar, decorators),
+      this.sigToPythonDestructure(sig, Variance.covar, decorators),
     );
     return { name, sigs };
   }

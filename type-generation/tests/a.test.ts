@@ -482,7 +482,7 @@ describe("emit", () => {
   it("options param", () => {
     const res = emitFile(`
       interface XOptions {
-        cause?: unknown;
+        cause?: string;
       }
 
       interface X {}
@@ -497,13 +497,17 @@ describe("emit", () => {
     const expected = dedent(`
       class X(X_iface):
           @classmethod
+          @overload
           def new(self, message: str | None = None, options: XOptions_iface | None = None, /) -> X: ...
+          @classmethod
+          @overload
+          def new(self, message: str | None = None, /, *, cause: str | None = None) -> X: ...
 
       class X_iface(Protocol):
           pass
 
       class XOptions_iface(Protocol):
-          cause: Any | None = ...
+          cause: str | None = ...
     `).trim();
     expect(
       removeTypeIgnores(
