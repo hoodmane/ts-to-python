@@ -8,6 +8,7 @@ import {
   LiteralTypeNode,
   MethodSignature,
   Node,
+  ParameterDeclaration,
   Project,
   PropertySignature,
   Signature,
@@ -25,6 +26,7 @@ import {
   VariableDeclaration,
 } from "ts-morph";
 import {
+  PyParam,
   PySig,
   PySigGroup,
   renderInnerSignature,
@@ -632,26 +634,31 @@ export class Converter {
     const decl = sig.getDeclaration() as SignaturedDeclaration;
     try {
       const paramVariance = reverseVariance(variance);
-      const params = decl.getParameters().map((param) => {
+      const pyParams: PyParam[] = [];
+      let spreadParam: PyParam;
+      for (const param of decl.getParameters()) {
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
-        let pyType = this.typeToPython(
+        const pyType = this.typeToPython(
           param.getTypeNode()!,
           optional,
           paramVariance,
         );
+        const pyParam = { name: param.getName(), pyType, optional };
         if (spread) {
           const prefix =
             paramVariance === Variance.contra
               ? "PyMutableSequence["
               : "JsArray[";
-          pyType = pyType.slice(prefix.length, -"]".length);
+          pyParam.pyType = pyType.slice(prefix.length, -"]".length);
+          spreadParam = pyParam;
+          continue;
         }
-        return { name: param.getName(), pyType, optional, spread };
-      });
+        pyParams.push(pyParam);
+      }
       const retNode = decl.getReturnTypeNode()!;
       const returns = this.typeToPython(retNode, false, variance);
-      return { params, returns, decorators };
+      return { params: pyParams, spreadParam, returns, decorators };
     } catch (e) {
       console.warn("failed to convert", sig.getDeclaration().getText());
       throw e;
@@ -778,7 +785,7 @@ export class Converter {
     signatures: Signature[],
     decorators: string[] = [],
   ): PySigGroup {
-    const sigs = signatures.map((sig) =>
+    const sigs = signatures.flatMap((sig) =>
       this.sigToPython(sig, Variance.covar, decorators),
     );
     return { name, sigs };

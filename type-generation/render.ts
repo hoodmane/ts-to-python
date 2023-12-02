@@ -9,10 +9,10 @@ export type PyParam = {
   name: string;
   pyType: string;
   optional: boolean;
-  spread?: boolean;
 };
 export type PySig = {
   params: PyParam[];
+  spreadParam?: PyParam;
   returns: string;
   decorators?: string[];
 };
@@ -131,21 +131,18 @@ export function renderSignature(
     return "";
   }
   name = sanitizeReservedWords(name);
-  const formattedParams = sig.params.map(
-    ({ name, pyType, optional, spread }) => {
-      const maybeDefault = optional ? " = None" : "";
-      const maybeStar = spread ? "*" : "";
-      name = sanitizeReservedWords(name);
-      return `${maybeStar}${name}: ${pyType}${maybeDefault}`;
-    },
-  );
+  const formattedParams = sig.params.map(({ name, pyType, optional }) => {
+    const maybeDefault = optional ? " = None" : "";
+    name = sanitizeReservedWords(name);
+    return `${name}: ${pyType}${maybeDefault}`;
+  });
   if (isMethod) {
     formattedParams.unshift("self");
   }
-  if (sig.params.at(-1)?.spread) {
-    formattedParams.splice(-1, 0, "/");
-  } else if (formattedParams.length) {
-    formattedParams.push("/");
+  formattedParams.push("/");
+  if (sig.spreadParam) {
+    const { name, pyType } = sig.spreadParam;
+    formattedParams.push(`*${name}: ${pyType}`);
   }
   const joinedParams = formattedParams.join(", ");
   const decs = (sig.decorators || [])
