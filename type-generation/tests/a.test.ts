@@ -608,8 +608,8 @@ describe("emit", () => {
     `);
     expect(removeTypeIgnores(res.at(-1))).toBe(
       dedent(`
-        class X_iface(Protocol, PyIterable[str]):
-            pass
+        class X_iface(Protocol):
+            def __iter__(self, /) -> PyIterator[str]: ...
       `).trim(),
     );
   });

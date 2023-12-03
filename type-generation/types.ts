@@ -65,7 +65,6 @@ export interface PyClass {
   name: string;
   superStems: string[];
   supers: string[];
-  pysupers: string[];
   body: string;
   concrete?: boolean;
 }

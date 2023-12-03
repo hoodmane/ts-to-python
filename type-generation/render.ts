@@ -36,17 +36,11 @@ function indent(x: string, prefix: string): string {
     .join("\n");
 }
 
-export function renderPyClass({
-  name,
-  supers,
-  pysupers,
-  body,
-}: PyClass): string {
+export function renderPyClass({ name, supers, body }: PyClass): string {
   if (body.trim() === "") {
     body = "pass";
   }
   body = indent(body, " ".repeat(4));
-  supers = supers.concat(pysupers);
   let supersList = "";
   if (supers.length > 0) {
     supersList = `(${supers.join(", ")})`;
