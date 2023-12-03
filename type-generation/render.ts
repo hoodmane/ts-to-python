@@ -142,12 +142,14 @@ export function renderSignature(
   if (isMethod) {
     formattedParams.unshift("self");
   }
-  formattedParams.push("/");
+  if (formattedParams.length > 0) {
+    formattedParams.push("/");
+  }
   if (sig.spreadParam) {
     const { name, pyType } = sig.spreadParam;
     formattedParams.push(`*${name}: ${pyType}`);
   }
-  if (sig.kwparams) {
+  if (sig.kwparams?.length > 0) {
     formattedParams.push("*");
     formattedParams.push(...sig.kwparams.map(renderParam));
   }

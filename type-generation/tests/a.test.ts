@@ -287,6 +287,23 @@ it("Constructor reference", () => {
   expect(res).toBe(expected);
 });
 
+it("No args function", () => {
+  const text = `
+    declare function f(): void;
+  `;
+  const expected = dedent(`\
+    def f() -> None: ...
+  `).trim();
+  const converter = new Converter();
+  converter.project.createSourceFile("/a.ts", text);
+  const file = converter.project.getSourceFileOrThrow("/a.ts");
+  const decl = file.getFirstDescendantByKind(SyntaxKind.FunctionDeclaration);
+  const result = removeTypeIgnores(
+    converter.convertFuncDeclGroup(decl.getName(), [decl])[0].text,
+  );
+  expect(result).toBe(expected);
+});
+
 describe("getBaseNames", () => {
   it("extends deduplcation", () => {
     const text = `

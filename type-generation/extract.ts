@@ -2,6 +2,7 @@ import {
   ClassDeclaration,
   ConstructSignatureDeclaration,
   EntityName,
+  FunctionDeclaration,
   FunctionTypeNode,
   Identifier,
   InterfaceDeclaration,
@@ -310,15 +311,7 @@ export class Converter {
     const funcDecls = files.flatMap((file) => file.getFunctions());
     const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName());
     for (const [name, decls] of Object.entries(funcDeclsByName)) {
-      topLevels.push(
-        ...renderSignatureGroup(
-          this.overloadGroupToPython(
-            name,
-            decls.map((x) => x.getSignature()),
-          ),
-          false,
-        ).map(pyOther),
-      );
+      topLevels.push(...this.convertFuncDeclGroup(name, decls));
     }
     let next: Needed | undefined;
     while ((next = popElt(this.neededSet))) {
@@ -474,6 +467,16 @@ export class Converter {
   renderSimpleDecl(name: string, typeNode: TypeNode): string {
     const renderedType = this.typeToPython(typeNode, false, Variance.covar);
     return renderSimpleDeclaration(name, renderedType);
+  }
+
+  convertFuncDeclGroup(name: string, decls: FunctionDeclaration[]): PyOther[] {
+    return renderSignatureGroup(
+      this.overloadGroupToPython(
+        name,
+        decls.map((x) => x.getSignature()),
+      ),
+      false,
+    ).map(pyOther);
   }
 
   convertVarDecl(varDecl: VariableDeclaration): PyTopLevel | undefined {
