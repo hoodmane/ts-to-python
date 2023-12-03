@@ -816,6 +816,14 @@ export class Converter {
       );
       extraEntries.push(...entries);
     }
+    if ("has" in methods || "includes" in methods) {
+      const sigs = methods["has"] || methods["includes"];
+      const entries = renderSignatureGroup(
+        this.overloadGroupToPython("__contains__", sigs),
+        true,
+      );
+      extraEntries.push(...entries);
+    }
     const overloadGroups = Object.entries(methods).map(([name, sigs]) =>
       this.overloadGroupToPython(name, sigs),
     );

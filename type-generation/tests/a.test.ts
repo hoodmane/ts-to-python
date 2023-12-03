@@ -639,4 +639,30 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("contains", () => {
+    const res = emitFile(`\
+      interface X {
+        includes(v: number): boolean;
+      }
+      interface Y {
+        has(v: string): boolean;
+      }
+      declare var x: X[];
+      declare var y: Y[];
+    `);
+    expect(removeTypeIgnores(res.at(-2))).toBe(
+      dedent(`
+        class X_iface(Protocol):
+            def includes(self, v: int | float, /) -> bool: ...
+            def __contains__(self, v: int | float, /) -> bool: ...
+      `).trim(),
+    );
+    expect(removeTypeIgnores(res.at(-1))).toBe(
+      dedent(`
+        class Y_iface(Protocol):
+            def has(self, v: str, /) -> bool: ...
+            def __contains__(self, v: str, /) -> bool: ...
+      `).trim(),
+    );
+  });
 });

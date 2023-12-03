@@ -247,3 +247,14 @@ def type_map() -> None:
     from js import Map
 
     len(Map.new([(1, 2)]))
+
+
+@pytest.mark.mypy_testing
+def type_contains() -> None:
+    from js import WeakMap, Set, Headers
+
+    map = WeakMap.new([(1, 3)])
+    assert 1 in map
+    s = Set.new([1, 2, 3])
+    assert 1 in s
+    assert "SomeHeader" not in Headers.new()
