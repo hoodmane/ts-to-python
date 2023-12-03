@@ -665,4 +665,28 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("map", () => {
+    const res = emitFile(`\
+      interface X {
+        get(x: number): string;
+        set(x: number, y: string): void;
+        delete(x: number): boolean;
+        has(x: number): boolean
+      }
+      declare var x: X[];
+    `);
+    expect(removeTypeIgnores(res.at(-1))).toBe(
+      dedent(`
+        class X_iface(Protocol):
+            def get(self, x: int | float, /) -> str: ...
+            def set(self, x: int | float, y: str, /) -> None: ...
+            def delete(self, x: int | float, /) -> bool: ...
+            def has(self, x: int | float, /) -> bool: ...
+            def __contains__(self, x: int | float, /) -> bool: ...
+            def __getitem__(self, x: int | float, /) -> str: ...
+            def __setitem__(self, x: int | float, y: str, /) -> None: ...
+            def __delitem__(self, x: int | float, /) -> bool: ...
+      `).trim(),
+    );
+  });
 });

@@ -250,6 +250,24 @@ def type_map() -> None:
 
 
 @pytest.mark.mypy_testing
+def type_weakmap() -> None:
+    from js import WeakMap
+
+    a = WeakMap.new([(1, "a")])
+    1 in a
+    a[1]
+    a[1] = "d"
+    del a[1]
+    # fmt: off
+    "1" in a  # E: Unsupported operand types for in ("str" and "WeakMap[int, str]")
+    a["1"]  # E: Invalid index type "str" for "WeakMap[int, str]"; expected type "int"
+    del a["1"]  # E: Argument 1 to "__delitem__" of "WeakMap_iface" has incompatible type "str"; expected "int"
+    a[1] = 1  # E: Incompatible types in assignment (expression has type "int", target has type "str")
+    a["1"] = "1"  # E: Invalid index type "str" for "WeakMap[int, str]"; expected type "int"
+    # fmt: on
+
+
+@pytest.mark.mypy_testing
 def type_contains() -> None:
     from js import WeakMap, Set, Headers
 

@@ -816,14 +816,21 @@ export class Converter {
       );
       extraEntries.push(...entries);
     }
-    if ("has" in methods || "includes" in methods) {
-      const sigs = methods["has"] || methods["includes"];
+    const redirectMethod = (origName: string, newName: string): void => {
+      if (!(origName in methods)) {
+        return;
+      }
       const entries = renderSignatureGroup(
-        this.overloadGroupToPython("__contains__", sigs),
+        this.overloadGroupToPython(newName, methods[origName]),
         true,
       );
       extraEntries.push(...entries);
-    }
+    };
+    redirectMethod("has", "__contains__");
+    redirectMethod("includes", "__contains__");
+    redirectMethod("get", "__getitem__");
+    redirectMethod("set", "__setitem__");
+    redirectMethod("delete", "__delitem__");
     const overloadGroups = Object.entries(methods).map(([name, sigs]) =>
       this.overloadGroupToPython(name, sigs),
     );
