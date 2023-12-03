@@ -9,12 +9,29 @@ from typing import overload, Any, Literal, Self, TypeVar, Generic, ClassVar, Nev
 
 from pyodide.ffi import JsProxy, JsIterable, JsIterator, JsArray, JsMutableMap as Map, JsMap as ReadonlyMap, JsBuffer
 from pyodide.webloop import PyodideFuture as PromiseLike
+from _pyodide._core_docs import _JsProxyMetaClass
 Promise = PromiseLike
 ConcatArray = JsArray
 ArrayLike = JsArray
 Dispatcher = Any
 URL_ = URL
 HeadersInit = PyIterable[tuple[str, str]] | Record[str, str] | Headers
+
+# Shenanigans to convince skeptical type system to behave correctly:
+#
+# These classes we are declaring are actually JavaScript objects, so the class
+# objects themselves need to be instances of JsProxy. So their type needs to
+# subclass JsProxy. We do this with a custom metaclass.
+
+class _JsMeta(_JsProxyMetaClass, JsProxy):
+    pass
+
+class DoNotCallThis:
+    pass
+
+class _JsObject(metaclass=_JsMeta):
+    def __new__(do_not_call: DoNotCallThis):
+      ...
 
 class Record(JsProxy, Generic[S, T]):
   pass

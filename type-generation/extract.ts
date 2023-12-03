@@ -388,6 +388,9 @@ export class Converter {
       if (cls.name.endsWith("_iface") && !cls.concrete) {
         cls.supers.push("Protocol");
       }
+      if (!cls.name.endsWith("_iface")) {
+        cls.supers.push("_JsObject");
+      }
     }
     for (const topLevel of topLevels) {
       switch (topLevel.kind) {

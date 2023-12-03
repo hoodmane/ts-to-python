@@ -407,7 +407,7 @@ describe("emit", () => {
         ),
       ).toEqual(
         dedent(`
-          class x:
+          class x(_JsObject):
               a: ClassVar[A_iface] = ...
 
           class A_iface(B_iface, Protocol):
@@ -450,11 +450,11 @@ describe("emit", () => {
         ),
       ).toEqual(
         dedent(`
-          class Example(Example_iface):
+          class Example(Example_iface, _JsObject):
               @classmethod
               def new(self, a: str | None = None, /) -> Example: ...
 
-          class SubExample(SubExample_iface):
+          class SubExample(SubExample_iface, _JsObject):
               @classmethod
               def new(self, b: bool | None = None, /) -> SubExample: ...
 
@@ -480,7 +480,7 @@ describe("emit", () => {
     const expected = dedent(`
       T = TypeVar("T")
 
-      class Test(Test_iface[T]):
+      class Test(Test_iface[T], _JsObject):
           @classmethod
           def new(self, /) -> Test[T]: ...
 
@@ -512,7 +512,7 @@ describe("emit", () => {
       declare var X: XConstructor;
     `);
     const expected = dedent(`
-      class X(X_iface):
+      class X(X_iface, _JsObject):
           @classmethod
           @overload
           def new(self, message: str | None = None, options: XOptions_iface | None = None, /) -> X: ...
@@ -543,7 +543,7 @@ describe("emit", () => {
       declare var c: { c: C };
     `);
     const expected = dedent(`
-      class c:
+      class c(_JsObject):
           c: ClassVar[C_iface] = ...
 
       class C_iface(B_iface, A_iface, Protocol):
@@ -572,7 +572,7 @@ describe("emit", () => {
       declare var c: { c: C };
     `);
     const expected = dedent(`
-      class c:
+      class c(_JsObject):
           c: ClassVar[C_iface] = ...
 
       class C_iface(B_iface, A_iface, Error_iface):
