@@ -149,7 +149,6 @@ def type_json() -> None:
     assert json.loads(JSON.stringify(p1js)) == [1, 2]
 
 
-@pytest.mark.xfail("HTMLCollection has no len, not indexable")
 @pytest.mark.mypy_testing
 def type_document() -> None:
     from js import document
@@ -157,8 +156,6 @@ def type_document() -> None:
     el = document.createElement("div")
     assert el.tagName == "DIV"
     assert bool(el)
-    assert document.body
-    assert not document.body.children
     document.body.appendChild(el)
     assert document.body.children
     assert len(document.body.children) == 1
@@ -232,3 +229,21 @@ def type_iterable() -> None:
 
     for x in Int8Array.new([1, 2, 3]):
         reveal_type(x)  # R: Union[builtins.int, builtins.float]
+
+
+@pytest.mark.mypy_testing
+def type_sized() -> None:
+    from js import Int8Array, Set
+
+    l = Int8Array.new([1, 2, 3])
+    reveal_type(len(l))  # R: builtins.int
+    s = Set.new(l)
+    reveal_type(len(s))  # R: builtins.int
+
+
+@pytest.mark.xfail("Map issue?")
+@pytest.mark.mypy_testing
+def type_map() -> None:
+    from js import Map
+
+    len(Map.new([(1, 2)]))

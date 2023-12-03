@@ -613,4 +613,30 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("Sized", () => {
+    const res = emitFile(`\
+      interface X {
+        length: number;
+      }
+      interface Y {
+        size: number;
+      }
+      declare var x: X[];
+      declare var y: Y[];
+    `);
+    expect(removeTypeIgnores(res.at(-2))).toBe(
+      dedent(`
+        class X_iface(Protocol):
+            length: int | float = ...
+            def __len__(self, /) -> int: ...
+      `).trim(),
+    );
+    expect(removeTypeIgnores(res.at(-1))).toBe(
+      dedent(`
+        class Y_iface(Protocol):
+            size: int | float = ...
+            def __len__(self, /) -> int: ...
+      `).trim(),
+    );
+  });
 });

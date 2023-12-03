@@ -41,6 +41,8 @@ const EXTRA_BASES: Record<string, string[]> = {
   ArrayBuffer_iface: ["JsBuffer"],
   Array_iface: ["JsArray[T]"],
   Headers_iface: ["JsIterable[tuple[str, str]]"],
+  HTMLCollectionBase_iface: ["JsArray[Element]"],
+  NodeList_iface: ["JsArray[Node]"],
 };
 
 export function getExtraBases(name: string): string[] | undefined {

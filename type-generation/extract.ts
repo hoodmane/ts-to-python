@@ -777,6 +777,7 @@ export class Converter {
       properties: staticProperties,
       constructors,
     } = groupMembers(staticMembers);
+    const propMap = new Map(properties.map((prop) => [prop.getName(), prop]));
     for (const key of Object.keys(staticMethods)) {
       delete methods[key];
     }
@@ -804,7 +805,17 @@ export class Converter {
       );
       extraEntries.push(...entries);
     }
-
+    if (
+      name !== "Function_iface" &&
+      (propMap.get("size")?.getTypeNode().getText() === "number" ||
+        propMap.get("length")?.getTypeNode().getText() === "number")
+    ) {
+      const entries = renderSignatureGroup(
+        { name: "__len__", sigs: [{ params: [], returns: "int" }] },
+        true,
+      );
+      extraEntries.push(...entries);
+    }
     const overloadGroups = Object.entries(methods).map(([name, sigs]) =>
       this.overloadGroupToPython(name, sigs),
     );
