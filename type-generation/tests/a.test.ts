@@ -599,4 +599,18 @@ describe("emit", () => {
       ),
     ).toEqual(expected);
   });
+  it("Iterable", () => {
+    const res = emitFile(`\
+      interface X {
+        [Symbol.iterator](): IterableIterator<string>;
+      }
+      declare var x: X[];
+    `);
+    expect(removeTypeIgnores(res.at(-1))).toBe(
+      dedent(`
+        class X_iface(Protocol, PyIterable[str]):
+            pass
+      `).trim(),
+    );
+  });
 });

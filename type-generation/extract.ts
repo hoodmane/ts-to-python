@@ -198,7 +198,12 @@ function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
   throw new Error("Unrecognized ident!");
 }
 
-function pyClass(name: string, supers: string[], body: string): PyClass {
+function pyClass(
+  name: string,
+  supers: string[],
+  pysupers: string[],
+  body: string,
+): PyClass {
   const superStems = supers
     .map((sup) => sup.split("[")[0])
     .filter((x) => x !== "Generic");
@@ -207,6 +212,7 @@ function pyClass(name: string, supers: string[], body: string): PyClass {
     name,
     superStems,
     supers,
+    pysupers,
     body,
   };
 }
@@ -761,7 +767,7 @@ export class Converter {
       throw new Error(`Unhandled static member kind ${member.getKindName()}`);
     }
     const entries = methodEntries.concat(staticMethodEntries);
-    return pyClass(name, supers, entries.join("\n"));
+    return pyClass(name, supers, [], entries.join("\n"));
   }
 
   convertInterface(
@@ -771,6 +777,7 @@ export class Converter {
     staticMembers: TypeElementTypes[],
     typeParams: string[],
   ): PyClass {
+    const pySupers = [];
     const { methods, properties } = groupMembers(members);
     const {
       methods: staticMethods,
@@ -785,17 +792,29 @@ export class Converter {
       supers.push(`Generic[${typeParamsList}]`);
     }
 
-    const overloadGroups = Object.entries(methods)
-      .filter(([name]) => !name.includes("["))
-      .map(([name, sigs]) => this.overloadGroupToPython(name, sigs));
+    const overloadGroups = Object.entries(methods).map(([name, sigs]) =>
+      this.overloadGroupToPython(name, sigs),
+    );
     if (constructors) {
       staticMethods["new"] = constructors.map((decl) => decl.getSignature());
     }
-    const staticOverloadGroups = Object.entries(staticMethods)
-      .filter(([name]) => !name.includes("["))
-      .map(([name, sigs]) =>
-        this.overloadGroupToPython(name, sigs, ["classmethod"]),
-      );
+    if ("[Symbol.iterator]" in methods) {
+      const x = methods["[Symbol.iterator]"];
+      delete methods["[Symbol.iterator]"];
+      const typeNode = x[0]
+        .getDeclaration()
+        .getReturnTypeNode()
+        .asKindOrThrow(SyntaxKind.TypeReference);
+      if (typeNode.getTypeName().getText() !== "IterableIterator") {
+        throw new Error("Surprise!");
+      }
+      const typeArg = typeNode.getTypeArguments()[0];
+      const pyType = this.typeToPython(typeArg, false, Variance.covar);
+      pySupers.push(`PyIterable[${pyType}]`);
+    }
+    const staticOverloadGroups = Object.entries(staticMethods).map(
+      ([name, sigs]) => this.overloadGroupToPython(name, sigs, ["classmethod"]),
+    );
     const renderedProps: [string, string][] = properties.map((prop) => [
       prop.getName(),
       this.convertPropertySignature(prop),
@@ -811,7 +830,7 @@ export class Converter {
       .concat(staticOverloadGroups)
       .flatMap((gp) => renderSignatureGroup(gp, true));
     const entries = props.concat(pyMethods);
-    return pyClass(name, supers, entries.join("\n"));
+    return pyClass(name, supers, pySupers, entries.join("\n"));
   }
 
   convertPropertySignature(

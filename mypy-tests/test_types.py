@@ -224,3 +224,11 @@ def type_request() -> None:
         body="abc",
         signal=sig.signal,
     )
+
+
+@pytest.mark.mypy_testing
+def type_iterable() -> None:
+    from js import Int8Array
+
+    for x in Int8Array.new([1, 2, 3]):
+        reveal_type(x)  # R: Union[builtins.int, builtins.float]
