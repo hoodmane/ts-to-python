@@ -9,7 +9,6 @@ import {
   LiteralTypeNode,
   MethodSignature,
   Node,
-  ParameterDeclaration,
   Project,
   PropertySignature,
   Signature,

@@ -1,2 +1,5 @@
 node_modules
 .mypy_cache
+.venv
+generated
+__pycache__
