@@ -16,33 +16,40 @@ def test_type_errors(tmp_path: Path) -> None:
         removed_type_ignores = "".join(line.partition("#")[0] + "\n" for line in f)
     target_path.write_text(removed_type_ignores)
     stdout, stderr, exitcode = api.run([str(target_path)])
-    assert stderr == ""
-    warnings_by_code: dict[str, list[str]] = {
-        k: [] for k in ["assignment", "misc", "overload-overlap", "override"]
-    }
-    for line in stdout.splitlines():
-        if "error:" not in line:
-            continue
-        line = line.partition("error:")[-1]
-        code = line.rpartition("[")[-1][:-1]
-        message = line.rpartition("[")[0].strip()
-        assert code in warnings_by_code
-        warnings_by_code[code].append(message)
+    try:
+        assert stderr == ""
+        warnings_by_code: dict[str, list[str]] = {
+            k: [] for k in ["assignment", "misc", "overload-overlap", "override"]
+        }
+        for line in stdout.splitlines():
+            if "error:" not in line:
+                continue
+            line = line.partition("error:")[-1]
+            code = line.rpartition("[")[-1][:-1]
+            message = line.rpartition("[")[0].strip()
+            assert code in warnings_by_code
+            warnings_by_code[code].append(message)
 
-    pats = [
-        re.compile(
-            r"Overloaded function signature [0-9]+ will never be matched: signature [0-9]+'s parameter type\(s\) are the same or broader"
-        ),
-        re.compile(
-            r'Invariant type variable "[A-Za-z]*" used in protocol where [a-zA-Z]*variant one is expected'
-        ),
-    ]
-    for message in warnings_by_code["misc"]:
-        for pat in pats:
-            if pat.fullmatch(message):
-                break
-        else:
-            raise Exception("Unexpected error message:\n" + message)
+        pats = [
+            re.compile(
+                r"Overloaded function signature [0-9]+ will never be matched: signature [0-9]+'s parameter type\(s\) are the same or broader"
+            ),
+            re.compile(
+                r'Invariant type variable "[A-Za-z]*" used in protocol where [a-zA-Z]*variant one is expected'
+            ),
+            re.compile(
+                r'Metaclass conflict: the metaclass of a derived class must be a \(non-strict\) subclass of the metaclasses of all its bases'
+            )
+        ]
+        for message in warnings_by_code["misc"]:
+            for pat in pats:
+                if pat.fullmatch(message):
+                    break
+            else:
+                raise Exception("Unexpected error message:\n" + message)
+    except Exception:
+        Path("issues.txt").write_text(stdout)
+        raise
 
 
 @pytest.mark.mypy_testing

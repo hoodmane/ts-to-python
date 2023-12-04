@@ -30,7 +30,7 @@ class DoNotCallThis:
     pass
 
 class _JsObject(metaclass=_JsMeta):
-    def __new__(do_not_call: DoNotCallThis):
+    def __new__(self, do_not_call: DoNotCallThis) -> _JsObject:
       ...
 
 class Record(JsProxy, Generic[S, T]):
