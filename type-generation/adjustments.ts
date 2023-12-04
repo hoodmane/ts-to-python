@@ -1,6 +1,7 @@
 import { TypeNode } from "ts-morph";
 import { type Converter } from "./extract";
 import { PyClass, Variance, reverseVariance } from "./types";
+import { PySig } from "./render";
 
 export const IMPORTS = `
 from collections.abc import Callable, Iterable as PyIterable, Iterator as PyIterator, MutableSequence as PyMutableSequence
@@ -98,7 +99,7 @@ export const TYPE_TEXT_MAP: Record<string, string> = {
   "Window & typeof globalThis": "Any",
 };
 
-export function adjustPyClass(cls: PyClass): PyClass {
+export function adjustPyClass(cls: PyClass): void {
   if (cls.name === "Response") {
     // JavaScript allows static methods and instance methods to share the same
     // name, Python does not usually allow this. I think the only place where it
@@ -115,7 +116,27 @@ export function adjustPyClass(cls: PyClass): PyClass {
     lines.splice(idx + 1, 0, ...toAdd);
     cls.body = lines.join("\n");
   }
-  return cls;
+  if (
+    ["Response_iface", "String", "DataView"].includes(cls.name) ||
+    (cls.name.includes("Array") && !cls.name.includes("Float"))
+  ) {
+    cls.body = cls.body.replace("int | float", "int");
+  }
+}
+
+export function adjustPySig(name: string, sig: PySig): void {
+  if (["setTimeout", "setInterval"].includes(name)) {
+    sig.returns = "int | JsProxy";
+  }
+  if (["setTimeout", "setInterval"].includes(name)) {
+    sig.returns = "int | JsProxy";
+  }
+  if (["clearTimeout", "clearInterval"].includes(name)) {
+    sig.params[0].pyType = "int | JsProxy";
+  }
+  if (name === "fromEntries") {
+    sig.returns = "JsProxy";
+  }
 }
 
 export function typeReferenceSubsitutions(

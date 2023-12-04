@@ -3,6 +3,7 @@ import {
   METHOD_TYPE_IGNORES,
   PROPERTY_TYPE_IGNORES,
   adjustPyClass,
+  adjustPySig,
 } from "./adjustments.ts";
 import { PyClass } from "./types.ts";
 
@@ -38,7 +39,7 @@ function indent(x: string, prefix: string): string {
 }
 
 export function renderPyClass(cls: PyClass): string {
-  cls = adjustPyClass(cls);
+  adjustPyClass(cls);
   let { name, supers, body } = cls;
   if (body.trim() === "") {
     body = "pass";
@@ -140,6 +141,7 @@ export function renderSignature(
   if (isIllegal(name)) {
     return "";
   }
+  adjustPySig(name, sig);
   name = sanitizeReservedWords(name);
   const formattedParams = sig.params.map(renderParam);
   if (isMethod) {
