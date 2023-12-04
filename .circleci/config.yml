@@ -1,0 +1,61 @@
+version: 2.1
+orbs:
+  node: circleci/node@5.1.0
+  python: circleci/python@2.1.1
+jobs:
+  js-unit:
+    executor: 
+      name: node/default
+      tag: 20.10.0
+    steps:
+      - checkout
+      - node/install-packages:
+          app-dir: "type-generation-input-project"
+      - node/install-packages:
+          app-dir: "type-generation"
+      - run: |
+          npm run -C type-generation test
+  generate:
+    executor: 
+      name: node/default
+      tag: 20.10.0
+    steps:
+      - checkout
+      - node/install-packages:
+          app-dir: "type-generation-input-project"
+      - node/install-packages:
+          app-dir: "type-generation"
+      - run: |
+          npm run -C type-generation build
+      - persist_to_workspace:
+          root: .
+          paths:
+            - ./generated
+  test:
+    executor:
+      name: python/default
+      tag: "3.11"
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - python/install-packages:
+          pip-dependency-file: mypy-tests/requirements.txt
+          pkg-manager: pip
+      - run:
+          name: Test
+          command: |
+            python -c 'from pathlib import Path; import pyodide as m; (Path(m.__path__[0]) / "py.typed").write_text("")'
+            python -c 'from pathlib import Path; import _pyodide as m; (Path(m.__path__[0]) / "py.typed").write_text("")'
+            mkdir test-results
+            pytest mypy-tests --junitxml=test-results/junit.xml --verbose --color=yes
+      - store_test_results:
+          path: test-results
+workflows:
+  build_and_test:
+    jobs:
+      - js-unit
+      - generate
+      - test:
+          requires:
+            - generate

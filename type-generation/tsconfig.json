@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2023",
+    "target": "esnext",
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "module": "NodeNext",

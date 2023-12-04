@@ -10,7 +10,7 @@ import re
 def test_type_errors(tmp_path: Path) -> None:
     from mypy import api
 
-    source_path = "js/__init__.pyi"
+    source_path = Path(__file__).parent / "js/__init__.pyi"
     target_path = tmp_path / "js.pyi"
     with open(source_path) as f:
         removed_type_ignores = "".join(line.partition("#")[0] + "\n" for line in f)
