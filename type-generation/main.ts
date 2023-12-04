@@ -7,7 +7,7 @@ Error.stackTraceLimit = Infinity;
 function main() {
   const converter = new Converter();
   let files: SourceFile[];
-  converter.project.addSourceFilesAtPaths("../../input_example/a.ts");
+  converter.project.addSourceFilesAtPaths("../type-generation-input-project/a.ts");
   files = converter.project.resolveSourceFileDependencies();
   const result = converter
     .emit(files)

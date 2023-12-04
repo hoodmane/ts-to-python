@@ -253,8 +253,8 @@ export class Converter {
   typeParams: Set<string>;
   constructor() {
     this.project = new Project({
-      tsConfigFilePath: "../../input_example/tsconfig.json",
-      libFolderPath: "../../input_example/node_modules/typescript/lib",
+      tsConfigFilePath: "../type-generation-input-project/tsconfig.json",
+      libFolderPath: "../type-generation-input-project/node_modules/typescript/lib",
     });
     this.convertedSet = new Set(BUILTIN_NAMES);
     this.neededSet = new Set();
