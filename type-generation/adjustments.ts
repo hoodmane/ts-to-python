@@ -1,6 +1,6 @@
 import { TypeNode } from "ts-morph";
 import { type Converter } from "./extract";
-import { Variance, reverseVariance } from "./types";
+import { PyClass, Variance, reverseVariance } from "./types";
 
 export const IMPORTS = `
 from collections.abc import Callable, Iterable as PyIterable, Iterator as PyIterator, MutableSequence as PyMutableSequence
@@ -97,6 +97,26 @@ export const TYPE_TEXT_MAP: Record<string, string> = {
   never: "Never",
   "Window & typeof globalThis": "Any",
 };
+
+export function adjustPyClass(cls: PyClass): PyClass {
+  if (cls.name === "Response") {
+    // JavaScript allows static methods and instance methods to share the same
+    // name, Python does not usually allow this. I think the only place where it
+    // happens is with `Response.json`. We can hack it by allowing all
+    // signatures on instances and on the class. This adds the missing class
+    // signature.
+    const lines = cls.body.split("\n");
+    const idx = lines.findLastIndex((v) => v.includes("json"));
+    const toAdd = [
+      "@classmethod",
+      "@overload",
+      "def json(self, /) -> Future[Any]: ...",
+    ];
+    lines.splice(idx + 1, 0, ...toAdd);
+    cls.body = lines.join("\n");
+  }
+  return cls;
+}
 
 export function typeReferenceSubsitutions(
   converter: Converter,

@@ -2,6 +2,7 @@ import {
   CLASS_TYPE_IGNORES,
   METHOD_TYPE_IGNORES,
   PROPERTY_TYPE_IGNORES,
+  adjustPyClass,
 } from "./adjustments.ts";
 import { PyClass } from "./types.ts";
 
@@ -36,7 +37,9 @@ function indent(x: string, prefix: string): string {
     .join("\n");
 }
 
-export function renderPyClass({ name, supers, body }: PyClass): string {
+export function renderPyClass(cls: PyClass): string {
+  cls = adjustPyClass(cls);
+  let { name, supers, body } = cls;
   if (body.trim() === "") {
     body = "pass";
   }
