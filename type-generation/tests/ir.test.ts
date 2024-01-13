@@ -1,5 +1,5 @@
 import { Converter } from "../extract";
-import { typeToIR } from "../typeToIR";
+import { typeToIR } from "../astToIR";
 import { getTypeNode } from "./helpers";
 
 function typeToIRHelper(tsType: string, converter?: Converter) {
@@ -10,7 +10,9 @@ function typeToIRHelper(tsType: string, converter?: Converter) {
   const ir = typeToIR(typeNode);
   if (ir.kind === "reference") {
     // @ts-expect-error
-    ir.ident = ir.ident.getText();
+    ir.ident = ir.identName;
+    ir.identName = undefined;
+    ir.identIndex = undefined;
   }
   // console.dir(ir, { depth: null });
   return ir;

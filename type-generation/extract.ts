@@ -1,13 +1,8 @@
 import {
   ClassDeclaration,
-  ConstructSignatureDeclaration,
-  EntityName,
   FunctionDeclaration,
-  FunctionTypeNode,
   Identifier,
   InterfaceDeclaration,
-  LiteralTypeNode,
-  MethodSignature,
   Node,
   Project,
   PropertySignature,
@@ -15,14 +10,10 @@ import {
   SignaturedDeclaration,
   SourceFile,
   SyntaxKind,
-  TypeAliasDeclaration,
-  TypeArgumentedNode,
   TypeElementTypes,
   TypeLiteralNode,
   TypeNode,
-  TypeParameterDeclaration,
   TypeReferenceNode,
-  UnionTypeNode,
   VariableDeclaration,
 } from "ts-morph";
 import {
@@ -42,15 +33,13 @@ import { PyClass } from "./types.ts";
 import {
   BUILTIN_NAMES,
   IMPORTS,
-  TYPE_TEXT_MAP,
   getExtraBases,
   typeReferenceSubsitutions,
 } from "./adjustments.ts";
 
-import { groupBy, groupByGen, WrappedGen, split, popElt } from "./groupBy.ts";
+import { groupBy, split, popElt } from "./groupBy.ts";
 import {
   ClassifiedIdentifier,
-  GroupedBySyntaxKind,
   Needed,
   PyOther,
   PyTopLevel,
@@ -63,7 +52,15 @@ import {
   getNodeLocation,
   groupMembers,
 } from "./astUtils.ts";
-import { ParamIR, SigIR, TypeIR, sigToIR, typeToIR } from "./typeToIR.ts";
+import {
+  IDENT_ARRAY,
+  ParamIR,
+  SigIR,
+  TypeIR,
+  sigToIR,
+  sigToIRDestructure,
+  typeToIR,
+} from "./astToIR.ts";
 
 function assertUnreachable(_value: never): never {
   throw new Error("Statement should be unreachable");
@@ -512,52 +509,13 @@ export class Converter {
     return renderInnerSignature(pySig);
   }
 
-  getInterfaceDeclToDestructure(
-    sig: Signature,
-  ): InterfaceDeclaration | undefined {
-    const decl = sig.getDeclaration() as SignaturedDeclaration;
-    const defs = decl
-      .getParameters()
-      .at(-1)
-      ?.getTypeNode()
-      .asKind(SyntaxKind.TypeReference)
-      ?.getTypeName()
-      ?.asKind(SyntaxKind.Identifier)
-      ?.getDefinitionNodes();
-    if (defs?.length !== 1) {
-      return undefined;
-    }
-    return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
-  }
-
   sigToPythonDestructure(
     sig: Signature,
     variance: Variance,
     decorators: string[] = [],
   ): PySig[] {
-    const sigIR = sigToIR(sig);
-    const pySig = this.sigIRToPython(sigIR, variance, decorators);
-
-    const toDestructure = this.getInterfaceDeclToDestructure(sig);
-    if (!toDestructure) {
-      return [pySig];
-    }
-    const pySigDestructured = structuredClone(pySig);
-    pySigDestructured.params.pop();
-    const paramVariance = reverseVariance(variance);
-    const kwargs: PyParam[] = [];
-    for (const prop of toDestructure.getProperties()) {
-      const name = prop.getName();
-      const optional = !!prop.getQuestionTokenNode();
-      const pyType = this.typeToPython(
-        prop.getTypeNode()!,
-        optional,
-        paramVariance,
-      );
-      kwargs.push({ name, pyType, optional });
-    }
-    pySigDestructured.kwparams = kwargs;
-    return [pySig, pySigDestructured];
+    const sigsIR = sigToIRDestructure(sig);
+    return sigsIR.map((sig) => this.sigIRToPython(sig, variance, decorators));
   }
 
   sigIRToPython(
@@ -595,7 +553,6 @@ export class Converter {
   }
 
   convertClass(decl: ClassDeclaration): PyClass {
-    // MethodDeclaration | PropertyDeclaration | GetAccessorDeclaration | SetAccessorDeclaration | ConstructorDeclaration | ClassStaticBlockDeclaration;
     const name = decl.getName();
     const supers = this.getBaseNames([decl]);
     const staticMembers = decl.getStaticMembers();
@@ -660,8 +617,9 @@ export class Converter {
     for (const key of Object.keys(staticMethods)) {
       delete methods[key];
     }
+    typeParams = Array.from(new Set(typeParams));
     if (typeParams.length > 0) {
-      const typeParamsList = Array.from(new Set(typeParams)).join(",");
+      const typeParamsList = typeParams.join(",");
       supers.push(`Generic[${typeParamsList}]`);
     }
     const extraEntries: string[] = [];
@@ -820,13 +778,6 @@ export class Converter {
       const inner = this.typeIRToPython(ir.type, false, variance);
       return `(${inner})`;
     }
-    // if (type.getCallSignatures().length > 0) {
-    //   return this.convertSignatures(
-    //     type.getCallSignatures(),
-    //     variance,
-    //     topLevelName,
-    //   );
-    // }
     if (ir.kind === "array") {
       const eltType = this.typeIRToPython(ir.type, false, variance);
       if (variance === Variance.contra) {
@@ -858,8 +809,8 @@ export class Converter {
       return ir.name;
     }
     if (ir.kind === "reference") {
-      const { ident, typeArgs } = ir;
-      let name = ir.ident.getText();
+      let { identName: name, identIndex, typeArgs } = ir;
+      const ident = IDENT_ARRAY[identIndex];
       const res = typeReferenceSubsitutions(this, name, typeArgs, variance);
       if (res) {
         return res;
