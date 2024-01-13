@@ -99,6 +99,7 @@ export type InterfaceIR = {
   methods: SigGroupIR[];
   properties: PropertyIR[];
   typeParams: string[];
+  supers : string[],
 };
 
 function simpleType(text: string): SimpleTypeIR {
@@ -412,6 +413,7 @@ export function propertySignatureToIR(
 
 export function interfaceToIR(
   name: string,
+  supers: string[],
   members: TypeElementTypes[],
   staticMembers: TypeElementTypes[],
   typeParams: string[],
@@ -485,5 +487,5 @@ export function interfaceToIR(
     staticAstProperties.map((prop) => propertySignatureToIR(prop, true)),
   );
   const props = uniqBy(irProps, ({ name }) => name);
-  return { methods: irMethods, properties: props, name, typeParams };
+  return { methods: irMethods, properties: props, name, typeParams, supers };
 }

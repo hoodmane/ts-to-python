@@ -616,8 +616,8 @@ export class Converter {
     staticMembers: TypeElementTypes[],
     typeParams: string[],
   ): PyClass {
-    const irInterface = interfaceToIR(name, members, staticMembers, typeParams);
-    return this.renderInterface(irInterface, supers);
+    const irInterface = interfaceToIR(name, supers, members, staticMembers, typeParams);
+    return this.renderInterface(irInterface);
   }
 
   signatureGroupIRToPython({ name, sigs, isStatic }: SigGroupIR): PySigGroup {
@@ -632,8 +632,7 @@ export class Converter {
   }
 
   renderInterface(
-    { name, properties, methods, typeParams }: InterfaceIR,
-    supers: string[],
+    { name, properties, methods, typeParams, supers }: InterfaceIR,
   ): PyClass {
     const entries = ([] as string[]).concat(
       properties.map((prop) => this.renderProperty(prop)),
@@ -641,6 +640,7 @@ export class Converter {
     );
     if (typeParams.length > 0) {
       const joined = typeParams.join(", ");
+      supers = structuredClone(supers);
       supers.push(`Generic[${joined}]`);
     }
     return pyClass(name, supers, entries.join("\n"));
