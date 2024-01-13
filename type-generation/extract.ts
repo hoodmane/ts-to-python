@@ -52,13 +52,16 @@ import {
   getNodeLocation,
 } from "./astUtils.ts";
 import {
+  BaseIR,
   InterfaceIR,
   ParamIR,
   PropertyIR,
   SigGroupIR,
   SigIR,
   TypeIR,
+  declsToBases,
   interfaceToIR,
+  membersDeclarationToIR,
   propertySignatureToIR,
   sigToIR,
   sigToIRDestructure,
@@ -145,24 +148,8 @@ export class Converter {
   }
 
   getBaseNames(defs: (InterfaceDeclaration | ClassDeclaration)[]): string[] {
-    let extends_ = defs.flatMap((def) => def.getExtends() || []);
-    extends_ = uniqBy(extends_, (base) => base.getText());
-    return extends_.flatMap((extend): string | [] => {
-      let ident = extend.getExpression();
-      if (!Node.isIdentifier(ident)) {
-        return [];
-      }
-      this.addNeededInterface(ident);
-      const name = extend.getExpression().getText();
-      const typeArgNodes = getExpressionTypeArgs(ident, extend);
-      // Unfortunately typescript doesn't expose getVariances on the type
-      // checker, so we probably can't figure out what to put here.
-      const pyArgs = typeArgNodes.map((node) =>
-        this.typeToPython(node, false, Variance.none),
-      );
-      const args = pyArgs.length > 0 ? `[${pyArgs.join(", ")}]` : "";
-      return name + "_iface" + args;
-    });
+    const bases = declsToBases(defs);
+    return bases.map((base) => this.renderBase(base));
   }
 
   emit(files: SourceFile[]): string[] {
@@ -206,8 +193,8 @@ export class Converter {
           .getDefinitionNodes()
           .filter(Node.isInterfaceDeclaration);
         if (defs.length) {
-          const baseNames = this.getBaseNames(defs).filter(
-            (base) => base !== name,
+          const baseNames = declsToBases(defs).filter(
+            (base) => base.name !== name,
           );
           const typeParams = defs
             .flatMap((i) => i.getTypeParameters())
@@ -284,17 +271,7 @@ export class Converter {
     return output;
   }
 
-  getInterfaceTypeParams(ident: Identifier): string[] {
-    return Array.from(
-      new Set(
-        ident
-          .getDefinitionNodes()
-          .filter(Node.isInterfaceDeclaration)
-          .flatMap((def) => def.getTypeParameters())
-          .map((param) => param.getName()),
-      ),
-    );
-  }
+
 
   convertNeededIdent(ident: Identifier): PyTopLevel | undefined {
     const name = ident.getText();
@@ -309,11 +286,10 @@ export class Converter {
     switch (classified.kind) {
       case "interfaces":
         const ifaces = classified.ifaces;
-        const baseNames = this.getBaseNames(ifaces);
+        const baseNames = declsToBases(ifaces);
         const typeParams = ifaces
           .flatMap((i) => i.getTypeParameters())
           .map((p) => p.getName());
-
         return this.convertInterface(
           name,
           baseNames,
@@ -378,7 +354,7 @@ export class Converter {
     if (Node.isTypeReference(typeNode)) {
       // This also could be a constructor like `declare X: XConstructor` where
       // XConstructor has a prototype and 'new' signatures. Or not...
-      return this.convertVarDeclOfReferenceType(name, typeNode);
+        return this.convertVarDeclOfReferenceType(name, typeNode);
     }
     if (Node.isIntersectionTypeNode(typeNode)) {
       if (varDecl.getTypeNode().getText() === "Window & typeof globalThis") {
@@ -439,39 +415,11 @@ export class Converter {
   convertMembersDeclaration(
     name: string,
     type: { getMembers: TypeLiteralNode["getMembers"] },
-    bases = [],
+    bases: never[] = [],
     typeParams: string[],
   ): PyClass {
-    const [prototypes, staticMembers] = split(
-      type.getMembers(),
-      (m): m is PropertySignature =>
-        m.isKind(SyntaxKind.PropertySignature) && m.getName() === "prototype",
-    );
-    let members: TypeElementTypes[] = [];
-    for (const proto of prototypes) {
-      const typeNode = proto.getTypeNode();
-      if (!Node.isTypeReference(typeNode)) {
-        console.warn(
-          "Excepted prototype type to be TypeReference",
-          proto.getText(),
-        );
-        continue;
-      }
-      const ident = typeNode.getTypeName() as Identifier;
-      this.addNeededInterface(ident);
-      const name = ident.getText() + "_iface";
-      const typeParams = this.getInterfaceTypeParams(ident);
-      const arg = typeParams.length ? `[${typeParams.join(",")}]` : "";
-      const base = name + arg;
-      bases.push(base);
-    }
-    return this.convertInterface(
-      name,
-      bases,
-      members,
-      staticMembers,
-      typeParams,
-    );
+    const irInterface = membersDeclarationToIR(name, type, bases, typeParams);
+    return this.renderInterface(irInterface);
   }
 
   convertSignatures(
@@ -609,7 +557,7 @@ export class Converter {
 
   convertInterface(
     name: string,
-    supers: string[],
+    supers: BaseIR[],
     members: TypeElementTypes[],
     staticMembers: TypeElementTypes[],
     typeParams: string[],
@@ -635,23 +583,34 @@ export class Converter {
     return renderSignatureGroup(this.signatureGroupIRToPython(sigGroup), true);
   }
 
+  renderBase({name, ident, typeParams} : BaseIR) : string {
+    if (ident) {
+      this.addNeededInterface(ident as Identifier);
+    }
+    if (typeParams.length > 0) {
+      const joined = typeParams.map(t => this.typeIRToPython(t, false, Variance.covar)).join(", ");
+      name += `[${joined}]`;
+    }
+    return name;
+  }
+
   renderInterface({
     name,
     properties,
     methods,
     typeParams,
-    supers,
+    bases,
   }: InterfaceIR): PyClass {
     const entries = ([] as string[]).concat(
       properties.map((prop) => this.renderProperty(prop)),
       methods.flatMap((gp) => this.renderSignatureGroup(gp)),
     );
+    const newSupers = bases.map(b => this.renderBase(b));
     if (typeParams.length > 0) {
       const joined = typeParams.join(", ");
-      supers = structuredClone(supers);
-      supers.push(`Generic[${joined}]`);
+      newSupers.push(`Generic[${joined}]`);
     }
-    return pyClass(name, supers, entries.join("\n"));
+    return pyClass(name, newSupers, entries.join("\n"));
   }
 
   convertPropertySignature(
