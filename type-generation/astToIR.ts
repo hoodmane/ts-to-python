@@ -56,10 +56,8 @@ type OtherTypeIR = { kind: "other"; nodeKind: string; location: string };
 type ParameterReferenceTypeIR = { kind: "parameterReference"; name: string };
 export type ReferenceTypeIR = {
   kind: "reference";
+  ident?: EntityName;
   identName: string;
-  // EntityName is not structuredCloneable, and we don't really want to clone it
-  // in any case. So we stick the EntityName in a list and store the index.
-  identIndex: number;
   typeArgs: TypeIR[];
 };
 
@@ -99,7 +97,7 @@ export type InterfaceIR = {
   methods: SigGroupIR[];
   properties: PropertyIR[];
   typeParams: string[];
-  supers : string[],
+  supers: string[];
 };
 
 function simpleType(text: string): SimpleTypeIR {
@@ -220,9 +218,6 @@ function intersectionToIR(typeNode: IntersectionTypeNode) {
   );
 }
 
-// EntityName is not structuredCloneable, and we don't really want to clone it
-// in any case. So we stick the EntityName in this list and store the index.
-export const IDENT_ARRAY: EntityName[] = [];
 function typeReferenceToIR(typeNode: TypeReferenceNode): TypeIR {
   if (Node.isTypeReference(typeNode)) {
     const ident = typeNode.getTypeName();
@@ -234,8 +229,7 @@ function typeReferenceToIR(typeNode: TypeReferenceNode): TypeIR {
       typeToIR(ty),
     );
     const identName = ident.getText();
-    const identIndex = IDENT_ARRAY.push(ident) - 1;
-    return { kind: "reference", identName, identIndex, typeArgs };
+    return { kind: "reference", ident, identName, typeArgs };
   }
 }
 
@@ -364,6 +358,18 @@ function getInterfaceDeclToDestructure(
 }
 
 /**
+ * Ad hoc depth 2 copy
+ *
+ * It would be nice to use structuredClone but we'd like to store refs to the
+ * EntityName and these are not cloneable.
+ */
+function depth2CopySig({ params, spreadParam, kwparams, returns }: SigIR) {
+  params = Array.from(params);
+  kwparams = kwparams && Array.from(kwparams);
+  return { params, spreadParam, kwparams, returns };
+}
+
+/**
  * If the last parameter of sig is an interface, return a pair of signatures:
  * 1. the original signature unaltered
  * 2. a signature where the entries of the last parameter are passed as key word
@@ -378,7 +384,7 @@ export function sigToIRDestructure(sig: Signature): [SigIR] | [SigIR, SigIR] {
   if (!toDestructure) {
     return [sigIR];
   }
-  const sigIRDestructured = structuredClone(sigIR);
+  const sigIRDestructured = depth2CopySig(sigIR);
   sigIRDestructured.params.pop();
   const kwargs: ParamIR[] = [];
   for (const prop of toDestructure.getProperties()) {
@@ -445,8 +451,8 @@ export function interfaceToIR(
     if (returns.kind === "parameterReference") {
       throw new Error("Cannot happen!");
     }
-    returns.identIndex = -1;
     returns.identName = "PyIterator";
+    returns.ident = undefined;
     extraMethods.push({ name: "__iter__", sigs: [{ params: [], returns }] });
   }
   if (

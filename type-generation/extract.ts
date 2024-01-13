@@ -50,10 +50,8 @@ import {
   classifyIdentifier,
   getExpressionTypeArgs,
   getNodeLocation,
-  groupMembers,
 } from "./astUtils.ts";
 import {
-  IDENT_ARRAY,
   InterfaceIR,
   ParamIR,
   PropertyIR,
@@ -616,7 +614,13 @@ export class Converter {
     staticMembers: TypeElementTypes[],
     typeParams: string[],
   ): PyClass {
-    const irInterface = interfaceToIR(name, supers, members, staticMembers, typeParams);
+    const irInterface = interfaceToIR(
+      name,
+      supers,
+      members,
+      staticMembers,
+      typeParams,
+    );
     return this.renderInterface(irInterface);
   }
 
@@ -631,9 +635,13 @@ export class Converter {
     return renderSignatureGroup(this.signatureGroupIRToPython(sigGroup), true);
   }
 
-  renderInterface(
-    { name, properties, methods, typeParams, supers }: InterfaceIR,
-  ): PyClass {
+  renderInterface({
+    name,
+    properties,
+    methods,
+    typeParams,
+    supers,
+  }: InterfaceIR): PyClass {
     const entries = ([] as string[]).concat(
       properties.map((prop) => this.renderProperty(prop)),
       methods.flatMap((gp) => this.renderSignatureGroup(gp)),
@@ -756,15 +764,14 @@ export class Converter {
       return ir.name;
     }
     if (ir.kind === "reference") {
-      let { identName: name, identIndex, typeArgs } = ir;
-      const ident = IDENT_ARRAY[identIndex];
+      let { identName: name, ident, typeArgs } = ir;
       const res = typeReferenceSubsitutions(this, name, typeArgs, variance);
       if (res) {
         return res;
       }
       // negative identIndex means this is a manually inserted type so we don't
       // have to handle it.
-      if (identIndex >= 0 && !this.convertedSet.has(name)) {
+      if (ident && !this.convertedSet.has(name)) {
         if (Node.isQualifiedName(ident)) {
           return "Any";
         }
