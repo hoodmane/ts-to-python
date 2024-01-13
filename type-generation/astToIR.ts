@@ -4,9 +4,11 @@ import {
   IntersectionTypeNode,
   LiteralTypeNode,
   Node,
+  PropertySignature,
   Signature,
   SignaturedDeclaration,
   SyntaxKind,
+  TypeElementTypes,
   TypeNode,
   TypeOperatorTypeNode,
   TypeReferenceNode,
@@ -14,7 +16,12 @@ import {
 } from "ts-morph";
 import { TYPE_TEXT_MAP } from "./adjustments";
 import { split } from "./groupBy";
-import { getExpressionTypeArgs, getNodeLocation } from "./astUtils";
+import {
+  getExpressionTypeArgs,
+  getNodeLocation,
+  groupMembers,
+} from "./astUtils";
+import { uniqBy } from "./render";
 
 export type TypeIR =
   | SimpleTypeIR
@@ -68,9 +75,30 @@ export type SigIR = {
   returns: TypeIR;
 };
 
+export type SigGroupIR = {
+  name: string;
+  sigs: SigIR[];
+  isStatic?: boolean;
+};
+
 type CallableIR = {
   kind: "callable";
   signatures: SigIR[];
+};
+
+export type PropertyIR = {
+  type: TypeIR;
+  name: string;
+  isOptional: boolean;
+  isStatic: boolean;
+  isReadonly: boolean;
+};
+
+export type InterfaceIR = {
+  name: string;
+  methods: SigGroupIR[];
+  properties: PropertyIR[];
+  typeParams: string[];
 };
 
 function simpleType(text: string): SimpleTypeIR {
@@ -217,6 +245,11 @@ function otherTypeToIR(node: Node): OtherTypeIR {
 }
 
 export function typeToIR(
+  typeNode: TypeReferenceNode,
+  isOptional?: boolean,
+): ReferenceTypeIR | ParameterReferenceTypeIR;
+export function typeToIR(typeNode: TypeNode, isOptional?: boolean): TypeIR;
+export function typeToIR(
   typeNode: TypeNode,
   isOptional: boolean = false,
 ): TypeIR {
@@ -273,7 +306,6 @@ export function typeToIR(
   return otherTypeToIR(typeNode);
 }
 
-
 export function sigToIR(sig: Signature): SigIR {
   const decl = sig.getDeclaration() as SignaturedDeclaration;
   try {
@@ -303,14 +335,13 @@ export function sigToIR(sig: Signature): SigIR {
   }
 }
 
-
 /**
  * Helper for sigToIRDestructure
- * 
+ *
  * If the parameter of sig is an Interface, from Python we allow the interface
  * entries to be passed as keyword arguments. Return the InterfaceDeclaration if
  * the last parameter is an interface, else return undefined.
- * 
+ *
  * TODO: make this work for type literals too?
  */
 function getInterfaceDeclToDestructure(
@@ -331,13 +362,12 @@ function getInterfaceDeclToDestructure(
   return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
 }
 
-
 /**
  * If the last parameter of sig is an interface, return a pair of signatures:
  * 1. the original signature unaltered
  * 2. a signature where the entries of the last parameter are passed as key word
  *    arguments.
- * 
+ *
  * TODO: is this correct when all entries of the interface are optional?
  * TODO: What about if the last argument is an object type literal?
  */
@@ -358,4 +388,102 @@ export function sigToIRDestructure(sig: Signature): [SigIR] | [SigIR, SigIR] {
   }
   sigIRDestructured.kwparams = kwargs;
   return [sigIR, sigIRDestructured];
+}
+
+function overloadGroupToIR(
+  name: string,
+  signatures: Signature[],
+  isStatic?: boolean,
+): SigGroupIR {
+  const sigs = signatures.flatMap((sig) => sigToIRDestructure(sig));
+  return { name, sigs, isStatic };
+}
+
+export function propertySignatureToIR(
+  member: PropertySignature,
+  isStatic: boolean = false,
+): PropertyIR {
+  const name = member.getName();
+  const isOptional = member.hasQuestionToken();
+  const type = typeToIR(member.getTypeNode()!, isOptional);
+  const isReadonly = member.isReadonly();
+  return { name, type, isOptional, isStatic, isReadonly };
+}
+
+export function interfaceToIR(
+  name: string,
+  members: TypeElementTypes[],
+  staticMembers: TypeElementTypes[],
+  typeParams: string[],
+): InterfaceIR {
+  const { methods: astMethods, properties: astProperties } =
+    groupMembers(members);
+  const {
+    methods: staticAstMethods,
+    properties: staticAstProperties,
+    constructors,
+  } = groupMembers(staticMembers);
+  const propMap = new Map(astProperties.map((prop) => [prop.getName(), prop]));
+  for (const key of Object.keys(staticAstMethods)) {
+    delete astMethods[key];
+  }
+  typeParams = Array.from(new Set(typeParams));
+  const extraMethods: SigGroupIR[] = [];
+  if ("[Symbol.iterator]" in astMethods) {
+    const x = astMethods["[Symbol.iterator]"];
+    delete astMethods["[Symbol.iterator]"];
+    const typeNode = x[0]
+      .getDeclaration()
+      .getReturnTypeNode()
+      .asKindOrThrow(SyntaxKind.TypeReference);
+    if (typeNode.getTypeName().getText() !== "IterableIterator") {
+      throw new Error("Surprise!");
+    }
+    const returns = typeToIR(typeNode);
+    if (returns.kind === "parameterReference") {
+      throw new Error("Cannot happen!");
+    }
+    returns.identIndex = -1;
+    returns.identName = "PyIterator";
+    extraMethods.push({ name: "__iter__", sigs: [{ params: [], returns }] });
+  }
+  if (
+    name !== "Function_iface" &&
+    (propMap.get("size")?.getTypeNode().getText() === "number" ||
+      propMap.get("length")?.getTypeNode().getText() === "number")
+  ) {
+    extraMethods.push({
+      name: "__len__",
+      sigs: [{ params: [], returns: simpleType("int") }],
+    });
+  }
+  const redirectMethod = (origName: string, newName: string): void => {
+    if (!(origName in astMethods)) {
+      return;
+    }
+    extraMethods.push(overloadGroupToIR(newName, astMethods[origName]));
+  };
+  redirectMethod("has", "__contains__");
+  redirectMethod("includes", "__contains__");
+  redirectMethod("get", "__getitem__");
+  redirectMethod("set", "__setitem__");
+  redirectMethod("delete", "__delitem__");
+  if (constructors) {
+    staticAstMethods["new"] = constructors.map((decl) => decl.getSignature());
+  }
+  const irMethods = ([] as SigGroupIR[]).concat(
+    Object.entries(astMethods).map(([name, sigs]) =>
+      overloadGroupToIR(name, sigs, false),
+    ),
+    Object.entries(staticAstMethods).map(([name, sigs]) =>
+      overloadGroupToIR(name, sigs, true),
+    ),
+    extraMethods,
+  );
+  const irProps = ([] as PropertyIR[]).concat(
+    astProperties.map((prop) => propertySignatureToIR(prop, false)),
+    staticAstProperties.map((prop) => propertySignatureToIR(prop, true)),
+  );
+  const props = uniqBy(irProps, ({ name }) => name);
+  return { methods: irMethods, properties: props, name, typeParams };
 }

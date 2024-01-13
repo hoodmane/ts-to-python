@@ -54,9 +54,14 @@ import {
 } from "./astUtils.ts";
 import {
   IDENT_ARRAY,
+  InterfaceIR,
   ParamIR,
+  PropertyIR,
+  SigGroupIR,
   SigIR,
   TypeIR,
+  interfaceToIR,
+  propertySignatureToIR,
   sigToIR,
   sigToIRDestructure,
   typeToIR,
@@ -522,6 +527,7 @@ export class Converter {
     sig: SigIR,
     variance: Variance,
     decorators: string[] = [],
+    isStatic: boolean = false,
   ): PySig {
     const convertParam = ({ name, optional, type }: ParamIR): PyParam => {
       const pyType = this.typeIRToPython(type, optional, paramVariance);
@@ -540,6 +546,9 @@ export class Converter {
       ? convertParam(origSpreadParam)
       : undefined;
     const returns = this.typeIRToPython(origReturns, false, variance);
+    if (isStatic) {
+      decorators.push("classmethod");
+    }
     return { params, spreadParam, kwparams, returns, decorators };
   }
 
@@ -607,92 +616,33 @@ export class Converter {
     staticMembers: TypeElementTypes[],
     typeParams: string[],
   ): PyClass {
-    const { methods, properties } = groupMembers(members);
-    const {
-      methods: staticMethods,
-      properties: staticProperties,
-      constructors,
-    } = groupMembers(staticMembers);
-    const propMap = new Map(properties.map((prop) => [prop.getName(), prop]));
-    for (const key of Object.keys(staticMethods)) {
-      delete methods[key];
-    }
-    typeParams = Array.from(new Set(typeParams));
-    if (typeParams.length > 0) {
-      const typeParamsList = typeParams.join(",");
-      supers.push(`Generic[${typeParamsList}]`);
-    }
-    const extraEntries: string[] = [];
-    if ("[Symbol.iterator]" in methods) {
-      const x = methods["[Symbol.iterator]"];
-      delete methods["[Symbol.iterator]"];
-      const typeNode = x[0]
-        .getDeclaration()
-        .getReturnTypeNode()
-        .asKindOrThrow(SyntaxKind.TypeReference);
-      if (typeNode.getTypeName().getText() !== "IterableIterator") {
-        throw new Error("Surprise!");
-      }
-      const typeArg = typeNode.getTypeArguments()[0];
-      const pyType = this.typeToPython(typeArg, false, Variance.covar);
-      const returns = `PyIterator[${pyType}]`;
-      const entries = renderSignatureGroup(
-        { name: "__iter__", sigs: [{ params: [], returns }] },
-        true,
-      );
-      extraEntries.push(...entries);
-    }
-    if (
-      name !== "Function_iface" &&
-      (propMap.get("size")?.getTypeNode().getText() === "number" ||
-        propMap.get("length")?.getTypeNode().getText() === "number")
-    ) {
-      const entries = renderSignatureGroup(
-        { name: "__len__", sigs: [{ params: [], returns: "int" }] },
-        true,
-      );
-      extraEntries.push(...entries);
-    }
-    const redirectMethod = (origName: string, newName: string): void => {
-      if (!(origName in methods)) {
-        return;
-      }
-      const entries = renderSignatureGroup(
-        this.overloadGroupToPython(newName, methods[origName]),
-        true,
-      );
-      extraEntries.push(...entries);
-    };
-    redirectMethod("has", "__contains__");
-    redirectMethod("includes", "__contains__");
-    redirectMethod("get", "__getitem__");
-    redirectMethod("set", "__setitem__");
-    redirectMethod("delete", "__delitem__");
-    const overloadGroups = Object.entries(methods).map(([name, sigs]) =>
-      this.overloadGroupToPython(name, sigs),
-    );
-    if (constructors) {
-      staticMethods["new"] = constructors.map((decl) => decl.getSignature());
-    }
+    const irInterface = interfaceToIR(name, members, staticMembers, typeParams);
+    return this.renderInterface(irInterface, supers);
+  }
 
-    const staticOverloadGroups = Object.entries(staticMethods).map(
-      ([name, sigs]) => this.overloadGroupToPython(name, sigs, ["classmethod"]),
+  signatureGroupIRToPython({ name, sigs, isStatic }: SigGroupIR): PySigGroup {
+    const pySigs = sigs.map((sig) =>
+      this.sigIRToPython(sig, Variance.covar, [], isStatic),
     );
-    const renderedProps: [string, string][] = properties.map((prop) => [
-      prop.getName(),
-      this.convertPropertySignature(prop),
-    ]);
-    const renderedStaticProps: [string, string][] = staticProperties.map(
-      (prop) => [prop.getName(), this.convertPropertySignature(prop, true)],
+    return { name, sigs: pySigs };
+  }
+
+  renderSignatureGroup(sigGroup: SigGroupIR): string[] {
+    return renderSignatureGroup(this.signatureGroupIRToPython(sigGroup), true);
+  }
+
+  renderInterface(
+    { name, properties, methods, typeParams }: InterfaceIR,
+    supers: string[],
+  ): PyClass {
+    const entries = ([] as string[]).concat(
+      properties.map((prop) => this.renderProperty(prop)),
+      methods.flatMap((gp) => this.renderSignatureGroup(gp)),
     );
-    renderedProps.push(...renderedStaticProps);
-    const props = uniqBy(renderedProps, ([name]) => name).map(
-      ([_, prop]) => prop,
-    );
-    const pyMethods = overloadGroups
-      .concat(staticOverloadGroups)
-      .flatMap((gp) => renderSignatureGroup(gp, true));
-    const entries = props.concat(pyMethods, extraEntries);
+    if (typeParams.length > 0) {
+      const joined = typeParams.join(", ");
+      supers.push(`Generic[${joined}]`);
+    }
     return pyClass(name, supers, entries.join("\n"));
   }
 
@@ -700,16 +650,13 @@ export class Converter {
     member: PropertySignature,
     isStatic: boolean = false,
   ): string {
-    const memberName = member.getName();
-    const isOptional = member.hasQuestionToken();
-    const pytype = this.typeToPython(
-      member.getTypeNode()!,
-      isOptional,
-      Variance.covar,
-      memberName,
-    );
-    let readOnly = member.isReadonly();
-    return renderProperty(memberName, pytype, readOnly, isStatic);
+    return this.renderProperty(propertySignatureToIR(member, isStatic));
+  }
+
+  renderProperty(property: PropertyIR): string {
+    const { isOptional, name, type, isReadonly, isStatic } = property;
+    const pyType = this.typeIRToPython(type, isOptional, Variance.covar, name);
+    return renderProperty(name, pyType, isReadonly, isStatic);
   }
 
   overloadGroupToPython(
@@ -729,9 +676,6 @@ export class Converter {
     variance: Variance,
     topLevelName?: string,
   ): string {
-    if (isOptional) {
-      topLevelName = undefined;
-    }
     const ir = typeToIR(typeNode);
     return this.typeIRToPython(ir, isOptional, variance, topLevelName);
   }
@@ -742,6 +686,9 @@ export class Converter {
     variance: Variance,
     topLevelName?: string,
   ): string {
+    if (isOptional) {
+      topLevelName = undefined;
+    }
     let result = this.typeIRToPythonInner(ir, variance, topLevelName);
     if (!isOptional) {
       return result;
@@ -815,7 +762,9 @@ export class Converter {
       if (res) {
         return res;
       }
-      if (!this.convertedSet.has(name)) {
+      // negative identIndex means this is a manually inserted type so we don't
+      // have to handle it.
+      if (identIndex >= 0 && !this.convertedSet.has(name)) {
         if (Node.isQualifiedName(ident)) {
           return "Any";
         }
