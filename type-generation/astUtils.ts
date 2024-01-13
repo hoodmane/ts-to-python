@@ -2,6 +2,10 @@ import { ConstructSignatureDeclaration, EntityName, FunctionTypeNode, Identifier
 import { WrappedGen, groupBy, groupByGen, split } from "./groupBy";
 import { ClassifiedIdentifier, GroupedBySyntaxKind } from "./types";
 
+export function assertUnreachable(_value: never): never {
+  throw new Error("Statement should be unreachable");
+}
+
 export function getNodeLocation(node: Node): string {
   const sf = node.getSourceFile();
   const { line, column } = sf.getLineAndColumnAtPos(node.getStart());

@@ -47,6 +47,7 @@ import {
   reverseVariance,
 } from "./types.ts";
 import {
+  assertUnreachable,
   classifyIdentifier,
   getExpressionTypeArgs,
   getNodeLocation,
@@ -58,6 +59,7 @@ import {
   PropertyIR,
   SigGroupIR,
   SigIR,
+  TopLevelIR,
   TypeIR,
   declsToBases,
   interfaceToIR,
@@ -66,11 +68,8 @@ import {
   sigToIR,
   sigToIRDestructure,
   typeToIR,
+  varDeclToIR,
 } from "./astToIR.ts";
-
-function assertUnreachable(_value: never): never {
-  throw new Error("Statement should be unreachable");
-}
 
 function pyClass(name: string, supers: string[], body: string): PyClass {
   const superStems = supers
@@ -271,8 +270,6 @@ export class Converter {
     return output;
   }
 
-
-
   convertNeededIdent(ident: Identifier): PyTopLevel | undefined {
     const name = ident.getText();
     if (this.convertedSet.has(name)) {
@@ -303,7 +300,7 @@ export class Converter {
         }
         return this.convertClass(classified.decl);
       case "typeAlias":
-        const renderedType = this.typeToPython(
+        const renderedType = this.convertType(
           classified.decl.getTypeNode()!,
           false,
           Variance.covar,
@@ -316,7 +313,7 @@ export class Converter {
   }
 
   renderSimpleDecl(name: string, typeNode: TypeNode): string {
-    const renderedType = this.typeToPython(typeNode, false, Variance.covar);
+    const renderedType = this.convertType(typeNode, false, Variance.covar);
     return renderSimpleDeclaration(name, renderedType);
   }
 
@@ -330,86 +327,21 @@ export class Converter {
     ).map(pyOther);
   }
 
-  convertVarDecl(varDecl: VariableDeclaration): PyTopLevel | undefined {
-    const name = sanitizeReservedWords(varDecl.getName());
-    const typeNode = varDecl.getTypeNode()!;
-    if (!typeNode) {
-      return undefined;
-    }
-    if (Node.isTypeLiteral(typeNode)) {
-      // declare var X : {}
-      //
-      // If it looks like declare var X : { prototype: Blah, new(paramspec): ret}
-      // then X is the constructor for a class
-      //
-      // Otherwise it's a global namespace object?
-      try {
-        return this.convertMembersDeclaration(name, typeNode, [], []);
-      } catch (e) {
-        console.warn(varDecl.getText());
-        console.warn(getNodeLocation(varDecl));
-        throw e;
-      }
-    }
-    if (Node.isTypeReference(typeNode)) {
-      // This also could be a constructor like `declare X: XConstructor` where
-      // XConstructor has a prototype and 'new' signatures. Or not...
-        return this.convertVarDeclOfReferenceType(name, typeNode);
-    }
-    if (Node.isIntersectionTypeNode(typeNode)) {
-      if (varDecl.getTypeNode().getText() === "Window & typeof globalThis") {
-        return pyOther(renderSimpleDeclaration(name, "Window"));
-      }
-      console.warn("intersection varDecl:", varDecl.getText());
-      return undefined;
-    }
-    return pyOther(this.renderSimpleDecl(name, typeNode));
+  convertVarDecl(astVarDecl: VariableDeclaration): PyTopLevel | undefined {
+    const irVarDecl = varDeclToIR(astVarDecl);
+    return this.renderTopLevelIR(irVarDecl);
   }
 
-  convertVarDeclOfReferenceType(
-    name: string,
-    typeNode: TypeReferenceNode,
-  ): PyTopLevel {
-    // declare var A : B;
-
-    // Cases:
-    //   A is a constructor ==> inline B
-    //   o/w don't...
-    const ident = typeNode.getTypeName() as Identifier;
-    if (!ident.getDefinitionNodes) {
-      console.warn(ident.getText());
-      return undefined;
+  renderTopLevelIR(toplevel: TopLevelIR): PyTopLevel {
+    if (toplevel.kind === "declaration") {
+      const { name, type } = toplevel;
+      const typeStr = this.renderTypeIR(type, false, Variance.covar);
+      return pyOther(renderSimpleDeclaration(name, typeStr));
     }
-
-    const classified = classifyIdentifier(ident);
-    if (classified.kind === "varDecl" && name !== classified.name) {
-      // We have to check that name !== typeName or else we can pick up the decl
-      // we're currently processing.
-      return pyOther(this.renderSimpleDecl(name, typeNode));
+    if (toplevel.kind === "interface") {
+      return this.renderInterface(toplevel);
     }
-    if (classified.kind === "varDecl" || classified.kind === "interfaces") {
-      const { ifaces } = classified;
-      const typeParams = ifaces
-        .flatMap((i) => i.getTypeParameters())
-        .map((p) => p.getName());
-      return this.convertMembersDeclaration(
-        name,
-        {
-          getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
-        },
-        [],
-        typeParams,
-      );
-    }
-    if (classified.kind === "class") {
-      return pyOther(renderSimpleDeclaration(name, classified.decl.getName()));
-    }
-    if (classified.kind === "typeAlias") {
-      return pyOther(
-        this.renderSimpleDecl(name, classified.decl.getTypeNode()),
-      );
-    }
-    assertUnreachable(classified);
+    assertUnreachable(toplevel);
   }
 
   convertMembersDeclaration(
@@ -427,15 +359,15 @@ export class Converter {
     variance: Variance,
     topLevelName?: string,
   ): string {
-    return this.convertIRSignatures(sigs.map(sigToIR), variance, topLevelName);
+    return this.renderIRSignatures(sigs.map(sigToIR), variance, topLevelName);
   }
 
-  convertIRSignatures(
+  renderIRSignatures(
     irSigs: readonly SigIR[],
     variance: Variance,
     topLevelName?: string,
   ): string {
-    const pySigs = irSigs.map((sig) => this.sigIRToPython(sig, variance));
+    const pySigs = irSigs.map((sig) => this.renderSig(sig, variance));
     if (!topLevelName) {
       const converted = pySigs.map(renderInnerSignature);
       return converted.join(" | ");
@@ -453,30 +385,30 @@ export class Converter {
     topLevelName?: string,
   ): string {
     const sigIR = sigToIR(sig);
-    const pySig = this.sigIRToPython(sigIR, variance);
+    const pySig = this.renderSig(sigIR, variance);
     if (topLevelName) {
       return renderSignature(topLevelName, pySig);
     }
     return renderInnerSignature(pySig);
   }
 
-  sigToPythonDestructure(
+  convertSignatureDestructure(
     sig: Signature,
     variance: Variance,
     decorators: string[] = [],
   ): PySig[] {
     const sigsIR = sigToIRDestructure(sig);
-    return sigsIR.map((sig) => this.sigIRToPython(sig, variance, decorators));
+    return sigsIR.map((sig) => this.renderSig(sig, variance, decorators));
   }
 
-  sigIRToPython(
+  renderSig(
     sig: SigIR,
     variance: Variance,
     decorators: string[] = [],
     isStatic: boolean = false,
   ): PySig {
     const convertParam = ({ name, optional, type }: ParamIR): PyParam => {
-      const pyType = this.typeIRToPython(type, optional, paramVariance);
+      const pyType = this.renderTypeIR(type, optional, paramVariance);
       return { name, optional, pyType };
     };
     const {
@@ -491,7 +423,7 @@ export class Converter {
     const spreadParam = origSpreadParam
       ? convertParam(origSpreadParam)
       : undefined;
-    const returns = this.typeIRToPython(origReturns, false, variance);
+    const returns = this.renderTypeIR(origReturns, false, variance);
     if (isStatic) {
       decorators.push("classmethod");
     }
@@ -504,55 +436,56 @@ export class Converter {
     decorators: string[] = [],
   ): PySig {
     const sigIR = sigToIR(sig);
-    return this.sigIRToPython(sigIR, variance, decorators);
+    return this.renderSig(sigIR, variance, decorators);
   }
 
   convertClass(decl: ClassDeclaration): PyClass {
-    const name = decl.getName();
-    const supers = this.getBaseNames([decl]);
-    const staticMembers = decl.getStaticMembers();
-    const members = decl.getInstanceMembers();
-    const [methodDecls, rest] = split(members, Node.isMethodDeclaration);
-    const methodGroups = groupBy(methodDecls, (d) => d.getName());
-    const methodEntries = Object.entries(methodGroups).flatMap(([name, sigs]) =>
-      renderSignatureGroup(
-        this.overloadGroupToPython(
-          name,
-          sigs.map((decl) => decl.getSignature()),
-        ),
-        true,
-      ),
-    );
-    const [staticMethodDecls, staticRest] = split(
-      staticMembers,
-      Node.isMethodDeclaration,
-    );
-    const staticMethodGroups = groupBy(staticMethodDecls, (d) => d.getName());
-    const staticMethodEntries = Object.entries(staticMethodGroups).flatMap(
-      ([name, sigs]) =>
-        renderSignatureGroup(
-          this.overloadGroupToPython(
-            name,
-            sigs.map((decl) => decl.getSignature()),
-            Variance.covar["classmethod"],
-          ),
-          true,
-        ),
-    );
-    for (const member of rest) {
-      if (Node.isPropertyDeclaration(member)) {
-        methodEntries.push(
-          this.renderSimpleDecl(member.getName(), member.getTypeNode()),
-        );
-        continue;
-      }
-      throw new Error(`Unhandled member kind ${member.getKindName()}`);
-    }
-    for (const member of staticRest) {
-      throw new Error(`Unhandled static member kind ${member.getKindName()}`);
-    }
-    const entries = methodEntries.concat(staticMethodEntries);
-    return pyClass(name, supers, entries.join("\n"));
+    throw new Error("TODO not implemented");
+    // const name = decl.getName();
+    // const supers = this.getBaseNames([decl]);
+    // const staticMembers = decl.getStaticMembers();
+    // const members = decl.getInstanceMembers();
+    // const [methodDecls, rest] = split(members, Node.isMethodDeclaration);
+    // const methodGroups = groupBy(methodDecls, (d) => d.getName());
+    // const methodEntries = Object.entries(methodGroups).flatMap(([name, sigs]) =>
+    //   renderSignatureGroup(
+    //     this.overloadGroupToPython(
+    //       name,
+    //       sigs.map((decl) => decl.getSignature()),
+    //     ),
+    //     true,
+    //   ),
+    // );
+    // const [staticMethodDecls, staticRest] = split(
+    //   staticMembers,
+    //   Node.isMethodDeclaration,
+    // );
+    // const staticMethodGroups = groupBy(staticMethodDecls, (d) => d.getName());
+    // const staticMethodEntries = Object.entries(staticMethodGroups).flatMap(
+    //   ([name, sigs]) =>
+    //     renderSignatureGroup(
+    //       this.overloadGroupToPython(
+    //         name,
+    //         sigs.map((decl) => decl.getSignature()),
+    //         Variance.covar["classmethod"],
+    //       ),
+    //       true,
+    //     ),
+    // );
+    // for (const member of rest) {
+    //   if (Node.isPropertyDeclaration(member)) {
+    //     methodEntries.push(
+    //       this.renderSimpleDecl(member.getName(), member.getTypeNode()),
+    //     );
+    //     continue;
+    //   }
+    //   throw new Error(`Unhandled member kind ${member.getKindName()}`);
+    // }
+    // for (const member of staticRest) {
+    //   throw new Error(`Unhandled static member kind ${member.getKindName()}`);
+    // }
+    // const entries = methodEntries.concat(staticMethodEntries);
+    // return pyClass(name, supers, entries.join("\n"));
   }
 
   convertInterface(
@@ -574,7 +507,7 @@ export class Converter {
 
   signatureGroupIRToPython({ name, sigs, isStatic }: SigGroupIR): PySigGroup {
     const pySigs = sigs.map((sig) =>
-      this.sigIRToPython(sig, Variance.covar, [], isStatic),
+      this.renderSig(sig, Variance.covar, [], isStatic),
     );
     return { name, sigs: pySigs };
   }
@@ -583,12 +516,14 @@ export class Converter {
     return renderSignatureGroup(this.signatureGroupIRToPython(sigGroup), true);
   }
 
-  renderBase({name, ident, typeParams} : BaseIR) : string {
+  renderBase({ name, ident, typeParams }: BaseIR): string {
     if (ident) {
       this.addNeededInterface(ident as Identifier);
     }
     if (typeParams.length > 0) {
-      const joined = typeParams.map(t => this.typeIRToPython(t, false, Variance.covar)).join(", ");
+      const joined = typeParams
+        .map((t) => this.renderTypeIR(t, false, Variance.covar))
+        .join(", ");
       name += `[${joined}]`;
     }
     return name;
@@ -605,7 +540,7 @@ export class Converter {
       properties.map((prop) => this.renderProperty(prop)),
       methods.flatMap((gp) => this.renderSignatureGroup(gp)),
     );
-    const newSupers = bases.map(b => this.renderBase(b));
+    const newSupers = bases.map((b) => this.renderBase(b));
     if (typeParams.length > 0) {
       const joined = typeParams.join(", ");
       newSupers.push(`Generic[${joined}]`);
@@ -622,7 +557,7 @@ export class Converter {
 
   renderProperty(property: PropertyIR): string {
     const { isOptional, name, type, isReadonly, isStatic } = property;
-    const pyType = this.typeIRToPython(type, isOptional, Variance.covar, name);
+    const pyType = this.renderTypeIR(type, isOptional, Variance.covar, name);
     return renderProperty(name, pyType, isReadonly, isStatic);
   }
 
@@ -632,22 +567,22 @@ export class Converter {
     decorators: string[] = [],
   ): PySigGroup {
     const sigs = signatures.flatMap((sig) =>
-      this.sigToPythonDestructure(sig, Variance.covar, decorators),
+      this.convertSignatureDestructure(sig, Variance.covar, decorators),
     );
     return { name, sigs };
   }
 
-  typeToPython(
+  convertType(
     typeNode: TypeNode,
     isOptional: boolean,
     variance: Variance,
     topLevelName?: string,
   ): string {
     const ir = typeToIR(typeNode);
-    return this.typeIRToPython(ir, isOptional, variance, topLevelName);
+    return this.renderTypeIR(ir, isOptional, variance, topLevelName);
   }
 
-  typeIRToPython(
+  renderTypeIR(
     ir: TypeIR,
     isOptional: boolean,
     variance: Variance,
@@ -681,7 +616,7 @@ export class Converter {
     }
     if (ir.kind === "union") {
       return ir.types
-        .map((ty) => this.typeIRToPython(ty, false, variance))
+        .map((ty) => this.renderTypeIR(ty, false, variance))
         .join(" | ");
     }
     if (ir.kind === "intersection") {
@@ -689,11 +624,11 @@ export class Converter {
       return "Any";
     }
     if (ir.kind === "paren") {
-      const inner = this.typeIRToPython(ir.type, false, variance);
+      const inner = this.renderTypeIR(ir.type, false, variance);
       return `(${inner})`;
     }
     if (ir.kind === "array") {
-      const eltType = this.typeIRToPython(ir.type, false, variance);
+      const eltType = this.renderTypeIR(ir.type, false, variance);
       if (variance === Variance.contra) {
         return `PyMutableSequence[${eltType}]`;
       }
@@ -701,7 +636,7 @@ export class Converter {
     }
     if (ir.kind == "tuple") {
       let elts = ir.types
-        .map((elt) => this.typeIRToPython(elt, false, variance))
+        .map((elt) => this.renderTypeIR(elt, false, variance))
         .join(", ");
       if (elts === "") {
         elts = "()";
@@ -710,10 +645,10 @@ export class Converter {
     }
     if (ir.kind === "operator") {
       // Ignore type operators
-      return this.typeIRToPython(ir.type, false, variance);
+      return this.renderTypeIR(ir.type, false, variance);
     }
     if (ir.kind === "callable") {
-      return this.convertIRSignatures(ir.signatures, variance, topLevelName);
+      return this.renderIRSignatures(ir.signatures, variance, topLevelName);
     }
     if (ir.kind === "other") {
       return "Any";
@@ -743,7 +678,7 @@ export class Converter {
         }
       }
       const args = typeArgs.map((ty) =>
-        this.typeIRToPython(ty, false, Variance.none),
+        this.renderTypeIR(ty, false, Variance.none),
       );
       let fmtArgs = "";
       if (args.length) {

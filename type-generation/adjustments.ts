@@ -162,7 +162,7 @@ export function typeReferenceSubsitutions(
   }
 
   const args = () =>
-    typeArgs.map((arg) => converter.typeIRToPython(arg, false, variance));
+    typeArgs.map((arg) => converter.renderTypeIR(arg, false, variance));
   const fmtArgs = () => {
     const a = args();
     if (a.length) {
@@ -185,9 +185,9 @@ export function typeReferenceSubsitutions(
     }
   }
   if (name === "Iterator") {
-    const T = converter.typeIRToPython(typeArgs[0], false, variance);
-    const TReturn = converter.typeIRToPython(typeArgs[1], false, variance);
-    const TNext = converter.typeIRToPython(
+    const T = converter.renderTypeIR(typeArgs[0], false, variance);
+    const TReturn = converter.renderTypeIR(typeArgs[1], false, variance);
+    const TNext = converter.renderTypeIR(
       typeArgs[2],
       false,
       reverseVariance(variance),
