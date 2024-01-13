@@ -13,10 +13,9 @@ import {
 } from "ts-morph";
 import { TYPE_TEXT_MAP } from "./adjustments";
 import { split } from "./groupBy";
-import { Variance } from "./types";
 import { getExpressionTypeArgs, getNodeLocation } from "./astUtils";
 
-type TypeIR =
+export type TypeIR =
   | SimpleTypeIR
   | UnionTypeIR
   | IntersectionTypeIR
@@ -31,11 +30,19 @@ type TypeIR =
 
 type SimpleTypeIR = { kind: "simple"; text: string };
 type UnionTypeIR = { kind: "union"; types: TypeIR[] };
-type IntersectionTypeIR = { kind: "intersection"; types: TypeIR[] };
+type IntersectionTypeIR = {
+  kind: "intersection";
+  types: TypeIR[];
+  location: string;
+};
 type TupleTypeIR = { kind: "tuple"; types: TypeIR[] };
 type ArrayTypeIR = { kind: "array"; type: TypeIR };
 type ParenTypeIR = { kind: "paren"; type: TypeIR };
-type TypeOperatorTypeIR = { kind: "operator"; operatorName: string; type: TypeIR; };
+type TypeOperatorTypeIR = {
+  kind: "operator";
+  operatorName: string;
+  type: TypeIR;
+};
 type OtherTypeIR = { kind: "other"; nodeKind: string; location: string };
 
 type ParameterReferenceTypeIR = { kind: "parameterReference"; name: string };
@@ -70,8 +77,11 @@ function unionType(types: TypeIR[]): UnionTypeIR {
   return { kind: "union", types };
 }
 
-function intersectionType(types: TypeIR[]): IntersectionTypeIR {
-  return { kind: "intersection", types };
+function intersectionType(
+  types: TypeIR[],
+  location: string,
+): IntersectionTypeIR {
+  return { kind: "intersection", types, location };
 }
 
 function tupleType(types: TypeIR[]): TupleTypeIR {
@@ -148,6 +158,9 @@ function unionToIR(typeNode: UnionTypeNode, isOptional: boolean): TypeIR {
   if (isOptional) {
     types.push(simpleType("None"));
   }
+  if (types.length === 1) {
+    return types[0];
+  }
   return unionType(types);
 }
 
@@ -168,7 +181,10 @@ function intersectionToIR(typeNode: IntersectionTypeNode) {
   if (typeString === "ArrayBufferLike & { BYTES_PER_ELEMENT?: never; }") {
     return simpleType("ArrayBuffer");
   }
-  return intersectionType(filteredTypes.map((ty) => typeToIR(ty)));
+  return intersectionType(
+    filteredTypes.map((ty) => typeToIR(ty)),
+    getNodeLocation(typeNode),
+  );
 }
 
 function typeReferenceToIR(typeNode: TypeReferenceNode): TypeIR {
@@ -191,7 +207,7 @@ function otherTypeToIR(node: Node): OtherTypeIR {
   return { kind: "other", nodeKind, location };
 }
 
-function sigToIR(sig: Signature): SigIR {
+export function sigToIR(sig: Signature): SigIR {
   const decl = sig.getDeclaration() as SignaturedDeclaration;
   try {
     const pyParams: ParamIR[] = [];
@@ -199,10 +215,7 @@ function sigToIR(sig: Signature): SigIR {
     for (const param of decl.getParameters()) {
       const spread = !!param.getDotDotDotToken();
       const optional = !!param.hasQuestionToken();
-      const type = typeToIR(
-        param.getTypeNode()!,
-        optional,
-      );
+      const type = typeToIR(param.getTypeNode()!, optional);
       const pyParam: ParamIR = { name: param.getName(), type, optional };
       if (spread) {
         if (type.kind !== "array") {
@@ -234,13 +247,8 @@ export function typeToIR(
   if (typeText in TYPE_TEXT_MAP) {
     return simpleType(TYPE_TEXT_MAP[typeText]);
   }
-  const callSignatures = typeNode.getType().getCallSignatures();
-  if (callSignatures.length > 0) {
-    if (!Node.isFunctionTypeNode(typeNode)) {
-      console.warn("callable kind:", typeNode.getKindName());
-      throw new Error("oops");
-    }
-    const signatures = callSignatures.map(sigToIR);
+  if (Node.isFunctionTypeNode(typeNode)) {
+    const signatures = typeNode.getType().getCallSignatures().map(sigToIR);
     return { kind: "callable", signatures };
   }
   if (Node.isUnionTypeNode(typeNode)) {
@@ -277,6 +285,10 @@ export function typeToIR(
   }
   if (Node.isTypePredicate(typeNode)) {
     return simpleType("bool");
+  }
+  const signatures = typeNode.getType().getCallSignatures();
+  if (signatures.length > 0) {
+    throw new Error("oops");
   }
   return otherTypeToIR(typeNode);
 }

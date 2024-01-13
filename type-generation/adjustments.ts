@@ -2,6 +2,7 @@ import { TypeNode } from "ts-morph";
 import { type Converter } from "./extract";
 import { PyClass, Variance, reverseVariance } from "./types";
 import { PySig } from "./render";
+import { TypeIR } from "./typeToIR";
 
 export const IMPORTS = `
 from collections.abc import Callable, Iterable as PyIterable, Iterator as PyIterator, MutableSequence as PyMutableSequence
@@ -142,7 +143,7 @@ export function adjustPySig(name: string, sig: PySig): void {
 export function typeReferenceSubsitutions(
   converter: Converter,
   name: string,
-  typeArgs: TypeNode[],
+  typeArgs: TypeIR[],
   variance: Variance,
 ): string | undefined {
   if (name === "URL") {
@@ -161,7 +162,7 @@ export function typeReferenceSubsitutions(
   }
 
   const args = () =>
-    typeArgs.map((arg) => converter.typeToPython(arg, false, variance));
+    typeArgs.map((arg) => converter.typeIRToPython(arg, false, variance));
   const fmtArgs = () => {
     const a = args();
     if (a.length) {
@@ -184,9 +185,9 @@ export function typeReferenceSubsitutions(
     }
   }
   if (name === "Iterator") {
-    const T = converter.typeToPython(typeArgs[0], false, variance);
-    const TReturn = converter.typeToPython(typeArgs[1], false, variance);
-    const TNext = converter.typeToPython(
+    const T = converter.typeIRToPython(typeArgs[0], false, variance);
+    const TReturn = converter.typeIRToPython(typeArgs[1], false, variance);
+    const TNext = converter.typeIRToPython(
       typeArgs[2],
       false,
       reverseVariance(variance),
