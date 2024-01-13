@@ -16,15 +16,18 @@ import {
   TypeOperatorTypeNode,
   TypeReferenceNode,
   UnionTypeNode,
+  VariableDeclaration,
 } from "ts-morph";
 import { TYPE_TEXT_MAP } from "./adjustments";
 import { split } from "./groupBy";
 import {
+  assertUnreachable,
+  classifyIdentifier,
   getExpressionTypeArgs,
   getNodeLocation,
   groupMembers,
 } from "./astUtils";
-import { uniqBy } from "./render";
+import { sanitizeReservedWords, uniqBy } from "./render";
 
 export type TypeIR =
   | SimpleTypeIR
@@ -96,6 +99,7 @@ export type PropertyIR = {
 };
 
 export type InterfaceIR = {
+  kind: "interface";
   name: string;
   methods: SigGroupIR[];
   properties: PropertyIR[];
@@ -107,7 +111,15 @@ export type BaseIR = {
   name: string;
   ident?: EntityName;
   typeParams: TypeIR[];
-}
+};
+
+export type DeclarationIR = {
+  kind: "declaration";
+  name: string;
+  type: TypeIR;
+};
+
+export type TopLevelIR = DeclarationIR | InterfaceIR;
 
 function simpleType(text: string): SimpleTypeIR {
   return { kind: "simple", text };
@@ -502,21 +514,30 @@ export function interfaceToIR(
     staticAstProperties.map((prop) => propertySignatureToIR(prop, true)),
   );
   const props = uniqBy(irProps, ({ name }) => name);
-  return { methods: irMethods, properties: props, name, typeParams, bases };
+  return {
+    kind: "interface",
+    methods: irMethods,
+    properties: props,
+    name,
+    typeParams,
+    bases,
+  };
 }
 
 function getInterfaceTypeParams(ident: EntityName): TypeIR[] {
   return uniqBy(
-      (ident as Identifier)
-        .getDefinitionNodes()
-        .filter(Node.isInterfaceDeclaration)
-        .flatMap((def) => def.getTypeParameters())
-        .map((param) => param.getName()),
-        (param) => param,
-  ).map(name => ({ kind: "parameterReference", name }));
+    (ident as Identifier)
+      .getDefinitionNodes()
+      .filter(Node.isInterfaceDeclaration)
+      .flatMap((def) => def.getTypeParameters())
+      .map((param) => param.getName()),
+    (param) => param,
+  ).map((name) => ({ kind: "parameterReference", name }));
 }
 
-export function declsToBases(decls: (InterfaceDeclaration | ClassDeclaration)[]): BaseIR[] {
+export function declsToBases(
+  decls: (InterfaceDeclaration | ClassDeclaration)[],
+): BaseIR[] {
   let extends_ = decls.flatMap((decl) => decl.getExtends() || []);
   extends_ = uniqBy(extends_, (base) => base.getText());
   return extends_.flatMap((extend): BaseIR | [] => {
@@ -528,18 +549,16 @@ export function declsToBases(decls: (InterfaceDeclaration | ClassDeclaration)[])
     const astParams = getExpressionTypeArgs(ident, extend);
     // Unfortunately typescript doesn't expose getVariances on the type
     // checker, so we probably can't figure out what to put here.
-    const irParams = astParams.map((node) =>
-      typeToIR(node, false),
-    );
+    const irParams = astParams.map((node) => typeToIR(node, false));
     name += "_iface";
-    return {name, ident, typeParams: irParams};
+    return { name, ident, typeParams: irParams };
   });
 }
 
 export function membersDeclarationToIR(
   name: string,
   type: { getMembers: TypeLiteralNode["getMembers"] },
-  bases : BaseIR[] = [],
+  bases: BaseIR[] = [],
   typeParams: string[],
 ): InterfaceIR {
   const [prototypes, staticMembers] = split(
@@ -560,7 +579,94 @@ export function membersDeclarationToIR(
     const ident = typeNode.getTypeName() as Identifier;
     const name = ident.getText() + "_iface";
     const typeParams = getInterfaceTypeParams(ident);
-    bases.push({name, ident, typeParams});
+    bases.push({ name, ident, typeParams });
   }
   return interfaceToIR(name, bases, members, staticMembers, typeParams);
+}
+
+function declarationIR(name: string, type: TypeIR): DeclarationIR {
+  return { kind: "declaration", name, type };
+}
+
+function typeNodeToDeclaration(
+  name: string,
+  typeNode: TypeNode,
+): DeclarationIR {
+  const type = typeToIR(typeNode, false);
+  return declarationIR(name, type);
+}
+
+export function varDeclToIR(
+  varDecl: VariableDeclaration,
+): TopLevelIR | undefined {
+  const name = sanitizeReservedWords(varDecl.getName());
+  const typeNode = varDecl.getTypeNode()!;
+  if (!typeNode) {
+    return undefined;
+  }
+  if (Node.isTypeLiteral(typeNode)) {
+    // declare var X : {}
+    //
+    // If it looks like declare var X : { prototype: Blah, new(paramspec): ret}
+    // then X is the constructor for a class
+    //
+    // Otherwise it's a global namespace object?
+    try {
+      return membersDeclarationToIR(name, typeNode, [], []);
+    } catch (e) {
+      console.warn(varDecl.getText());
+      console.warn(getNodeLocation(varDecl));
+      throw e;
+    }
+  }
+  if (Node.isTypeReference(typeNode)) {
+    // This also could be a constructor like `declare X: XConstructor` where
+    // XConstructor has a prototype and 'new' signatures. Or not...
+    return varDeclOfReferenceTypeToIR(name, typeNode);
+  }
+  return typeNodeToDeclaration(name, typeNode);
+}
+
+function varDeclOfReferenceTypeToIR(
+  name: string,
+  typeNode: TypeReferenceNode,
+): TopLevelIR | undefined {
+  // declare var A : B;
+
+  // Cases:
+  //   A is a constructor ==> inline B
+  //   o/w don't...
+  const ident = typeNode.getTypeName() as Identifier;
+  if (!ident.getDefinitionNodes) {
+    console.warn(ident.getText());
+    return undefined;
+  }
+
+  const classified = classifyIdentifier(ident);
+  if (classified.kind === "varDecl" && name !== classified.name) {
+    // We have to check that name !== typeName or else we can pick up the decl
+    // we're currently processing.
+    typeNodeToDeclaration(name, typeNode);
+  }
+  if (classified.kind === "varDecl" || classified.kind === "interfaces") {
+    const { ifaces } = classified;
+    const typeParams = ifaces
+      .flatMap((i) => i.getTypeParameters())
+      .map((p) => p.getName());
+    return membersDeclarationToIR(
+      name,
+      {
+        getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
+      },
+      [],
+      typeParams,
+    );
+  }
+  if (classified.kind === "class") {
+    return declarationIR(name, simpleType(classified.decl.getName()));
+  }
+  if (classified.kind === "typeAlias") {
+    return typeNodeToDeclaration(name, classified.decl.getTypeNode());
+  }
+  assertUnreachable(classified);
 }
