@@ -1,5 +1,6 @@
 import {
   EntityName,
+  InterfaceDeclaration,
   IntersectionTypeNode,
   LiteralTypeNode,
   Node,
@@ -48,7 +49,10 @@ type OtherTypeIR = { kind: "other"; nodeKind: string; location: string };
 type ParameterReferenceTypeIR = { kind: "parameterReference"; name: string };
 export type ReferenceTypeIR = {
   kind: "reference";
-  ident: EntityName;
+  identName: string;
+  // EntityName is not structuredCloneable, and we don't really want to clone it
+  // in any case. So we stick the EntityName in a list and store the index.
+  identIndex: number;
   typeArgs: TypeIR[];
 };
 
@@ -187,6 +191,9 @@ function intersectionToIR(typeNode: IntersectionTypeNode) {
   );
 }
 
+// EntityName is not structuredCloneable, and we don't really want to clone it
+// in any case. So we stick the EntityName in this list and store the index.
+export const IDENT_ARRAY: EntityName[] = [];
 function typeReferenceToIR(typeNode: TypeReferenceNode): TypeIR {
   if (Node.isTypeReference(typeNode)) {
     const ident = typeNode.getTypeName();
@@ -197,7 +204,9 @@ function typeReferenceToIR(typeNode: TypeReferenceNode): TypeIR {
     const typeArgs = getExpressionTypeArgs(ident, typeNode).map((ty) =>
       typeToIR(ty),
     );
-    return { kind: "reference", ident, typeArgs };
+    const identName = ident.getText();
+    const identIndex = IDENT_ARRAY.push(ident) - 1;
+    return { kind: "reference", identName, identIndex, typeArgs };
   }
 }
 
@@ -205,35 +214,6 @@ function otherTypeToIR(node: Node): OtherTypeIR {
   const nodeKind = node.getKindName();
   const location = getNodeLocation(node);
   return { kind: "other", nodeKind, location };
-}
-
-export function sigToIR(sig: Signature): SigIR {
-  const decl = sig.getDeclaration() as SignaturedDeclaration;
-  try {
-    const pyParams: ParamIR[] = [];
-    let spreadParam: ParamIR;
-    for (const param of decl.getParameters()) {
-      const spread = !!param.getDotDotDotToken();
-      const optional = !!param.hasQuestionToken();
-      const type = typeToIR(param.getTypeNode()!, optional);
-      const pyParam: ParamIR = { name: param.getName(), type, optional };
-      if (spread) {
-        if (type.kind !== "array") {
-          throw new Error("expected type array for spread param");
-        }
-        pyParam.type = type.type;
-        spreadParam = pyParam;
-        continue;
-      }
-      pyParams.push(pyParam);
-    }
-    const retNode = decl.getReturnTypeNode()!;
-    const returns = typeToIR(retNode);
-    return { params: pyParams, spreadParam, returns };
-  } catch (e) {
-    console.warn("failed to convert", sig.getDeclaration().getText());
-    throw e;
-  }
 }
 
 export function typeToIR(
@@ -291,4 +271,91 @@ export function typeToIR(
     throw new Error("oops");
   }
   return otherTypeToIR(typeNode);
+}
+
+
+export function sigToIR(sig: Signature): SigIR {
+  const decl = sig.getDeclaration() as SignaturedDeclaration;
+  try {
+    const pyParams: ParamIR[] = [];
+    let spreadParam: ParamIR;
+    for (const param of decl.getParameters()) {
+      const spread = !!param.getDotDotDotToken();
+      const optional = !!param.hasQuestionToken();
+      const type = typeToIR(param.getTypeNode()!, optional);
+      const pyParam: ParamIR = { name: param.getName(), type, optional };
+      if (spread) {
+        if (type.kind !== "array") {
+          throw new Error("expected type array for spread param");
+        }
+        pyParam.type = type.type;
+        spreadParam = pyParam;
+        continue;
+      }
+      pyParams.push(pyParam);
+    }
+    const retNode = decl.getReturnTypeNode()!;
+    const returns = typeToIR(retNode);
+    return { params: pyParams, spreadParam, returns };
+  } catch (e) {
+    console.warn("failed to convert", sig.getDeclaration().getText());
+    throw e;
+  }
+}
+
+
+/**
+ * Helper for sigToIRDestructure
+ * 
+ * If the parameter of sig is an Interface, from Python we allow the interface
+ * entries to be passed as keyword arguments. Return the InterfaceDeclaration if
+ * the last parameter is an interface, else return undefined.
+ * 
+ * TODO: make this work for type literals too?
+ */
+function getInterfaceDeclToDestructure(
+  sig: Signature,
+): InterfaceDeclaration | undefined {
+  const decl = sig.getDeclaration() as SignaturedDeclaration;
+  const defs = decl
+    .getParameters()
+    .at(-1)
+    ?.getTypeNode()
+    .asKind(SyntaxKind.TypeReference)
+    ?.getTypeName()
+    ?.asKind(SyntaxKind.Identifier)
+    ?.getDefinitionNodes();
+  if (defs?.length !== 1) {
+    return undefined;
+  }
+  return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
+}
+
+
+/**
+ * If the last parameter of sig is an interface, return a pair of signatures:
+ * 1. the original signature unaltered
+ * 2. a signature where the entries of the last parameter are passed as key word
+ *    arguments.
+ * 
+ * TODO: is this correct when all entries of the interface are optional?
+ * TODO: What about if the last argument is an object type literal?
+ */
+export function sigToIRDestructure(sig: Signature): [SigIR] | [SigIR, SigIR] {
+  const sigIR = sigToIR(sig);
+  const toDestructure = getInterfaceDeclToDestructure(sig);
+  if (!toDestructure) {
+    return [sigIR];
+  }
+  const sigIRDestructured = structuredClone(sigIR);
+  sigIRDestructured.params.pop();
+  const kwargs: ParamIR[] = [];
+  for (const prop of toDestructure.getProperties()) {
+    const name = prop.getName();
+    const optional = !!prop.getQuestionTokenNode();
+    const type = typeToIR(prop.getTypeNode()!, optional);
+    kwargs.push({ name, type, optional });
+  }
+  sigIRDestructured.kwparams = kwargs;
+  return [sigIR, sigIRDestructured];
 }

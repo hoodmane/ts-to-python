@@ -2,7 +2,7 @@ import { TypeNode } from "ts-morph";
 import { type Converter } from "./extract";
 import { PyClass, Variance, reverseVariance } from "./types";
 import { PySig } from "./render";
-import { TypeIR } from "./typeToIR";
+import { TypeIR } from "./astToIR";
 
 export const IMPORTS = `
 from collections.abc import Callable, Iterable as PyIterable, Iterator as PyIterator, MutableSequence as PyMutableSequence
