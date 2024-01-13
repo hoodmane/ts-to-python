@@ -1,5 +1,7 @@
 import {
+  ClassDeclaration,
   EntityName,
+  Identifier,
   InterfaceDeclaration,
   IntersectionTypeNode,
   LiteralTypeNode,
@@ -9,6 +11,7 @@ import {
   SignaturedDeclaration,
   SyntaxKind,
   TypeElementTypes,
+  TypeLiteralNode,
   TypeNode,
   TypeOperatorTypeNode,
   TypeReferenceNode,
@@ -97,8 +100,14 @@ export type InterfaceIR = {
   methods: SigGroupIR[];
   properties: PropertyIR[];
   typeParams: string[];
-  supers: string[];
+  bases: BaseIR[];
 };
+
+export type BaseIR = {
+  name: string;
+  ident?: EntityName;
+  typeParams: TypeIR[];
+}
 
 function simpleType(text: string): SimpleTypeIR {
   return { kind: "simple", text };
@@ -419,7 +428,7 @@ export function propertySignatureToIR(
 
 export function interfaceToIR(
   name: string,
-  supers: string[],
+  bases: BaseIR[],
   members: TypeElementTypes[],
   staticMembers: TypeElementTypes[],
   typeParams: string[],
@@ -493,5 +502,65 @@ export function interfaceToIR(
     staticAstProperties.map((prop) => propertySignatureToIR(prop, true)),
   );
   const props = uniqBy(irProps, ({ name }) => name);
-  return { methods: irMethods, properties: props, name, typeParams, supers };
+  return { methods: irMethods, properties: props, name, typeParams, bases };
+}
+
+function getInterfaceTypeParams(ident: EntityName): TypeIR[] {
+  return uniqBy(
+      (ident as Identifier)
+        .getDefinitionNodes()
+        .filter(Node.isInterfaceDeclaration)
+        .flatMap((def) => def.getTypeParameters())
+        .map((param) => param.getName()),
+        (param) => param,
+  ).map(name => ({ kind: "parameterReference", name }));
+}
+
+export function declsToBases(decls: (InterfaceDeclaration | ClassDeclaration)[]): BaseIR[] {
+  let extends_ = decls.flatMap((decl) => decl.getExtends() || []);
+  extends_ = uniqBy(extends_, (base) => base.getText());
+  return extends_.flatMap((extend): BaseIR | [] => {
+    let ident = extend.getExpression();
+    if (!Node.isIdentifier(ident)) {
+      return [];
+    }
+    let name = extend.getExpression().getText();
+    const astParams = getExpressionTypeArgs(ident, extend);
+    // Unfortunately typescript doesn't expose getVariances on the type
+    // checker, so we probably can't figure out what to put here.
+    const irParams = astParams.map((node) =>
+      typeToIR(node, false),
+    );
+    name += "_iface";
+    return {name, ident, typeParams: irParams};
+  });
+}
+
+export function membersDeclarationToIR(
+  name: string,
+  type: { getMembers: TypeLiteralNode["getMembers"] },
+  bases : BaseIR[] = [],
+  typeParams: string[],
+): InterfaceIR {
+  const [prototypes, staticMembers] = split(
+    type.getMembers(),
+    (m): m is PropertySignature =>
+      m.isKind(SyntaxKind.PropertySignature) && m.getName() === "prototype",
+  );
+  let members: TypeElementTypes[] = [];
+  for (const proto of prototypes) {
+    const typeNode = proto.getTypeNode();
+    if (!Node.isTypeReference(typeNode)) {
+      console.warn(
+        "Excepted prototype type to be TypeReference",
+        proto.getText(),
+      );
+      continue;
+    }
+    const ident = typeNode.getTypeName() as Identifier;
+    const name = ident.getText() + "_iface";
+    const typeParams = getInterfaceTypeParams(ident);
+    bases.push({name, ident, typeParams});
+  }
+  return interfaceToIR(name, bases, members, staticMembers, typeParams);
 }

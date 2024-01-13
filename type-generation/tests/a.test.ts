@@ -488,11 +488,11 @@ describe("emit", () => {
           @overload
           def new(self, message: str | None = None, /, *, cause: str | None = None) -> X: ...
 
-      class X_iface(Protocol):
-          pass
-
       class XOptions_iface(Protocol):
           cause: str | None = ...
+
+      class X_iface(Protocol):
+          pass
     `).trim();
     expect(
       removeTypeIgnores(
