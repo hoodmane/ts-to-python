@@ -12,7 +12,6 @@ function typeToIRHelper(tsType: string, converter?: Converter) {
     // @ts-expect-error
     ir.ident = ir.identName;
     ir.identName = undefined;
-    ir.identIndex = undefined;
   }
   // console.dir(ir, { depth: null });
   return ir;
