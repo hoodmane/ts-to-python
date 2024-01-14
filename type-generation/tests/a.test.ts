@@ -516,11 +516,12 @@ describe("emit", () => {
           @overload
           def new(self, message: str | None = None, /, *, cause: str | None = None) -> X: ...
 
+      class X_iface(Protocol):
+          pass
+
       class XOptions_iface(Protocol):
           cause: str | None = ...
 
-      class X_iface(Protocol):
-          pass
     `).trim();
     expect(
       removeTypeIgnores(
@@ -602,7 +603,7 @@ describe("emit", () => {
       }
       declare var x: X[];
     `);
-    expect(removeTypeIgnores(res.at(-1))).toBe(
+    expect(removeTypeIgnores(res.at(-6))).toBe(
       dedent(`
         class X_iface(Protocol):
             def __iter__(self, /) -> PyIterator[str]: ...

@@ -146,6 +146,9 @@ export function typeReferenceSubsitutions(
   typeArgs: TypeIR[],
   variance: Variance,
 ): string | undefined {
+  if (name.endsWith("_iface")) {
+    name = name.slice(0, -"_iface".length);
+  }
   if (name === "URL") {
     return "URL_";
   }
