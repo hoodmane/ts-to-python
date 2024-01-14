@@ -19,7 +19,7 @@ import {
   UnionTypeNode,
   VariableDeclaration,
 } from "ts-morph";
-import { TYPE_TEXT_MAP } from "./adjustments";
+import { BUILTIN_NAMES, TYPE_TEXT_MAP } from "./adjustments";
 import { split } from "./groupBy";
 import {
   assertUnreachable,
@@ -226,7 +226,7 @@ export class Converter {
   constructor() {
     this.typeParams = new Set();
     this.neededSet = new Set();
-    this.convertedSet = new Set();
+    this.convertedSet = new Set(BUILTIN_NAMES);
   }
 
   addNeededIdentifier(ident: Identifier): void {
@@ -529,6 +529,7 @@ export class Converter {
         throw new Error("Cannot happen!");
       }
       returns.identName = "PyIterator";
+      returns.typeArgs = [returns.typeArgs[0]];
       extraMethods.push({ name: "__iter__", sigs: [{ params: [], returns }] });
     }
     if (
