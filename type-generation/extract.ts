@@ -41,7 +41,7 @@ import {
   InterfaceIR,
   ParamIR,
   PropertyIR,
-  SigGroupIR,
+  CallableIR,
   SigIR,
   TopLevelIR,
   TypeIR,
@@ -104,29 +104,29 @@ export class Converter {
   emit(files: SourceFile[]): string[] {
     const varDecls = files.flatMap((file) => file.getVariableDeclarations());
 
-    const topLevels: PyTopLevel[] = [];
+    const irTopLevels: TopLevelIR[] = [];
     for (const varDecl of varDecls) {
       const name = sanitizeReservedWords(varDecl.getName());
       if (this.astConverter.convertedSet.has(name)) {
         continue;
       }
       this.astConverter.convertedSet.add(name);
-      const result = this.convertVarDecl(varDecl);
+      const result = this.astConverter.varDeclToIR(varDecl);
       if (result) {
-        topLevels.push(result);
+        irTopLevels.push(result);
       }
     }
     const funcDecls = files.flatMap((file) => file.getFunctions());
     const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName());
     for (const [name, decls] of Object.entries(funcDeclsByName)) {
-      topLevels.push(...this.convertFuncDeclGroup(name, decls));
+      irTopLevels.push(this.astConverter.funcDeclsToIR(name, decls));
     }
     let next: Needed | undefined;
     while ((next = popElt(this.astConverter.neededSet))) {
       if (next.type === "ident") {
-        let res = this.convertNeededIdent(next.ident);
+        let res = this.astConverter.identToIRIfNeeded(next.ident);
         if (res) {
-          topLevels.push(res);
+          irTopLevels.push(res);
         }
         continue;
       }
@@ -148,20 +148,21 @@ export class Converter {
           const typeParams = defs
             .flatMap((i) => i.getTypeParameters())
             .map((p) => p.getName());
-          const res = this.convertInterface(
+          const res = this.astConverter.interfaceToIR(
             name,
             baseNames,
             defs.flatMap((def) => def.getMembers()),
             [],
             typeParams,
           );
-          topLevels.push(res);
+          irTopLevels.push(res);
           continue;
         }
         // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
         console.warn("No interface declaration for " + name);
       }
     }
+    const topLevels = irTopLevels.map((e) => this.renderTopLevelIR(e));
     const typevarDecls = Array.from(
       this.astConverter.typeParams,
       (x) => `${x} = TypeVar("${x}")`,
@@ -220,84 +221,22 @@ export class Converter {
     return output;
   }
 
-  convertNeededIdent(ident: Identifier): PyTopLevel | undefined {
-    const name = ident.getText();
-    if (this.astConverter.convertedSet.has(name)) {
-      return undefined;
-    }
-    this.astConverter.convertedSet.add(name);
-    if (Node.isQualifiedName(ident)) {
-      throw new Error("Qualified name!");
-    }
-    const classified = classifyIdentifier(ident);
-    switch (classified.kind) {
-      case "interfaces":
-        const ifaces = classified.ifaces;
-        const baseNames = this.astConverter.declsToBases(ifaces);
-        const typeParams = ifaces
-          .flatMap((i) => i.getTypeParameters())
-          .map((p) => p.getName());
-        return this.convertInterface(
-          name,
-          baseNames,
-          ifaces.flatMap((def) => def.getMembers()),
-          [],
-          typeParams,
-        );
-      case "class":
-        if (classified.ifaces.length > 0) {
-          throw new Error("Unhandled");
-        }
-        return this.convertClass(classified.decl);
-      case "typeAlias":
-        const ir = this.astConverter.typeToIR(classified.decl.getTypeNode()!);
-        const renderedType = this.renderTypeIR(ir, false, Variance.covar);
-        return pyOther(`${name} = ${renderedType}`);
-      case "varDecl":
-        console.warn("Skipping varDecl", ident.getText());
-    }
-    return undefined;
-  }
-
-  convertFuncDeclGroup(name: string, decls: FunctionDeclaration[]): PyOther[] {
-    const sigsIR = this.astConverter.funcDeclsToIR(name, decls);
-    return this.renderSignatureGroup(sigsIR, false).map(pyOther);
-  }
-
-  convertVarDecl(astVarDecl: VariableDeclaration): PyTopLevel | undefined {
-    const irVarDecl = this.astConverter.varDeclToIR(astVarDecl);
-    return this.renderTopLevelIR(irVarDecl);
-  }
-
-  convertClass(decl: ClassDeclaration): PyClass {
-    throw new Error("TODO not implemented");
-  }
-
-  convertInterface(
-    name: string,
-    supers: BaseIR[],
-    members: TypeElementTypes[],
-    staticMembers: TypeElementTypes[],
-    typeParams: string[],
-  ): PyClass {
-    const irInterface = this.astConverter.interfaceToIR(
-      name,
-      supers,
-      members,
-      staticMembers,
-      typeParams,
-    );
-    return this.renderInterface(irInterface);
-  }
-
   renderTopLevelIR(toplevel: TopLevelIR): PyTopLevel {
     if (toplevel.kind === "declaration") {
       const { name, type } = toplevel;
       const typeStr = this.renderTypeIR(type, false, Variance.covar);
       return pyOther(renderSimpleDeclaration(name, typeStr));
     }
+    if (toplevel.kind === "typeAlias") {
+      const { name, type } = toplevel;
+      const typeStr = this.renderTypeIR(type, false, Variance.covar);
+      return pyOther(`${name} = ${typeStr}`);
+    }
     if (toplevel.kind === "interface") {
       return this.renderInterface(toplevel);
+    }
+    if (toplevel.kind === "callable") {
+      return pyOther(this.renderSignatureGroup(toplevel, false).join("\n"));
     }
     assertUnreachable(toplevel);
   }
@@ -349,7 +288,7 @@ export class Converter {
   }
 
   renderSignatureGroup(
-    { name, sigs, isStatic }: SigGroupIR,
+    { name, signatures: sigs, isStatic }: CallableIR,
     isMethod: boolean,
   ): string[] {
     const pySigs = sigs.map((sig) =>

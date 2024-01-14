@@ -1,8 +1,23 @@
-import { ClassDeclaration, InterfaceDeclaration, Project, PropertySignature, SyntaxKind, TypeNode } from "ts-morph";
+import {
+  ClassDeclaration,
+  FunctionDeclaration,
+  InterfaceDeclaration,
+  Project,
+  PropertySignature,
+  SyntaxKind,
+  TypeNode,
+  VariableDeclaration,
+} from "ts-morph";
 import { Converter } from "../extract.ts";
 import { renderPyClass } from "../render.ts";
-import { PyClass, PyOther, Variance } from "../types.ts";
-import { dedent, getTypeNode, makeProject, removeTypeIgnores, typeToIR } from "./helpers.ts";
+import { PyClass, PyOther, PyTopLevel, Variance } from "../types.ts";
+import {
+  dedent,
+  getTypeNode,
+  makeProject,
+  removeTypeIgnores,
+  typeToIR,
+} from "./helpers.ts";
 import { Converter as AstConverter } from "../astToIR";
 
 function propertySignatureToIR(
@@ -249,6 +264,30 @@ describe("property signature", () => {
   });
 });
 
+function convertVarDecl(
+  astVarDecl: VariableDeclaration,
+): PyTopLevel | undefined {
+  const converter = new Converter();
+  const irVarDecl = converter.astConverter.varDeclToIR(astVarDecl);
+  return converter.renderTopLevelIR(irVarDecl);
+}
+
+function pyOther(text: string): PyOther {
+  return {
+    kind: "other",
+    text,
+  };
+}
+
+function convertFuncDeclGroup(
+  name: string,
+  decls: FunctionDeclaration[],
+): PyOther[] {
+  const converter = new Converter();
+  const sigsIR = converter.astConverter.funcDeclsToIR(name, decls);
+  return converter.renderSignatureGroup(sigsIR, false).map(pyOther);
+}
+
 describe("sanitizeReservedWords", () => {
   it("variable name", () => {
     const converter = new Converter();
@@ -256,9 +295,7 @@ describe("sanitizeReservedWords", () => {
     project.createSourceFile("/a.ts", "declare var global : string;");
     const file = project.getSourceFileOrThrow("/a.ts");
     const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-    const res = removeTypeIgnores(
-      (converter.convertVarDecl(decl) as PyOther).text,
-    );
+    const res = removeTypeIgnores((convertVarDecl(decl) as PyOther).text);
     expect(res).toBe("global_: str = ...");
   });
 });
@@ -277,12 +314,11 @@ it("Constructor reference", () => {
         @classmethod
         def new(self, /) -> Test: ...\
   `).trim();
-  const converter = new Converter();
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
   const file = project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-  const cls = converter.convertVarDecl(decl) as PyClass;
+  const cls = convertVarDecl(decl) as PyClass;
   const res = removeTypeIgnores(renderPyClass(cls));
   expect(res).toBe(expected);
 });
@@ -300,12 +336,14 @@ it("No args function", () => {
   const file = project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.FunctionDeclaration);
   const result = removeTypeIgnores(
-    converter.convertFuncDeclGroup(decl.getName(), [decl])[0].text,
+    convertFuncDeclGroup(decl.getName(), [decl])[0].text,
   );
   expect(result).toBe(expected);
 });
 
-function getBaseNames(defs: (InterfaceDeclaration | ClassDeclaration)[]): string[] {
+function getBaseNames(
+  defs: (InterfaceDeclaration | ClassDeclaration)[],
+): string[] {
   const converter = new Converter();
   const bases = converter.astConverter.declsToBases(defs);
   return bases.map((base) => converter.renderBase(base));
@@ -342,9 +380,7 @@ describe("getBaseNames", () => {
     project.createSourceFile("/a.ts", text);
     const file = project.getSourceFileOrThrow("/a.ts");
     const decls = file.getDescendantsOfKind(SyntaxKind.InterfaceDeclaration);
-    expect(getBaseNames([decls[2]])[0]).toBe(
-      "X_iface[int | float, str]",
-    );
+    expect(getBaseNames([decls[2]])[0]).toBe("X_iface[int | float, str]");
     expect(getBaseNames([decls[3]])[0]).toBe("X_iface[bool, str]");
     expect(getBaseNames([decls[4]])[0]).toBe("X_iface[bool, Symbol]");
   });
@@ -364,12 +400,11 @@ it("Type variable", () => {
         @classmethod
         def new(self, /) -> Test[T]: ...
   `).trim();
-  const converter = new Converter();
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
   const file = project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-  const cls = converter.convertVarDecl(decl) as PyClass;
+  const cls = convertVarDecl(decl) as PyClass;
   const res = removeTypeIgnores(renderPyClass(cls));
   expect(res).toBe(expected);
 });
