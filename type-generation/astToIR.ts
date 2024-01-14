@@ -432,6 +432,7 @@ export class Converter {
       return { params: pyParams, spreadParam, returns };
     } catch (e) {
       console.warn("failed to convert", sig.getDeclaration().getText());
+      console.warn(getNodeLocation(sig.getDeclaration()));
       throw e;
     }
   }
@@ -518,7 +519,9 @@ export class Converter {
         .getDeclaration()
         .getReturnTypeNode()
         .asKindOrThrow(SyntaxKind.TypeReference);
-      if (typeNode.getTypeName().getText() !== "IterableIterator") {
+      if (!["IterableIterator", "Iterator"].includes(typeNode.getTypeName().getText())) {
+        console.log(typeNode.getText());
+        console.log(getNodeLocation(typeNode));
         throw new Error("Surprise!");
       }
       const returns = this.typeToIR(typeNode);
