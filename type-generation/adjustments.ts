@@ -117,10 +117,10 @@ export function adjustPyClass(cls: PyClass): void {
     cls.body = lines.join("\n");
   }
   if (
-    ["Response_iface", "String", "DataView"].includes(cls.name) ||
+    ["Response_iface", "Response", "String", "DataView"].includes(cls.name) ||
     (cls.name.includes("Array") && !cls.name.includes("Float"))
   ) {
-    cls.body = cls.body.replace("int | float", "int");
+    cls.body = cls.body.replaceAll("int | float", "int");
   }
 }
 
