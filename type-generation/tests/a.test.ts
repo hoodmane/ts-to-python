@@ -1,8 +1,9 @@
-import { SyntaxKind } from "ts-morph";
+import { SyntaxKind, TypeNode } from "ts-morph";
 import { Converter } from "../extract.ts";
 import { renderPyClass } from "../render.ts";
 import { PyClass, PyOther, Variance } from "../types.ts";
 import { dedent, getTypeNode, removeTypeIgnores } from "./helpers.ts";
+import { typeToIR } from "../astToIR.ts";
 
 function checkTypeToPython(
   converter: Converter,
@@ -11,8 +12,19 @@ function checkTypeToPython(
   variance: Variance = Variance.covar,
 ) {
   const typeNode = getTypeNode(converter, tsType);
-  const conversion = converter.convertType(typeNode, false, variance);
+  const conversion = convertType(converter, typeNode, false, variance);
   expect(conversion).toBe(pyType);
+}
+
+function convertType(
+  converter: Converter,
+  typeNode: TypeNode,
+  isOptional: boolean,
+  variance: Variance,
+  topLevelName?: string,
+): string {
+  const ir = typeToIR(typeNode);
+  return converter.renderTypeIR(ir, isOptional, variance, topLevelName);
 }
 
 describe("typeToPython", () => {
@@ -84,7 +96,7 @@ describe("typeToPython", () => {
   it("default type param", () => {
     const converter = new Converter();
     const typeNode = getTypeNode(converter, "ReadableStream");
-    const conversion = converter.convertType(typeNode, false, Variance.covar);
+    const conversion = convertType(converter, typeNode, false, Variance.covar);
     expect(conversion).toBe("ReadableStream[Any]");
   });
   describe("variance", () => {
@@ -95,7 +107,7 @@ describe("typeToPython", () => {
         "(a: Iterable<string>) => Iterable<boolean>;",
       );
       const conversion = removeTypeIgnores(
-        converter.convertType(typeNode, false, Variance.covar, "myFunc"),
+        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: PyIterable[str], /) -> JsIterable[bool]: ...",
@@ -108,7 +120,7 @@ describe("typeToPython", () => {
         "(a: Iterable<IterableIterator<boolean>> ) => void;",
       );
       const conversion = removeTypeIgnores(
-        converter.convertType(typeNode, false, Variance.covar, "myFunc"),
+        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: PyIterable[PyIterator[bool]], /) -> None: ...",
@@ -121,7 +133,7 @@ describe("typeToPython", () => {
         "(a: (b: Iterable<string>) => Iterable<boolean> ) => void;",
       );
       const conversion = removeTypeIgnores(
-        converter.convertType(typeNode, false, Variance.covar, "myFunc"),
+        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: Callable[[JsIterable[str]], PyIterable[bool]], /) -> None: ...",
@@ -132,7 +144,8 @@ describe("typeToPython", () => {
     it("basic", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "() => void");
-      const conversion = converter.convertType(
+      const conversion = convertType(
+        converter,
         typeNode,
         false,
         Variance.covar,
@@ -143,7 +156,7 @@ describe("typeToPython", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "() => void");
       const conversion = removeTypeIgnores(
-        converter.convertType(typeNode, false, Variance.covar, "myFunc"),
+        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe("def myFunc(self, /) -> None: ...");
     });
@@ -151,7 +164,7 @@ describe("typeToPython", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "(a?: string) => void");
       const conversion = removeTypeIgnores(
-        converter.convertType(typeNode, false, Variance.covar, "myFunc"),
+        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: str | None = None, /) -> None: ...",
@@ -161,7 +174,7 @@ describe("typeToPython", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "(a?: string | null) => void;");
       const conversion = removeTypeIgnores(
-        converter.convertType(typeNode, false, Variance.covar, "myFunc"),
+        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: str | None = None, /) -> None: ...",
@@ -171,7 +184,7 @@ describe("typeToPython", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "(a: any) => a is string;");
       const conversion = removeTypeIgnores(
-        converter.convertType(typeNode, false, Variance.covar, "myFunc"),
+        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe("def myFunc(self, a: Any, /) -> bool: ...");
     });
@@ -179,7 +192,7 @@ describe("typeToPython", () => {
       const converter = new Converter();
       const typeNode = getTypeNode(converter, "(...a: string[][]) => void;");
       const conversion = removeTypeIgnores(
-        converter.convertType(typeNode, false, Variance.covar, "myFunc"),
+        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, /, *a: PyMutableSequence[str]) -> None: ...",
