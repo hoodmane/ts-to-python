@@ -5,21 +5,13 @@ import {
   InterfaceDeclaration,
   Node,
   Project,
-  PropertySignature,
-  Signature,
-  SignaturedDeclaration,
   SourceFile,
-  SyntaxKind,
   TypeElementTypes,
-  TypeLiteralNode,
-  TypeNode,
-  TypeReferenceNode,
   VariableDeclaration,
 } from "ts-morph";
 import {
   PyParam,
   PySig,
-  PySigGroup,
   renderInnerSignature,
   renderProperty,
   renderPyClass,
@@ -27,31 +19,23 @@ import {
   renderSignatureGroup,
   renderSimpleDeclaration,
   sanitizeReservedWords,
-  uniqBy,
 } from "./render.ts";
 import { PyClass } from "./types.ts";
 import {
-  BUILTIN_NAMES,
   IMPORTS,
   getExtraBases,
   typeReferenceSubsitutions,
 } from "./adjustments.ts";
 
-import { groupBy, split, popElt } from "./groupBy.ts";
+import { groupBy, popElt } from "./groupBy.ts";
 import {
-  ClassifiedIdentifier,
   Needed,
   PyOther,
   PyTopLevel,
   Variance,
   reverseVariance,
 } from "./types.ts";
-import {
-  assertUnreachable,
-  classifyIdentifier,
-  getExpressionTypeArgs,
-  getNodeLocation,
-} from "./astUtils.ts";
+import { assertUnreachable, classifyIdentifier } from "./astUtils.ts";
 import {
   BaseIR,
   InterfaceIR,
