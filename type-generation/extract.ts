@@ -61,7 +61,7 @@ import {
   SigIR,
   TopLevelIR,
   TypeIR,
-  Converter as AstConverter
+  Converter as AstConverter,
 } from "./astToIR.ts";
 
 function pyClass(name: string, supers: string[], body: string): PyClass {
@@ -187,9 +187,9 @@ export class Converter {
           .getDefinitionNodes()
           .filter(Node.isInterfaceDeclaration);
         if (defs.length) {
-          const baseNames = this.astConverter.declsToBases(defs).filter(
-            (base) => base.name !== name,
-          );
+          const baseNames = this.astConverter
+            .declsToBases(defs)
+            .filter((base) => base.name !== name);
           const typeParams = defs
             .flatMap((i) => i.getTypeParameters())
             .map((p) => p.getName());

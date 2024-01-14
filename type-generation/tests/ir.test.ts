@@ -1,6 +1,5 @@
 import { Converter } from "../extract";
 import { getTypeNode, typeToIR } from "./helpers";
-import { Converter as AstConverter } from "../astToIR";
 
 function typeToIRHelper(tsType: string, converter?: Converter) {
   if (!converter) {
