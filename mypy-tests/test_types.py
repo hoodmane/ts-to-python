@@ -21,12 +21,14 @@ def test_type_errors(tmp_path: Path) -> None:
         warnings_by_code: dict[str, list[str]] = {
             k: [] for k in ["assignment", "misc", "overload-overlap", "override"]
         }
-        for line in stdout.splitlines():
-            if "error:" not in line:
+        for origline in stdout.splitlines():
+            if "error:" not in origline:
                 continue
-            line = line.partition("error:")[-1]
+            line = origline.partition("error:")[-1]
             code = line.rpartition("[")[-1][:-1]
             message = line.rpartition("[")[0].strip()
+            if code not in warnings_by_code:
+                print(origline)
             assert code in warnings_by_code
             warnings_by_code[code].append(message)
 

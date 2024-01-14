@@ -19,7 +19,7 @@ import {
   UnionTypeNode,
   VariableDeclaration,
 } from "ts-morph";
-import { TYPE_TEXT_MAP } from "./adjustments";
+import { BUILTIN_NAMES, TYPE_TEXT_MAP } from "./adjustments";
 import { split } from "./groupBy";
 import {
   assertUnreachable,
@@ -29,11 +29,11 @@ import {
   groupMembers,
 } from "./astUtils";
 import { sanitizeReservedWords, uniqBy } from "./render";
+import { ClassifiedIdentifier, Needed } from "./types";
 
 export type TypeIR =
   | SimpleTypeIR
   | UnionTypeIR
-  | IntersectionTypeIR
   | ParenTypeIR
   | ParameterReferenceTypeIR
   | ReferenceTypeIR
@@ -45,11 +45,6 @@ export type TypeIR =
 
 type SimpleTypeIR = { kind: "simple"; text: string };
 type UnionTypeIR = { kind: "union"; types: TypeIR[] };
-type IntersectionTypeIR = {
-  kind: "intersection";
-  types: TypeIR[];
-  location: string;
-};
 type TupleTypeIR = { kind: "tuple"; types: TypeIR[] };
 type ArrayTypeIR = { kind: "array"; type: TypeIR };
 type ParenTypeIR = { kind: "paren"; type: TypeIR };
@@ -63,7 +58,6 @@ type OtherTypeIR = { kind: "other"; nodeKind: string; location: string };
 type ParameterReferenceTypeIR = { kind: "parameterReference"; name: string };
 export type ReferenceTypeIR = {
   kind: "reference";
-  ident?: EntityName;
   identName: string;
   typeArgs: TypeIR[];
 };
@@ -127,7 +121,6 @@ export type InterfaceIR = {
 
 export type BaseIR = {
   name: string;
-  ident?: EntityName;
   typeParams: TypeIR[];
 };
 
@@ -145,13 +138,6 @@ function simpleType(text: string): SimpleTypeIR {
 
 function unionType(types: TypeIR[]): UnionTypeIR {
   return { kind: "union", types };
-}
-
-function intersectionType(
-  types: TypeIR[],
-  location: string,
-): IntersectionTypeIR {
-  return { kind: "intersection", types, location };
 }
 
 function tupleType(types: TypeIR[]): TupleTypeIR {
@@ -233,6 +219,27 @@ const operatorToName = {
 };
 
 export class Converter {
+  typeParams: Set<string>;
+  neededSet: Set<Needed>;
+  convertedSet: Set<string>;
+
+  constructor() {
+    this.typeParams = new Set();
+    this.neededSet = new Set();
+    this.convertedSet = new Set(BUILTIN_NAMES);
+  }
+
+  addNeededIdentifier(ident: Identifier): void {
+    if (Node.isQualifiedName(ident)) {
+      throw new Error("Qualified name! " + ident.getText());
+    }
+    this.neededSet.add({ type: "ident", ident });
+  }
+
+  addNeededInterface(ident: Identifier): void {
+    this.neededSet.add({ type: "interface", ident });
+  }
+
   typeOperatorToIR(typeNode: TypeOperatorTypeNode): TypeOperatorTypeIR {
     const operator = typeNode.getOperator();
     const operatorName = operatorToName[operator];
@@ -305,18 +312,27 @@ export class Converter {
   }
 
   typeReferenceToIR(typeNode: TypeReferenceNode): TypeIR {
-    if (Node.isTypeReference(typeNode)) {
-      const ident = typeNode.getTypeName();
-      if (typeNode.getType().isTypeParameter()) {
-        const name = ident.getText();
-        return { kind: "parameterReference", name };
-      }
-      const typeArgs = getExpressionTypeArgs(ident, typeNode).map((ty) =>
-        this.typeToIR(ty),
-      );
-      const identName = ident.getText();
-      return { kind: "reference", ident, identName, typeArgs };
+    const ident = typeNode.getTypeName();
+    if (typeNode.getType().isTypeParameter()) {
+      const name = ident.getText();
+      this.typeParams.add(name);
+      return { kind: "parameterReference", name };
     }
+    const typeArgs = getExpressionTypeArgs(ident, typeNode).map((ty) =>
+      this.typeToIR(ty),
+    );
+    if (Node.isQualifiedName(ident)) {
+      return ANY_IR;
+    }
+    const { name, kind } = classifyIdentifier(ident);
+    if (!this.convertedSet.has(name)) {
+      if (kind === "interfaces") {
+        this.addNeededInterface(ident);
+      } else {
+        this.addNeededIdentifier(ident);
+      }
+    }
+    return { kind: "reference", identName: name, typeArgs };
   }
 
   otherTypeToIR(node: Node): OtherTypeIR {
@@ -398,11 +414,15 @@ export class Converter {
         const type = this.typeToIR(param.getTypeNode()!, optional);
         const pyParam: ParamIR = { name: param.getName(), type, optional };
         if (spread) {
-          if (type.kind !== "array") {
-            throw new Error("expected type array for spread param");
-          }
-          pyParam.type = type.type;
           spreadParam = pyParam;
+          if (type.kind === "array") {
+            pyParam.type = type.type;
+          } else {
+            console.warn(
+              `expected type array for spread param, got ${type.kind}`,
+            );
+            pyParam.type = type;
+          }
           continue;
         }
         pyParams.push(pyParam);
@@ -412,6 +432,7 @@ export class Converter {
       return { params: pyParams, spreadParam, returns };
     } catch (e) {
       console.warn("failed to convert", sig.getDeclaration().getText());
+      console.warn(getNodeLocation(sig.getDeclaration()));
       throw e;
     }
   }
@@ -498,7 +519,9 @@ export class Converter {
         .getDeclaration()
         .getReturnTypeNode()
         .asKindOrThrow(SyntaxKind.TypeReference);
-      if (typeNode.getTypeName().getText() !== "IterableIterator") {
+      if (!["IterableIterator", "Iterator"].includes(typeNode.getTypeName().getText())) {
+        console.log(typeNode.getText());
+        console.log(getNodeLocation(typeNode));
         throw new Error("Surprise!");
       }
       const returns = this.typeToIR(typeNode);
@@ -506,7 +529,7 @@ export class Converter {
         throw new Error("Cannot happen!");
       }
       returns.identName = "PyIterator";
-      returns.ident = undefined;
+      returns.typeArgs = [returns.typeArgs[0]];
       extraMethods.push({ name: "__iter__", sigs: [{ params: [], returns }] });
     }
     if (
@@ -571,7 +594,8 @@ export class Converter {
       // checker, so we probably can't figure out what to put here.
       const irParams = astParams.map((node) => this.typeToIR(node, false));
       name += "_iface";
-      return { name, ident, typeParams: irParams };
+      this.addNeededInterface(ident as Identifier);
+      return { name, typeParams: irParams };
     });
   }
 
@@ -599,7 +623,8 @@ export class Converter {
       const ident = typeNode.getTypeName() as Identifier;
       const name = ident.getText() + "_iface";
       const typeParams = getInterfaceTypeParams(ident);
-      bases.push({ name, ident, typeParams });
+      this.addNeededInterface(ident);
+      bases.push({ name, typeParams });
     }
     return this.interfaceToIR(name, bases, members, staticMembers, typeParams);
   }

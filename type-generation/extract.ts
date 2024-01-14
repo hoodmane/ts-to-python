@@ -114,31 +114,13 @@ function topologicalSortClasses(nameToCls: Map<string, PyClass>): PyClass[] {
 export class Converter {
   project: Project;
   astConverter: AstConverter;
-  convertedSet: Set<string>;
-  neededSet: Set<Needed>;
-  typeRefs: Set<Identifier>;
-  typeParams: Set<string>;
   constructor() {
     this.project = new Project({
       tsConfigFilePath: "../type-generation-input-project/tsconfig.json",
       libFolderPath:
         "../type-generation-input-project/node_modules/typescript/lib",
     });
-    this.convertedSet = new Set(BUILTIN_NAMES);
-    this.neededSet = new Set();
-    this.typeParams = new Set();
     this.astConverter = new AstConverter();
-  }
-
-  addNeededIdentifier(ident: Identifier): void {
-    if (Node.isQualifiedName(ident)) {
-      throw new Error("Qualified name! " + ident.getText());
-    }
-    this.neededSet.add({ type: "ident", ident });
-  }
-
-  addNeededInterface(ident: Identifier): void {
-    this.neededSet.add({ type: "interface", ident });
   }
 
   getBaseNames(defs: (InterfaceDeclaration | ClassDeclaration)[]): string[] {
@@ -152,10 +134,10 @@ export class Converter {
     const topLevels: PyTopLevel[] = [];
     for (const varDecl of varDecls) {
       const name = sanitizeReservedWords(varDecl.getName());
-      if (this.convertedSet.has(name)) {
+      if (this.astConverter.convertedSet.has(name)) {
         continue;
       }
-      this.convertedSet.add(name);
+      this.astConverter.convertedSet.add(name);
       const result = this.convertVarDecl(varDecl);
       if (result) {
         topLevels.push(result);
@@ -167,7 +149,7 @@ export class Converter {
       topLevels.push(...this.convertFuncDeclGroup(name, decls));
     }
     let next: Needed | undefined;
-    while ((next = popElt(this.neededSet))) {
+    while ((next = popElt(this.astConverter.neededSet))) {
       if (next.type === "ident") {
         let res = this.convertNeededIdent(next.ident);
         if (res) {
@@ -178,10 +160,10 @@ export class Converter {
       if (next.type === "interface") {
         const ident = next.ident;
         const name = ident.getText() + "_iface";
-        if (this.convertedSet.has(name)) {
+        if (this.astConverter.convertedSet.has(name)) {
           continue;
         }
-        this.convertedSet.add(name);
+        this.astConverter.convertedSet.add(name);
 
         const defs = ident
           .getDefinitionNodes()
@@ -208,7 +190,7 @@ export class Converter {
       }
     }
     const typevarDecls = Array.from(
-      this.typeParams,
+      this.astConverter.typeParams,
       (x) => `${x} = TypeVar("${x}")`,
     ).join("\n");
     const output = [IMPORTS, typevarDecls];
@@ -267,10 +249,10 @@ export class Converter {
 
   convertNeededIdent(ident: Identifier): PyTopLevel | undefined {
     const name = ident.getText();
-    if (this.convertedSet.has(name)) {
+    if (this.astConverter.convertedSet.has(name)) {
       return undefined;
     }
-    this.convertedSet.add(name);
+    this.astConverter.convertedSet.add(name);
     if (Node.isQualifiedName(ident)) {
       throw new Error("Qualified name!");
     }
@@ -403,10 +385,7 @@ export class Converter {
     return renderSignatureGroup({ name, sigs: pySigs }, isMethod);
   }
 
-  renderBase({ name, ident, typeParams }: BaseIR): string {
-    if (ident) {
-      this.addNeededInterface(ident as Identifier);
-    }
+  renderBase({ name, typeParams }: BaseIR): string {
     if (typeParams.length > 0) {
       const joined = typeParams
         .map((t) => this.renderTypeIR(t, false, Variance.covar))
@@ -478,10 +457,6 @@ export class Converter {
         .map((ty) => this.renderTypeIR(ty, false, variance))
         .join(" | ");
     }
-    if (ir.kind === "intersection") {
-      console.warn("No conversion for intersection at " + ir.location);
-      return "Any";
-    }
     if (ir.kind === "paren") {
       const inner = this.renderTypeIR(ir.type, false, variance);
       return `(${inner})`;
@@ -513,28 +488,13 @@ export class Converter {
       return "Any";
     }
     if (ir.kind === "parameterReference") {
-      this.typeParams.add(ir.name);
       return ir.name;
     }
     if (ir.kind === "reference") {
-      let { identName: name, ident, typeArgs } = ir;
+      let { identName: name, typeArgs } = ir;
       const res = typeReferenceSubsitutions(this, name, typeArgs, variance);
       if (res) {
         return res;
-      }
-      // negative identIndex means this is a manually inserted type so we don't
-      // have to handle it.
-      if (ident && !this.convertedSet.has(name)) {
-        if (Node.isQualifiedName(ident)) {
-          return "Any";
-        }
-        let kind: ClassifiedIdentifier["kind"];
-        ({ name, kind } = classifyIdentifier(ident));
-        if (kind === "interfaces") {
-          this.addNeededInterface(ident);
-        } else {
-          this.addNeededIdentifier(ident);
-        }
       }
       const args = typeArgs.map((ty) =>
         this.renderTypeIR(ty, false, Variance.none),

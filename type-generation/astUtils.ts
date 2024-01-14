@@ -108,6 +108,16 @@ export function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
     };
   }
   if (rest.length > 1) {
+    console.log(name, rest.map(x => x.getKindName()));
+    const decl = rest.filter(Node.isVariableDeclaration)?.[0];
+    if (decl) {
+      return {
+        kind: "varDecl",
+        name,
+        decl,
+        ifaces,
+      };
+    }
     throw new Error("Oops!");
   }
   const decl = rest[0];
