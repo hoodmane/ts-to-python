@@ -519,7 +519,11 @@ export class Converter {
         .getDeclaration()
         .getReturnTypeNode()
         .asKindOrThrow(SyntaxKind.TypeReference);
-      if (!["IterableIterator", "Iterator"].includes(typeNode.getTypeName().getText())) {
+      if (
+        !["IterableIterator", "Iterator"].includes(
+          typeNode.getTypeName().getText(),
+        )
+      ) {
         console.log(typeNode.getText());
         console.log(getNodeLocation(typeNode));
         throw new Error("Surprise!");
