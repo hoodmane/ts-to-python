@@ -114,6 +114,8 @@ export type InterfaceIR = {
   properties: PropertyIR[];
   typeParams: string[];
   bases: BaseIR[];
+  extraBases?: string[];
+  concrete?: boolean;
 };
 
 export type BaseIR = {

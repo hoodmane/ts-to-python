@@ -63,8 +63,8 @@ const EXTRA_BASES: Record<string, string[]> = {
   NodeList_iface: ["JsArray[Node]"],
 };
 
-export function getExtraBases(name: string): string[] | undefined {
-  return EXTRA_BASES[name];
+export function getExtraBases(name: string): string[] {
+  return EXTRA_BASES[name] || [];
 }
 
 // [misc]:
