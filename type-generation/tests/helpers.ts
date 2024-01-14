@@ -1,5 +1,11 @@
 import { SyntaxKind } from "ts-morph";
 import { Converter } from "../extract";
+import { Converter as AstConverter } from "../astToIR";
+import { TypeNode } from "ts-morph";
+
+export function typeToIR(t: TypeNode) {
+  return new AstConverter().typeToIR(t);
+}
 
 let n = 0;
 export function getTypeNode(converter: Converter, type) {

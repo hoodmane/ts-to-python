@@ -61,16 +61,7 @@ import {
   SigIR,
   TopLevelIR,
   TypeIR,
-  callableToIR,
-  declsToBases,
-  funcDeclsToIR,
-  interfaceToIR,
-  membersDeclarationToIR,
-  propertySignatureToIR,
-  sigToIR,
-  sigToIRDestructure,
-  typeToIR,
-  varDeclToIR,
+  Converter as AstConverter
 } from "./astToIR.ts";
 
 function pyClass(name: string, supers: string[], body: string): PyClass {
@@ -122,6 +113,7 @@ function topologicalSortClasses(nameToCls: Map<string, PyClass>): PyClass[] {
 
 export class Converter {
   project: Project;
+  astConverter: AstConverter;
   convertedSet: Set<string>;
   neededSet: Set<Needed>;
   typeRefs: Set<Identifier>;
@@ -135,6 +127,7 @@ export class Converter {
     this.convertedSet = new Set(BUILTIN_NAMES);
     this.neededSet = new Set();
     this.typeParams = new Set();
+    this.astConverter = new AstConverter();
   }
 
   addNeededIdentifier(ident: Identifier): void {
@@ -149,7 +142,7 @@ export class Converter {
   }
 
   getBaseNames(defs: (InterfaceDeclaration | ClassDeclaration)[]): string[] {
-    const bases = declsToBases(defs);
+    const bases = this.astConverter.declsToBases(defs);
     return bases.map((base) => this.renderBase(base));
   }
 
@@ -194,7 +187,7 @@ export class Converter {
           .getDefinitionNodes()
           .filter(Node.isInterfaceDeclaration);
         if (defs.length) {
-          const baseNames = declsToBases(defs).filter(
+          const baseNames = this.astConverter.declsToBases(defs).filter(
             (base) => base.name !== name,
           );
           const typeParams = defs
@@ -285,7 +278,7 @@ export class Converter {
     switch (classified.kind) {
       case "interfaces":
         const ifaces = classified.ifaces;
-        const baseNames = declsToBases(ifaces);
+        const baseNames = this.astConverter.declsToBases(ifaces);
         const typeParams = ifaces
           .flatMap((i) => i.getTypeParameters())
           .map((p) => p.getName());
@@ -302,7 +295,7 @@ export class Converter {
         }
         return this.convertClass(classified.decl);
       case "typeAlias":
-        const ir = typeToIR(classified.decl.getTypeNode()!);
+        const ir = this.astConverter.typeToIR(classified.decl.getTypeNode()!);
         const renderedType = this.renderTypeIR(ir, false, Variance.covar);
         return pyOther(`${name} = ${renderedType}`);
       case "varDecl":
@@ -312,12 +305,12 @@ export class Converter {
   }
 
   convertFuncDeclGroup(name: string, decls: FunctionDeclaration[]): PyOther[] {
-    const sigsIR = funcDeclsToIR(name, decls);
+    const sigsIR = this.astConverter.funcDeclsToIR(name, decls);
     return this.renderSignatureGroup(sigsIR, false).map(pyOther);
   }
 
   convertVarDecl(astVarDecl: VariableDeclaration): PyTopLevel | undefined {
-    const irVarDecl = varDeclToIR(astVarDecl);
+    const irVarDecl = this.astConverter.varDeclToIR(astVarDecl);
     return this.renderTopLevelIR(irVarDecl);
   }
 
@@ -332,7 +325,7 @@ export class Converter {
     staticMembers: TypeElementTypes[],
     typeParams: string[],
   ): PyClass {
-    const irInterface = interfaceToIR(
+    const irInterface = this.astConverter.interfaceToIR(
       name,
       supers,
       members,

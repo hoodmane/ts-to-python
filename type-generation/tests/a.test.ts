@@ -2,8 +2,15 @@ import { PropertySignature, SyntaxKind, TypeNode } from "ts-morph";
 import { Converter } from "../extract.ts";
 import { renderPyClass } from "../render.ts";
 import { PyClass, PyOther, Variance } from "../types.ts";
-import { dedent, getTypeNode, removeTypeIgnores } from "./helpers.ts";
-import { propertySignatureToIR, typeToIR } from "../astToIR.ts";
+import { dedent, getTypeNode, removeTypeIgnores, typeToIR } from "./helpers.ts";
+import { Converter as AstConverter } from "../astToIR";
+
+function propertySignatureToIR(
+  member: PropertySignature,
+  isStatic: boolean = false,
+) {
+  return new AstConverter().propertySignatureToIR(member, isStatic);
+}
 
 function checkTypeToPython(
   converter: Converter,
