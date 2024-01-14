@@ -4,7 +4,6 @@ import {
   Identifier,
   InterfaceDeclaration,
   Node,
-  Project,
   PropertySignature,
   SyntaxKind,
   TypeNode,
@@ -636,7 +635,7 @@ describe("emit", () => {
       }
       declare var x: X[];
     `);
-    expect(removeTypeIgnores(res.at(-6))).toBe(
+    expect(removeTypeIgnores(res.at(-1))).toBe(
       dedent(`
         class X_iface(Protocol):
             def __iter__(self, /) -> PyIterator[str]: ...
@@ -716,6 +715,17 @@ describe("emit", () => {
             def __getitem__(self, x: int | float, /) -> str: ...
             def __setitem__(self, x: int | float, y: str, /) -> None: ...
             def __delitem__(self, x: int | float, /) -> bool: ...
+      `).trim(),
+    );
+  });
+  it("callable interface", () => {
+    const res = emitFile(`\
+      declare var x: VoidFunction[];
+    `);
+    expect(removeTypeIgnores(res.at(-1))).toBe(
+      dedent(`
+        class VoidFunction_iface(Protocol):
+            def __call__(self, /) -> None: ...
       `).trim(),
     );
   });

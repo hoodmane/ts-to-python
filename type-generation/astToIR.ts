@@ -1,4 +1,5 @@
 import {
+  CallSignatureDeclaration,
   ClassDeclaration,
   EntityName,
   FunctionDeclaration,
@@ -500,6 +501,7 @@ export class Converter {
     bases: BaseIR[],
     members: TypeElementTypes[],
     staticMembers: TypeElementTypes[],
+    callSignatures: CallSignatureDeclaration[],
     typeParams: string[],
   ): InterfaceIR {
     const { methods: astMethods, properties: astProperties } =
@@ -579,6 +581,12 @@ export class Converter {
       ),
       extraMethods,
     );
+    irMethods.push({
+      kind: "callable",
+      name: "__call__",
+      signatures: callSignatures.flatMap(sig => this.sigToIRDestructure(sig.getSignature())),
+      isStatic: false,
+    });
     const irProps = ([] as PropertyIR[]).concat(
       astProperties.map((prop) => this.propertySignatureToIR(prop, false)),
       staticAstProperties.map((prop) => this.propertySignatureToIR(prop, true)),
@@ -640,7 +648,7 @@ export class Converter {
       this.addNeededInterface(ident);
       bases.push({ name, typeParams });
     }
-    return this.interfaceToIR(name, bases, members, staticMembers, typeParams);
+    return this.interfaceToIR(name, bases, members, staticMembers, [], typeParams);
   }
 
   typeNodeToDeclaration(name: string, typeNode: TypeNode): DeclarationIR {
@@ -748,6 +756,7 @@ export class Converter {
           baseNames,
           ifaces.flatMap((def) => def.getMembers()),
           [],
+          ifaces.flatMap((def) => def.getCallSignatures()),
           typeParams,
         );
       case "class":
@@ -826,6 +835,7 @@ export function convertDecls(
           baseNames,
           defs.flatMap((def) => def.getMembers()),
           [],
+          defs.flatMap((def) => def.getCallSignatures()),
           typeParams,
         );
         topLevels.push(res);
