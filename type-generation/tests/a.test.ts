@@ -1,9 +1,9 @@
-import { SyntaxKind, TypeNode } from "ts-morph";
+import { PropertySignature, SyntaxKind, TypeNode } from "ts-morph";
 import { Converter } from "../extract.ts";
 import { renderPyClass } from "../render.ts";
 import { PyClass, PyOther, Variance } from "../types.ts";
 import { dedent, getTypeNode, removeTypeIgnores } from "./helpers.ts";
-import { typeToIR } from "../astToIR.ts";
+import { propertySignatureToIR, typeToIR } from "../astToIR.ts";
 
 function checkTypeToPython(
   converter: Converter,
@@ -25,6 +25,14 @@ function convertType(
 ): string {
   const ir = typeToIR(typeNode);
   return converter.renderTypeIR(ir, isOptional, variance, topLevelName);
+}
+
+function convertPropertySignature(
+  converter: Converter,
+  member: PropertySignature,
+  isStatic: boolean = false,
+): string {
+  return converter.renderProperty(propertySignatureToIR(member, isStatic));
 }
 
 describe("typeToPython", () => {
@@ -213,7 +221,7 @@ describe("property signature", () => {
     );
     const file = converter.project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
-    const res = removeTypeIgnores(converter.convertPropertySignature(propsig));
+    const res = removeTypeIgnores(convertPropertySignature(converter, propsig));
     expect(res).toBe("def f(self, /) -> None: ...");
   });
   it("optional function", () => {
@@ -227,7 +235,7 @@ describe("property signature", () => {
     );
     const file = converter.project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
-    const res = removeTypeIgnores(converter.convertPropertySignature(propsig));
+    const res = removeTypeIgnores(convertPropertySignature(converter, propsig));
     expect(res).toBe("f: Callable[[], None] | None = ...");
   });
 });

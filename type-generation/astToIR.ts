@@ -1,6 +1,7 @@
 import {
   ClassDeclaration,
   EntityName,
+  FunctionDeclaration,
   Identifier,
   InterfaceDeclaration,
   IntersectionTypeNode,
@@ -425,6 +426,14 @@ export function callableToIR(
 ): SigGroupIR {
   const sigs = signatures.flatMap((sig) => sigToIRDestructure(sig));
   return { name, sigs, isStatic };
+}
+
+export function funcDeclsToIR(
+  name: string,
+  decls: FunctionDeclaration[],
+): SigGroupIR {
+  const astSigs = decls.map((x) => x.getSignature());
+  return callableToIR(name, astSigs, false);
 }
 
 export function propertySignatureToIR(
