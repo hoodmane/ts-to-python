@@ -91,15 +91,11 @@ function depth2CopySig({
   return { params, spreadParam, kwparams, returns };
 }
 
-export type SigGroupIR = {
-  name: string;
-  sigs: SigIR[];
-  isStatic?: boolean;
-};
-
-type CallableIR = {
+export type CallableIR = {
   kind: "callable";
+  name?: string;
   signatures: SigIR[];
+  isStatic?: boolean;
 };
 
 export type PropertyIR = {
@@ -113,7 +109,7 @@ export type PropertyIR = {
 export type InterfaceIR = {
   kind: "interface";
   name: string;
-  methods: SigGroupIR[];
+  methods: CallableIR[];
   properties: PropertyIR[];
   typeParams: string[];
   bases: BaseIR[];
@@ -130,7 +126,13 @@ export type DeclarationIR = {
   type: TypeIR;
 };
 
-export type TopLevelIR = DeclarationIR | InterfaceIR;
+export type TypeAliasIR = {
+  kind: "typeAlias";
+  name: string;
+  type: TypeIR;
+};
+
+export type TopLevelIR = DeclarationIR | InterfaceIR | TypeAliasIR | CallableIR;
 
 function simpleType(text: string): SimpleTypeIR {
   return { kind: "simple", text };
@@ -355,11 +357,11 @@ export class Converter {
       return simpleType(TYPE_TEXT_MAP[typeText]);
     }
     if (Node.isFunctionTypeNode(typeNode)) {
-      const signatures = typeNode
+      const sigs = typeNode
         .getType()
         .getCallSignatures()
         .map((sig) => this.sigToIR(sig));
-      return { kind: "callable", signatures };
+      return { kind: "callable", signatures: sigs };
     }
     if (Node.isUnionTypeNode(typeNode)) {
       return this.unionToIR(typeNode, isOptional);
@@ -469,12 +471,12 @@ export class Converter {
     name: string,
     signatures: Signature[],
     isStatic?: boolean,
-  ): SigGroupIR {
+  ): CallableIR {
     const sigs = signatures.flatMap((sig) => this.sigToIRDestructure(sig));
-    return { name, sigs, isStatic };
+    return { kind: "callable", name, signatures: sigs, isStatic };
   }
 
-  funcDeclsToIR(name: string, decls: FunctionDeclaration[]): SigGroupIR {
+  funcDeclsToIR(name: string, decls: FunctionDeclaration[]): CallableIR {
     const astSigs = decls.map((x) => x.getSignature());
     return this.callableToIR(name, astSigs, false);
   }
@@ -511,7 +513,7 @@ export class Converter {
       delete astMethods[key];
     }
     typeParams = Array.from(new Set(typeParams));
-    const extraMethods: SigGroupIR[] = [];
+    const extraMethods: CallableIR[] = [];
     if ("[Symbol.iterator]" in astMethods) {
       const x = astMethods["[Symbol.iterator]"];
       delete astMethods["[Symbol.iterator]"];
@@ -534,7 +536,11 @@ export class Converter {
       }
       returns.identName = "PyIterator";
       returns.typeArgs = [returns.typeArgs[0]];
-      extraMethods.push({ name: "__iter__", sigs: [{ params: [], returns }] });
+      extraMethods.push({
+        kind: "callable",
+        name: "__iter__",
+        signatures: [{ params: [], returns }],
+      });
     }
     if (
       name !== "Function_iface" &&
@@ -542,8 +548,9 @@ export class Converter {
         propMap.get("length")?.getTypeNode().getText() === "number")
     ) {
       extraMethods.push({
+        kind: "callable",
         name: "__len__",
-        sigs: [{ params: [], returns: simpleType("int") }],
+        signatures: [{ params: [], returns: simpleType("int") }],
       });
     }
     const redirectMethod = (origName: string, newName: string): void => {
@@ -560,7 +567,7 @@ export class Converter {
     if (constructors) {
       staticAstMethods["new"] = constructors.map((decl) => decl.getSignature());
     }
-    const irMethods = ([] as SigGroupIR[]).concat(
+    const irMethods = ([] as CallableIR[]).concat(
       Object.entries(astMethods).map(([name, sigs]) =>
         this.callableToIR(name, sigs, false),
       ),
@@ -709,5 +716,45 @@ export class Converter {
       return this.typeNodeToDeclaration(name, classified.decl.getTypeNode());
     }
     assertUnreachable(classified);
+  }
+
+  identToIRIfNeeded(ident: Identifier): TopLevelIR | undefined {
+    const name = ident.getText();
+    if (this.convertedSet.has(name)) {
+      return undefined;
+    }
+    this.convertedSet.add(name);
+    return this.identToIR(ident);
+  }
+
+  identToIR(ident: Identifier): TopLevelIR | undefined {
+    const name = ident.getText();
+    if (Node.isQualifiedName(ident)) {
+      throw new Error("Qualified name!");
+    }
+    const classified = classifyIdentifier(ident);
+    switch (classified.kind) {
+      case "interfaces":
+        const ifaces = classified.ifaces;
+        const baseNames = this.declsToBases(ifaces);
+        const typeParams = ifaces
+          .flatMap((i) => i.getTypeParameters())
+          .map((p) => p.getName());
+        return this.interfaceToIR(
+          name,
+          baseNames,
+          ifaces.flatMap((def) => def.getMembers()),
+          [],
+          typeParams,
+        );
+      case "class":
+        throw new Error("Unhandled");
+      case "typeAlias":
+        const type = this.typeToIR(classified.decl.getTypeNode()!);
+        return { kind: "typeAlias", name, type };
+      case "varDecl":
+        console.warn("Skipping varDecl", ident.getText());
+    }
+    return undefined;
   }
 }

@@ -1,8 +1,21 @@
-import { ClassDeclaration, InterfaceDeclaration, Project, PropertySignature, SyntaxKind, TypeNode } from "ts-morph";
+import {
+  ClassDeclaration,
+  InterfaceDeclaration,
+  Project,
+  PropertySignature,
+  SyntaxKind,
+  TypeNode,
+} from "ts-morph";
 import { Converter } from "../extract.ts";
 import { renderPyClass } from "../render.ts";
 import { PyClass, PyOther, Variance } from "../types.ts";
-import { dedent, getTypeNode, makeProject, removeTypeIgnores, typeToIR } from "./helpers.ts";
+import {
+  dedent,
+  getTypeNode,
+  makeProject,
+  removeTypeIgnores,
+  typeToIR,
+} from "./helpers.ts";
 import { Converter as AstConverter } from "../astToIR";
 
 function propertySignatureToIR(
@@ -305,7 +318,9 @@ it("No args function", () => {
   expect(result).toBe(expected);
 });
 
-function getBaseNames(defs: (InterfaceDeclaration | ClassDeclaration)[]): string[] {
+function getBaseNames(
+  defs: (InterfaceDeclaration | ClassDeclaration)[],
+): string[] {
   const converter = new Converter();
   const bases = converter.astConverter.declsToBases(defs);
   return bases.map((base) => converter.renderBase(base));
@@ -342,9 +357,7 @@ describe("getBaseNames", () => {
     project.createSourceFile("/a.ts", text);
     const file = project.getSourceFileOrThrow("/a.ts");
     const decls = file.getDescendantsOfKind(SyntaxKind.InterfaceDeclaration);
-    expect(getBaseNames([decls[2]])[0]).toBe(
-      "X_iface[int | float, str]",
-    );
+    expect(getBaseNames([decls[2]])[0]).toBe("X_iface[int | float, str]");
     expect(getBaseNames([decls[3]])[0]).toBe("X_iface[bool, str]");
     expect(getBaseNames([decls[4]])[0]).toBe("X_iface[bool, Symbol]");
   });

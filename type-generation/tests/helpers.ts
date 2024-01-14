@@ -19,8 +19,8 @@ let n = 0;
 export function getTypeNode(converter: Converter, type) {
   n++;
   const fname = `/getTypeNode_$${n}.ts`;
-    const project = makeProject();
-    project.createSourceFile(fname, `type A = ${type};`);
+  const project = makeProject();
+  project.createSourceFile(fname, `type A = ${type};`);
   const file = project.getSourceFileOrThrow(fname);
   const alias = file.getFirstDescendantByKind(SyntaxKind.TypeAliasDeclaration);
   return alias.getTypeNode();
