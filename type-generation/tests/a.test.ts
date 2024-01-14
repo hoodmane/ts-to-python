@@ -8,7 +8,7 @@ import {
   VariableDeclaration,
 } from "ts-morph";
 import {
-  emit,
+  emitFiles,
   renderBase,
   renderProperty2,
   renderSignatureGroup2,
@@ -370,7 +370,7 @@ it("Type variable", () => {
 function emitFile(text) {
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
-  return emit([project.getSourceFileOrThrow("/a.ts")]);
+  return emitFiles([project.getSourceFileOrThrow("/a.ts")]);
 }
 
 describe("emit", () => {

@@ -1,5 +1,5 @@
 import { Project, SourceFile } from "ts-morph";
-import { emit } from "./extract.ts";
+import { emitFiles } from "./extract.ts";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 
 Error.stackTraceLimit = Infinity;
@@ -13,7 +13,7 @@ function main() {
   });
   project.addSourceFilesAtPaths("../type-generation-input-project/a.ts");
   files = project.resolveSourceFileDependencies();
-  const result = emit(files)
+  const result = emitFiles(files)
     .map((x) => x + "\n\n")
     .join("");
   const outDir = "../generated/js/";

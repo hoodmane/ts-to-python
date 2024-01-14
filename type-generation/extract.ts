@@ -27,7 +27,8 @@ import {
   SigIR,
   TopLevelIR,
   TypeIR,
-  Converter as AstConverter,
+  convertFiles,
+  ConversionResult,
 } from "./astToIR.ts";
 
 function pyClass(name: string, supers: string[], body: string): PyClass {
@@ -111,20 +112,23 @@ function fixupClassBases(unsortedClasses: InterfaceIR[]): void {
   }
 }
 
-export function emit(files: SourceFile[]): string[] {
-  const astConverter = new AstConverter();
-  const irTopLevels = astConverter.convert(files);
-  const unsortedClasses = irTopLevels.filter(
+export function emitFiles(files: SourceFile[]): string[] {
+  const result = convertFiles(files);
+  return emitIR(result);
+}
+
+export function emitIR({topLevels, typeParams}: ConversionResult): string[] {
+  const unsortedClasses = topLevels.filter(
     (x): x is InterfaceIR => x.kind === "interface",
   );
   fixupClassBases(unsortedClasses);
-  const topLevels = irTopLevels.map((e) => renderTopLevelIR(e));
+  const pyTopLevels = topLevels.map((e) => renderTopLevelIR(e));
   const typevarDecls = Array.from(
-    astConverter.typeParams,
+    typeParams,
     (x) => `${x} = TypeVar("${x}")`,
   ).join("\n");
   const output = [IMPORTS, typevarDecls];
-  for (const topLevel of topLevels) {
+  for (const topLevel of pyTopLevels) {
     switch (topLevel.kind) {
       case "class":
         output.push(renderPyClass(topLevel));

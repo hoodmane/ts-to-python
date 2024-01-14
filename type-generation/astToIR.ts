@@ -760,68 +760,75 @@ export class Converter {
     }
     return undefined;
   }
+}
 
-  convert(files: SourceFile[]): TopLevelIR[] {
-    const varDecls = files.flatMap((file) => file.getVariableDeclarations());
+export type ConversionResult = {topLevels: TopLevelIR[], typeParams: Set<string> };
 
-    const irTopLevels: TopLevelIR[] = [];
-    for (const varDecl of varDecls) {
-      const name = sanitizeReservedWords(varDecl.getName());
-      if (this.convertedSet.has(name)) {
-        continue;
-      }
-      this.convertedSet.add(name);
-      const result = this.varDeclToIR(varDecl);
-      if (result) {
-        irTopLevels.push(result);
-      }
-    }
-    const funcDecls = files.flatMap((file) => file.getFunctions());
-    const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName());
-    for (const [name, decls] of Object.entries(funcDeclsByName)) {
-      irTopLevels.push(this.funcDeclsToIR(name, decls));
-    }
-    let next: Needed | undefined;
-    while ((next = popElt(this.neededSet))) {
-      if (next.type === "ident") {
-        let res = this.identToIRIfNeeded(next.ident);
-        if (res) {
-          irTopLevels.push(res);
-        }
-        continue;
-      }
-      if (next.type === "interface") {
-        const ident = next.ident;
-        const name = ident.getText() + "_iface";
-        if (this.convertedSet.has(name)) {
-          continue;
-        }
-        this.convertedSet.add(name);
+export function convertFiles(files: SourceFile[]): ConversionResult {
+  const varDecls = files.flatMap((file) => file.getVariableDeclarations());
+  const funcDecls = files.flatMap((file) => file.getFunctions());
+  return convertDecls(varDecls, funcDecls);
+}
 
-        const defs = ident
-          .getDefinitionNodes()
-          .filter(Node.isInterfaceDeclaration);
-        if (defs.length) {
-          const baseNames = this.declsToBases(defs).filter(
-            (base) => base.name !== name,
-          );
-          const typeParams = defs
-            .flatMap((i) => i.getTypeParameters())
-            .map((p) => p.getName());
-          const res = this.interfaceToIR(
-            name,
-            baseNames,
-            defs.flatMap((def) => def.getMembers()),
-            [],
-            typeParams,
-          );
-          irTopLevels.push(res);
-          continue;
-        }
-        // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
-        console.warn("No interface declaration for " + name);
-      }
+export function convertDecls(varDecls: VariableDeclaration[], funcDecls: FunctionDeclaration[]): ConversionResult {
+  const converter = new Converter();
+  const topLevels: TopLevelIR[] = [];
+  for (const varDecl of varDecls) {
+    const name = sanitizeReservedWords(varDecl.getName());
+    if (converter.convertedSet.has(name)) {
+      continue;
     }
-    return irTopLevels;
+    converter.convertedSet.add(name);
+    const result = converter.varDeclToIR(varDecl);
+    if (result) {
+      topLevels.push(result);
+    }
   }
+  const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName());
+  for (const [name, decls] of Object.entries(funcDeclsByName)) {
+    topLevels.push(converter.funcDeclsToIR(name, decls));
+  }
+  let next: Needed | undefined;
+  while ((next = popElt(converter.neededSet))) {
+    if (next.type === "ident") {
+      let res = converter.identToIRIfNeeded(next.ident);
+      if (res) {
+        topLevels.push(res);
+      }
+      continue;
+    }
+    if (next.type === "interface") {
+      const ident = next.ident;
+      const name = ident.getText() + "_iface";
+      if (converter.convertedSet.has(name)) {
+        continue;
+      }
+      converter.convertedSet.add(name);
+
+      const defs = ident
+        .getDefinitionNodes()
+        .filter(Node.isInterfaceDeclaration);
+      if (defs.length) {
+        const baseNames = converter.declsToBases(defs).filter(
+          (base) => base.name !== name,
+        );
+        const typeParams = defs
+          .flatMap((i) => i.getTypeParameters())
+          .map((p) => p.getName());
+        const res = converter.interfaceToIR(
+          name,
+          baseNames,
+          defs.flatMap((def) => def.getMembers()),
+          [],
+          typeParams,
+        );
+        topLevels.push(res);
+        continue;
+      }
+      // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
+      console.warn("No interface declaration for " + name);
+    }
+  }
+  const typeParams = converter.typeParams;
+  return {topLevels, typeParams};
 }
