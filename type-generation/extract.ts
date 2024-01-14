@@ -50,9 +50,11 @@ function pyOther(text: string): PyOther {
   };
 }
 
-function topologicalSortClasses(nameToCls: Map<string, PyClass>): PyClass[] {
-  type AnotatedClass = PyClass & { sorted?: boolean; visited?: boolean };
-  const result: PyClass[] = [];
+function topologicalSortClasses(
+  nameToCls: Map<string, InterfaceIR>,
+): InterfaceIR[] {
+  type AnotatedClass = InterfaceIR & { sorted?: boolean; visited?: boolean };
+  const result: InterfaceIR[] = [];
   function visit(cls: AnotatedClass) {
     if (cls.sorted) {
       return;
@@ -61,7 +63,7 @@ function topologicalSortClasses(nameToCls: Map<string, PyClass>): PyClass[] {
       throw new Error("Cycle");
     }
     cls.visited = true;
-    for (const name of cls.superStems) {
+    for (const { name } of cls.bases) {
       const superClass = nameToCls.get(name);
       if (!superClass) {
         throw new Error(`Unknown super: ${cls.name} < ${name}`);
@@ -77,32 +79,19 @@ function topologicalSortClasses(nameToCls: Map<string, PyClass>): PyClass[] {
   return result;
 }
 
-export function emit(files: SourceFile[]): string[] {
-  const astConverter = new AstConverter();
-  const irTopLevels = astConverter.convert(files);
-  const topLevels = irTopLevels.map((e) => renderTopLevelIR(e));
-  const typevarDecls = Array.from(
-    astConverter.typeParams,
-    (x) => `${x} = TypeVar("${x}")`,
-  ).join("\n");
-  const output = [IMPORTS, typevarDecls];
-  const unsortedClasses = topLevels.filter(
-    (x): x is PyClass => x.kind === "class",
-  );
+function fixupClassBases(unsortedClasses: InterfaceIR[]): void {
   const nameToCls = new Map(unsortedClasses.map((cls) => [cls.name, cls]));
   if (nameToCls.size < unsortedClasses.length) {
     throw new Error("Duplicate");
   }
-  // We need to ensure that the supers are topologically sorted so that we respect the MRO.
   const classes = topologicalSortClasses(nameToCls);
   const classNameToIndex = new Map(classes.map((cls, idx) => [cls.name, idx]));
   for (const cls of classes) {
-    const extraBases = getExtraBases(cls.name);
-    if (extraBases) {
-      cls.supers.push(...extraBases);
+    cls.extraBases = getExtraBases(cls.name);
+    if (cls.extraBases.length > 0) {
       cls.concrete = true;
     } else {
-      for (const sName of cls.superStems) {
+      for (const { name: sName } of cls.bases) {
         const s = nameToCls.get(sName);
         if (s.concrete) {
           cls.concrete = true;
@@ -111,20 +100,33 @@ export function emit(files: SourceFile[]): string[] {
       }
     }
     if (cls.name.endsWith("_iface") && !cls.concrete) {
-      cls.supers.push("Protocol");
+      cls.extraBases.push("Protocol");
     }
     if (!cls.name.endsWith("_iface")) {
-      cls.supers.push("_JsObject");
+      cls.extraBases.push("_JsObject");
     }
+    cls.bases.sort(({ name: a }, { name: b }) => {
+      return classNameToIndex.get(b) - classNameToIndex.get(a);
+    });
   }
+}
+
+export function emit(files: SourceFile[]): string[] {
+  const astConverter = new AstConverter();
+  const irTopLevels = astConverter.convert(files);
+  const unsortedClasses = irTopLevels.filter(
+    (x): x is InterfaceIR => x.kind === "interface",
+  );
+  fixupClassBases(unsortedClasses);
+  const topLevels = irTopLevels.map((e) => renderTopLevelIR(e));
+  const typevarDecls = Array.from(
+    astConverter.typeParams,
+    (x) => `${x} = TypeVar("${x}")`,
+  ).join("\n");
+  const output = [IMPORTS, typevarDecls];
   for (const topLevel of topLevels) {
     switch (topLevel.kind) {
       case "class":
-        topLevel.supers.sort((a, b) => {
-          a = a.split("[")[0];
-          b = b.split("[")[0];
-          return classNameToIndex.get(b) - classNameToIndex.get(a);
-        });
         output.push(renderPyClass(topLevel));
         break;
 
@@ -229,6 +231,7 @@ function renderInterface({
   methods,
   typeParams,
   bases,
+  extraBases,
 }: InterfaceIR): PyClass {
   const entries = ([] as string[]).concat(
     properties.map((prop) => renderProperty2(prop)),
@@ -239,6 +242,8 @@ function renderInterface({
     const joined = typeParams.join(", ");
     newSupers.push(`Generic[${joined}]`);
   }
+  extraBases ??= [];
+  newSupers.push(...extraBases);
   return pyClass(name, newSupers, entries.join("\n"));
 }
 
