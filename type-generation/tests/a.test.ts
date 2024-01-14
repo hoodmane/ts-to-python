@@ -1,7 +1,9 @@
 import {
   ClassDeclaration,
   FunctionDeclaration,
+  Identifier,
   InterfaceDeclaration,
+  Project,
   PropertySignature,
   SyntaxKind,
   TypeNode,
@@ -9,6 +11,7 @@ import {
 } from "ts-morph";
 import {
   emitFiles,
+  emitIR,
   renderBase,
   renderProperty2,
   renderSignatureGroup2,
@@ -24,7 +27,7 @@ import {
   removeTypeIgnores,
   typeToIR,
 } from "./helpers.ts";
-import { Converter as AstConverter } from "../astToIR";
+import { Converter as AstConverter, convertDecls } from "../astToIR";
 
 function propertySignatureToIR(
   member: PropertySignature,
@@ -58,6 +61,16 @@ function convertPropertySignature(
   isStatic: boolean = false,
 ): string {
   return renderProperty2(propertySignatureToIR(member, isStatic));
+}
+
+function convertBuiltinFunction(funcName: string): string[] {
+  const project = makeProject();
+  project.createSourceFile("/a.ts", funcName);
+  const x = project.getSourceFileOrThrow("/a.ts");
+  const id = x.getStatements()[0].getChildren()[0] as Identifier;
+  const funcDecl = id.getDefinitionNodes()[0] as FunctionDeclaration;
+  const ir = convertDecls([], [funcDecl]);
+  return emitIR(ir).map(removeTypeIgnores);
 }
 
 describe("typeToPython", () => {
@@ -691,6 +704,17 @@ describe("emit", () => {
             def __setitem__(self, x: int | float, y: str, /) -> None: ...
             def __delitem__(self, x: int | float, /) -> bool: ...
       `).trim(),
+    );
+  });
+  it("check timeout type adjustments", () => {
+    let res;
+    res = convertBuiltinFunction("setTimeout");
+    expect(res.at(-2)).toBe(
+      "def setTimeout(handler: TimerHandler, timeout: int | float | None = None, /, *arguments: Any) -> int | JsProxy: ...",
+    );
+    res = convertBuiltinFunction("clearTimeout");
+    expect(res.at(-1)).toBe(
+      "def clearTimeout(id: int | JsProxy, /) -> None: ...",
     );
   });
 });

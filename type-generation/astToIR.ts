@@ -762,7 +762,10 @@ export class Converter {
   }
 }
 
-export type ConversionResult = {topLevels: TopLevelIR[], typeParams: Set<string> };
+export type ConversionResult = {
+  topLevels: TopLevelIR[];
+  typeParams: Set<string>;
+};
 
 export function convertFiles(files: SourceFile[]): ConversionResult {
   const varDecls = files.flatMap((file) => file.getVariableDeclarations());
@@ -770,7 +773,10 @@ export function convertFiles(files: SourceFile[]): ConversionResult {
   return convertDecls(varDecls, funcDecls);
 }
 
-export function convertDecls(varDecls: VariableDeclaration[], funcDecls: FunctionDeclaration[]): ConversionResult {
+export function convertDecls(
+  varDecls: VariableDeclaration[],
+  funcDecls: FunctionDeclaration[],
+): ConversionResult {
   const converter = new Converter();
   const topLevels: TopLevelIR[] = [];
   for (const varDecl of varDecls) {
@@ -809,9 +815,9 @@ export function convertDecls(varDecls: VariableDeclaration[], funcDecls: Functio
         .getDefinitionNodes()
         .filter(Node.isInterfaceDeclaration);
       if (defs.length) {
-        const baseNames = converter.declsToBases(defs).filter(
-          (base) => base.name !== name,
-        );
+        const baseNames = converter
+          .declsToBases(defs)
+          .filter((base) => base.name !== name);
         const typeParams = defs
           .flatMap((i) => i.getTypeParameters())
           .map((p) => p.getName());
@@ -830,5 +836,5 @@ export function convertDecls(varDecls: VariableDeclaration[], funcDecls: Functio
     }
   }
   const typeParams = converter.typeParams;
-  return {topLevels, typeParams};
+  return { topLevels, typeParams };
 }

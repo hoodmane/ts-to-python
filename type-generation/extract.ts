@@ -117,7 +117,7 @@ export function emitFiles(files: SourceFile[]): string[] {
   return emitIR(result);
 }
 
-export function emitIR({topLevels, typeParams}: ConversionResult): string[] {
+export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
   const unsortedClasses = topLevels.filter(
     (x): x is InterfaceIR => x.kind === "interface",
   );
