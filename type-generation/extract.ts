@@ -63,6 +63,7 @@ import {
   TypeIR,
   callableToIR,
   declsToBases,
+  funcDeclsToIR,
   interfaceToIR,
   membersDeclarationToIR,
   propertySignatureToIR,
@@ -311,15 +312,34 @@ export class Converter {
   }
 
   convertFuncDeclGroup(name: string, decls: FunctionDeclaration[]): PyOther[] {
-    const astSigs = decls.map((x) => x.getSignature());
-    const { sigs: irSigs } = callableToIR(name, astSigs, false);
-    const sigs = irSigs.map((sig) => this.renderSig(sig, Variance.covar, []));
-    return renderSignatureGroup({ name, sigs }, false).map(pyOther);
+    const sigsIR = funcDeclsToIR(name, decls);
+    return this.renderSignatureGroup(sigsIR, false).map(pyOther);
   }
 
   convertVarDecl(astVarDecl: VariableDeclaration): PyTopLevel | undefined {
     const irVarDecl = varDeclToIR(astVarDecl);
     return this.renderTopLevelIR(irVarDecl);
+  }
+
+  convertClass(decl: ClassDeclaration): PyClass {
+    throw new Error("TODO not implemented");
+  }
+
+  convertInterface(
+    name: string,
+    supers: BaseIR[],
+    members: TypeElementTypes[],
+    staticMembers: TypeElementTypes[],
+    typeParams: string[],
+  ): PyClass {
+    const irInterface = interfaceToIR(
+      name,
+      supers,
+      members,
+      staticMembers,
+      typeParams,
+    );
+    return this.renderInterface(irInterface);
   }
 
   renderTopLevelIR(toplevel: TopLevelIR): PyTopLevel {
@@ -351,19 +371,6 @@ export class Converter {
     return converted.map((x) => "@overload\n" + x).join("\n\n");
   }
 
-  convertSignature(
-    sig: Signature,
-    variance: Variance,
-    topLevelName?: string,
-  ): string {
-    const sigIR = sigToIR(sig);
-    const pySig = this.renderSig(sigIR, variance);
-    if (topLevelName) {
-      return renderSignature(topLevelName, pySig);
-    }
-    return renderInnerSignature(pySig);
-  }
-
   renderSig(
     sig: SigIR,
     variance: Variance,
@@ -393,45 +400,14 @@ export class Converter {
     return { params, spreadParam, kwparams, returns, decorators };
   }
 
-  convertSig(
-    sig: Signature,
-    variance: Variance,
-    decorators: string[] = [],
-  ): PySig {
-    const sigIR = sigToIR(sig);
-    return this.renderSig(sigIR, variance, decorators);
-  }
-
-  convertClass(decl: ClassDeclaration): PyClass {
-    throw new Error("TODO not implemented");
-  }
-
-  convertInterface(
-    name: string,
-    supers: BaseIR[],
-    members: TypeElementTypes[],
-    staticMembers: TypeElementTypes[],
-    typeParams: string[],
-  ): PyClass {
-    const irInterface = interfaceToIR(
-      name,
-      supers,
-      members,
-      staticMembers,
-      typeParams,
-    );
-    return this.renderInterface(irInterface);
-  }
-
-  signatureGroupIRToPython({ name, sigs, isStatic }: SigGroupIR): PySigGroup {
+  renderSignatureGroup(
+    { name, sigs, isStatic }: SigGroupIR,
+    isMethod: boolean,
+  ): string[] {
     const pySigs = sigs.map((sig) =>
       this.renderSig(sig, Variance.covar, [], isStatic),
     );
-    return { name, sigs: pySigs };
-  }
-
-  renderSignatureGroup(sigGroup: SigGroupIR): string[] {
-    return renderSignatureGroup(this.signatureGroupIRToPython(sigGroup), true);
+    return renderSignatureGroup({ name, sigs: pySigs }, isMethod);
   }
 
   renderBase({ name, ident, typeParams }: BaseIR): string {
@@ -456,7 +432,7 @@ export class Converter {
   }: InterfaceIR): PyClass {
     const entries = ([] as string[]).concat(
       properties.map((prop) => this.renderProperty(prop)),
-      methods.flatMap((gp) => this.renderSignatureGroup(gp)),
+      methods.flatMap((gp) => this.renderSignatureGroup(gp, true)),
     );
     const newSupers = bases.map((b) => this.renderBase(b));
     if (typeParams.length > 0) {
@@ -464,13 +440,6 @@ export class Converter {
       newSupers.push(`Generic[${joined}]`);
     }
     return pyClass(name, newSupers, entries.join("\n"));
-  }
-
-  convertPropertySignature(
-    member: PropertySignature,
-    isStatic: boolean = false,
-  ): string {
-    return this.renderProperty(propertySignatureToIR(member, isStatic));
   }
 
   renderProperty(property: PropertyIR): string {
