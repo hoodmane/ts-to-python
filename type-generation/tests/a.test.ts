@@ -2,7 +2,6 @@ import {
   ClassDeclaration,
   FunctionDeclaration,
   InterfaceDeclaration,
-  Project,
   PropertySignature,
   SyntaxKind,
   TypeNode,
@@ -268,7 +267,8 @@ function convertVarDecl(
   astVarDecl: VariableDeclaration,
 ): PyTopLevel | undefined {
   const converter = new Converter();
-  const irVarDecl = converter.astConverter.varDeclToIR(astVarDecl);
+  const astConverter = new AstConverter();
+  const irVarDecl = astConverter.varDeclToIR(astVarDecl);
   return converter.renderTopLevelIR(irVarDecl);
 }
 
@@ -284,13 +284,13 @@ function convertFuncDeclGroup(
   decls: FunctionDeclaration[],
 ): PyOther[] {
   const converter = new Converter();
-  const sigsIR = converter.astConverter.funcDeclsToIR(name, decls);
+  const astConverter = new AstConverter();
+  const sigsIR = astConverter.funcDeclsToIR(name, decls);
   return converter.renderSignatureGroup(sigsIR, false).map(pyOther);
 }
 
 describe("sanitizeReservedWords", () => {
   it("variable name", () => {
-    const converter = new Converter();
     const project = makeProject();
     project.createSourceFile("/a.ts", "declare var global : string;");
     const file = project.getSourceFileOrThrow("/a.ts");
@@ -330,7 +330,6 @@ it("No args function", () => {
   const expected = dedent(`\
     def f() -> None: ...
   `).trim();
-  const converter = new Converter();
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
   const file = project.getSourceFileOrThrow("/a.ts");
@@ -345,7 +344,8 @@ function getBaseNames(
   defs: (InterfaceDeclaration | ClassDeclaration)[],
 ): string[] {
   const converter = new Converter();
-  const bases = converter.astConverter.declsToBases(defs);
+  const astConverter = new AstConverter();
+  const bases = astConverter.declsToBases(defs);
   return bases.map((base) => converter.renderBase(base));
 }
 
@@ -356,7 +356,6 @@ describe("getBaseNames", () => {
       interface S extends X {}
       interface S extends X {}
       `;
-    const converter = new Converter();
     const project = makeProject();
     project.createSourceFile("/a.ts", text);
     const file = project.getSourceFileOrThrow("/a.ts");
@@ -375,7 +374,6 @@ describe("getBaseNames", () => {
       interface S2 extends X<boolean> {}
       interface S3 extends X<boolean, symbol> {}
       `;
-    const converter = new Converter();
     const project = makeProject();
     project.createSourceFile("/a.ts", text);
     const file = project.getSourceFileOrThrow("/a.ts");

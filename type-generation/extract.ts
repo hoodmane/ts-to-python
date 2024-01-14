@@ -1,14 +1,4 @@
-import {
-  ClassDeclaration,
-  FunctionDeclaration,
-  Identifier,
-  InterfaceDeclaration,
-  Node,
-  Project,
-  SourceFile,
-  TypeElementTypes,
-  VariableDeclaration,
-} from "ts-morph";
+import { SourceFile } from "ts-morph";
 import {
   PyParam,
   PySig,
@@ -18,7 +8,6 @@ import {
   renderSignature,
   renderSignatureGroup,
   renderSimpleDeclaration,
-  sanitizeReservedWords,
 } from "./render.ts";
 import { PyClass } from "./types.ts";
 import {
@@ -27,15 +16,8 @@ import {
   typeReferenceSubsitutions,
 } from "./adjustments.ts";
 
-import { groupBy, popElt } from "./groupBy.ts";
-import {
-  Needed,
-  PyOther,
-  PyTopLevel,
-  Variance,
-  reverseVariance,
-} from "./types.ts";
-import { assertUnreachable, classifyIdentifier } from "./astUtils.ts";
+import { PyOther, PyTopLevel, Variance, reverseVariance } from "./types.ts";
+import { assertUnreachable } from "./astUtils.ts";
 import {
   BaseIR,
   InterfaceIR,
@@ -96,75 +78,12 @@ function topologicalSortClasses(nameToCls: Map<string, PyClass>): PyClass[] {
 }
 
 export class Converter {
-  astConverter: AstConverter;
-  constructor() {
-    this.astConverter = new AstConverter();
-  }
-
   emit(files: SourceFile[]): string[] {
-    const varDecls = files.flatMap((file) => file.getVariableDeclarations());
-
-    const irTopLevels: TopLevelIR[] = [];
-    for (const varDecl of varDecls) {
-      const name = sanitizeReservedWords(varDecl.getName());
-      if (this.astConverter.convertedSet.has(name)) {
-        continue;
-      }
-      this.astConverter.convertedSet.add(name);
-      const result = this.astConverter.varDeclToIR(varDecl);
-      if (result) {
-        irTopLevels.push(result);
-      }
-    }
-    const funcDecls = files.flatMap((file) => file.getFunctions());
-    const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName());
-    for (const [name, decls] of Object.entries(funcDeclsByName)) {
-      irTopLevels.push(this.astConverter.funcDeclsToIR(name, decls));
-    }
-    let next: Needed | undefined;
-    while ((next = popElt(this.astConverter.neededSet))) {
-      if (next.type === "ident") {
-        let res = this.astConverter.identToIRIfNeeded(next.ident);
-        if (res) {
-          irTopLevels.push(res);
-        }
-        continue;
-      }
-      if (next.type === "interface") {
-        const ident = next.ident;
-        const name = ident.getText() + "_iface";
-        if (this.astConverter.convertedSet.has(name)) {
-          continue;
-        }
-        this.astConverter.convertedSet.add(name);
-
-        const defs = ident
-          .getDefinitionNodes()
-          .filter(Node.isInterfaceDeclaration);
-        if (defs.length) {
-          const baseNames = this.astConverter
-            .declsToBases(defs)
-            .filter((base) => base.name !== name);
-          const typeParams = defs
-            .flatMap((i) => i.getTypeParameters())
-            .map((p) => p.getName());
-          const res = this.astConverter.interfaceToIR(
-            name,
-            baseNames,
-            defs.flatMap((def) => def.getMembers()),
-            [],
-            typeParams,
-          );
-          irTopLevels.push(res);
-          continue;
-        }
-        // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
-        console.warn("No interface declaration for " + name);
-      }
-    }
+    const astConverter = new AstConverter();
+    const irTopLevels = astConverter.convert(files);
     const topLevels = irTopLevels.map((e) => this.renderTopLevelIR(e));
     const typevarDecls = Array.from(
-      this.astConverter.typeParams,
+      astConverter.typeParams,
       (x) => `${x} = TypeVar("${x}")`,
     ).join("\n");
     const output = [IMPORTS, typevarDecls];
