@@ -1,8 +1,7 @@
-import { TypeNode } from "ts-morph";
-import { type Converter } from "./extract";
 import { PyClass, Variance, reverseVariance } from "./types";
 import { PySig } from "./render";
 import { TypeIR } from "./astToIR";
+import { renderTypeIR } from "./extract";
 
 export const IMPORTS = `
 from collections.abc import Callable, Iterable as PyIterable, Iterator as PyIterator, MutableSequence as PyMutableSequence
@@ -141,7 +140,6 @@ export function adjustPySig(name: string, sig: PySig): void {
 }
 
 export function typeReferenceSubsitutions(
-  converter: Converter,
   name: string,
   typeArgs: TypeIR[],
   variance: Variance,
@@ -164,8 +162,7 @@ export function typeReferenceSubsitutions(
     return "Any";
   }
 
-  const args = () =>
-    typeArgs.map((arg) => converter.renderTypeIR(arg, false, variance));
+  const args = () => typeArgs.map((arg) => renderTypeIR(arg, false, variance));
   const fmtArgs = () => {
     const a = args();
     if (a.length) {
@@ -188,13 +185,9 @@ export function typeReferenceSubsitutions(
     }
   }
   if (name === "Iterator") {
-    const T = converter.renderTypeIR(typeArgs[0], false, variance);
-    const TReturn = converter.renderTypeIR(typeArgs[1], false, variance);
-    const TNext = converter.renderTypeIR(
-      typeArgs[2],
-      false,
-      reverseVariance(variance),
-    );
+    const T = renderTypeIR(typeArgs[0], false, variance);
+    const TReturn = renderTypeIR(typeArgs[1], false, variance);
+    const TNext = renderTypeIR(typeArgs[2], false, reverseVariance(variance));
     const args = `[${T}, ${TNext}, ${TReturn}]`;
     if (variance === Variance.contra) {
       return `PyGenerator` + args;

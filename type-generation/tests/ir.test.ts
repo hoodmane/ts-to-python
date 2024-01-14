@@ -1,11 +1,7 @@
-import { Converter } from "../extract";
 import { getTypeNode, typeToIR } from "./helpers";
 
-function typeToIRHelper(tsType: string, converter?: Converter) {
-  if (!converter) {
-    converter = new Converter();
-  }
-  const typeNode = getTypeNode(converter, tsType);
+function typeToIRHelper(tsType: string) {
+  const typeNode = getTypeNode(tsType);
   const ir = typeToIR(typeNode);
   // console.dir(ir, { depth: null });
   return ir;
@@ -87,9 +83,8 @@ describe("typeToIR", () => {
       });
     });
     it("convert Iterator", () => {
-      const converter = new Converter();
       let typeIR;
-      typeIR = typeToIRHelper("Iterator<boolean>", converter);
+      typeIR = typeToIRHelper("Iterator<boolean>");
       expect(typeIR).toEqual({
         kind: "reference",
         identName: "Iterator_iface",
@@ -99,7 +94,7 @@ describe("typeToIR", () => {
           { kind: "simple", text: "None" },
         ],
       });
-      typeIR = typeToIRHelper("Iterator<boolean, string, symbol>", converter);
+      typeIR = typeToIRHelper("Iterator<boolean, string, symbol>");
       expect(typeIR).toEqual({
         kind: "reference",
         identName: "Iterator_iface",

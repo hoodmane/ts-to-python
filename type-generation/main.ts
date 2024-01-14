@@ -1,11 +1,10 @@
 import { Project, SourceFile } from "ts-morph";
-import { Converter } from "./extract.ts";
+import { emit } from "./extract.ts";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 
 Error.stackTraceLimit = Infinity;
 
 function main() {
-  const converter = new Converter();
   let files: SourceFile[];
   const project = new Project({
     tsConfigFilePath: "../type-generation-input-project/tsconfig.json",
@@ -14,8 +13,7 @@ function main() {
   });
   project.addSourceFilesAtPaths("../type-generation-input-project/a.ts");
   files = project.resolveSourceFileDependencies();
-  const result = converter
-    .emit(files)
+  const result = emit(files)
     .map((x) => x + "\n\n")
     .join("");
   const outDir = "../generated/js/";
