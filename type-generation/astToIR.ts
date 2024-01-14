@@ -418,7 +418,7 @@ export function sigToIRDestructure(sig: Signature): [SigIR] | [SigIR, SigIR] {
   return [sigIR, sigIRDestructured];
 }
 
-function overloadGroupToIR(
+export function callableToIR(
   name: string,
   signatures: Signature[],
   isStatic?: boolean,
@@ -490,7 +490,7 @@ export function interfaceToIR(
     if (!(origName in astMethods)) {
       return;
     }
-    extraMethods.push(overloadGroupToIR(newName, astMethods[origName]));
+    extraMethods.push(callableToIR(newName, astMethods[origName]));
   };
   redirectMethod("has", "__contains__");
   redirectMethod("includes", "__contains__");
@@ -502,10 +502,10 @@ export function interfaceToIR(
   }
   const irMethods = ([] as SigGroupIR[]).concat(
     Object.entries(astMethods).map(([name, sigs]) =>
-      overloadGroupToIR(name, sigs, false),
+      callableToIR(name, sigs, false),
     ),
     Object.entries(staticAstMethods).map(([name, sigs]) =>
-      overloadGroupToIR(name, sigs, true),
+      callableToIR(name, sigs, true),
     ),
     extraMethods,
   );

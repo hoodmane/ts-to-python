@@ -61,6 +61,7 @@ import {
   SigIR,
   TopLevelIR,
   TypeIR,
+  callableToIR,
   declsToBases,
   interfaceToIR,
   membersDeclarationToIR,
@@ -300,11 +301,8 @@ export class Converter {
         }
         return this.convertClass(classified.decl);
       case "typeAlias":
-        const renderedType = this.convertType(
-          classified.decl.getTypeNode()!,
-          false,
-          Variance.covar,
-        );
+        const ir = typeToIR(classified.decl.getTypeNode()!);
+        const renderedType = this.renderTypeIR(ir, false, Variance.covar);
         return pyOther(`${name} = ${renderedType}`);
       case "varDecl":
         console.warn("Skipping varDecl", ident.getText());
@@ -312,19 +310,11 @@ export class Converter {
     return undefined;
   }
 
-  renderSimpleDecl(name: string, typeNode: TypeNode): string {
-    const renderedType = this.convertType(typeNode, false, Variance.covar);
-    return renderSimpleDeclaration(name, renderedType);
-  }
-
   convertFuncDeclGroup(name: string, decls: FunctionDeclaration[]): PyOther[] {
-    return renderSignatureGroup(
-      this.overloadGroupToPython(
-        name,
-        decls.map((x) => x.getSignature()),
-      ),
-      false,
-    ).map(pyOther);
+    const astSigs = decls.map((x) => x.getSignature());
+    const { sigs: irSigs } = callableToIR(name, astSigs, false);
+    const sigs = irSigs.map((sig) => this.renderSig(sig, Variance.covar, []));
+    return renderSignatureGroup({ name, sigs }, false).map(pyOther);
   }
 
   convertVarDecl(astVarDecl: VariableDeclaration): PyTopLevel | undefined {
@@ -342,24 +332,6 @@ export class Converter {
       return this.renderInterface(toplevel);
     }
     assertUnreachable(toplevel);
-  }
-
-  convertMembersDeclaration(
-    name: string,
-    type: { getMembers: TypeLiteralNode["getMembers"] },
-    bases: never[] = [],
-    typeParams: string[],
-  ): PyClass {
-    const irInterface = membersDeclarationToIR(name, type, bases, typeParams);
-    return this.renderInterface(irInterface);
-  }
-
-  convertSignatures(
-    sigs: readonly Signature[],
-    variance: Variance,
-    topLevelName?: string,
-  ): string {
-    return this.renderIRSignatures(sigs.map(sigToIR), variance, topLevelName);
   }
 
   renderIRSignatures(
@@ -392,22 +364,13 @@ export class Converter {
     return renderInnerSignature(pySig);
   }
 
-  convertSignatureDestructure(
-    sig: Signature,
-    variance: Variance,
-    decorators: string[] = [],
-  ): PySig[] {
-    const sigsIR = sigToIRDestructure(sig);
-    return sigsIR.map((sig) => this.renderSig(sig, variance, decorators));
-  }
-
   renderSig(
     sig: SigIR,
     variance: Variance,
     decorators: string[] = [],
     isStatic: boolean = false,
   ): PySig {
-    const convertParam = ({ name, optional, type }: ParamIR): PyParam => {
+    const renderParam = ({ name, optional, type }: ParamIR): PyParam => {
       const pyType = this.renderTypeIR(type, optional, paramVariance);
       return { name, optional, pyType };
     };
@@ -418,10 +381,10 @@ export class Converter {
       returns: origReturns,
     } = sig;
     const paramVariance = reverseVariance(variance);
-    const params = origParams.map(convertParam);
-    const kwparams = origKwparams?.map(convertParam);
+    const params = origParams.map(renderParam);
+    const kwparams = origKwparams?.map(renderParam);
     const spreadParam = origSpreadParam
-      ? convertParam(origSpreadParam)
+      ? renderParam(origSpreadParam)
       : undefined;
     const returns = this.renderTypeIR(origReturns, false, variance);
     if (isStatic) {
@@ -430,7 +393,7 @@ export class Converter {
     return { params, spreadParam, kwparams, returns, decorators };
   }
 
-  sigToPython(
+  convertSig(
     sig: Signature,
     variance: Variance,
     decorators: string[] = [],
@@ -441,51 +404,6 @@ export class Converter {
 
   convertClass(decl: ClassDeclaration): PyClass {
     throw new Error("TODO not implemented");
-    // const name = decl.getName();
-    // const supers = this.getBaseNames([decl]);
-    // const staticMembers = decl.getStaticMembers();
-    // const members = decl.getInstanceMembers();
-    // const [methodDecls, rest] = split(members, Node.isMethodDeclaration);
-    // const methodGroups = groupBy(methodDecls, (d) => d.getName());
-    // const methodEntries = Object.entries(methodGroups).flatMap(([name, sigs]) =>
-    //   renderSignatureGroup(
-    //     this.overloadGroupToPython(
-    //       name,
-    //       sigs.map((decl) => decl.getSignature()),
-    //     ),
-    //     true,
-    //   ),
-    // );
-    // const [staticMethodDecls, staticRest] = split(
-    //   staticMembers,
-    //   Node.isMethodDeclaration,
-    // );
-    // const staticMethodGroups = groupBy(staticMethodDecls, (d) => d.getName());
-    // const staticMethodEntries = Object.entries(staticMethodGroups).flatMap(
-    //   ([name, sigs]) =>
-    //     renderSignatureGroup(
-    //       this.overloadGroupToPython(
-    //         name,
-    //         sigs.map((decl) => decl.getSignature()),
-    //         Variance.covar["classmethod"],
-    //       ),
-    //       true,
-    //     ),
-    // );
-    // for (const member of rest) {
-    //   if (Node.isPropertyDeclaration(member)) {
-    //     methodEntries.push(
-    //       this.renderSimpleDecl(member.getName(), member.getTypeNode()),
-    //     );
-    //     continue;
-    //   }
-    //   throw new Error(`Unhandled member kind ${member.getKindName()}`);
-    // }
-    // for (const member of staticRest) {
-    //   throw new Error(`Unhandled static member kind ${member.getKindName()}`);
-    // }
-    // const entries = methodEntries.concat(staticMethodEntries);
-    // return pyClass(name, supers, entries.join("\n"));
   }
 
   convertInterface(
@@ -561,27 +479,6 @@ export class Converter {
     return renderProperty(name, pyType, isReadonly, isStatic);
   }
 
-  overloadGroupToPython(
-    name: string,
-    signatures: Signature[],
-    decorators: string[] = [],
-  ): PySigGroup {
-    const sigs = signatures.flatMap((sig) =>
-      this.convertSignatureDestructure(sig, Variance.covar, decorators),
-    );
-    return { name, sigs };
-  }
-
-  convertType(
-    typeNode: TypeNode,
-    isOptional: boolean,
-    variance: Variance,
-    topLevelName?: string,
-  ): string {
-    const ir = typeToIR(typeNode);
-    return this.renderTypeIR(ir, isOptional, variance, topLevelName);
-  }
-
   renderTypeIR(
     ir: TypeIR,
     isOptional: boolean,
@@ -591,7 +488,7 @@ export class Converter {
     if (isOptional) {
       topLevelName = undefined;
     }
-    let result = this.typeIRToPythonInner(ir, variance, topLevelName);
+    let result = this.renderTypeIRInner(ir, variance, topLevelName);
     if (!isOptional) {
       return result;
     }
@@ -606,7 +503,7 @@ export class Converter {
     return result;
   }
 
-  typeIRToPythonInner(
+  renderTypeIRInner(
     ir: TypeIR,
     variance: Variance,
     topLevelName?: string,
