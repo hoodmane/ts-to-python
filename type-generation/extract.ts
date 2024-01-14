@@ -229,7 +229,8 @@ export class Converter {
     }
     if (toplevel.kind === "typeAlias") {
       const { name, type } = toplevel;
-      return pyOther(`${name} = ${type}`);
+      const typeStr = this.renderTypeIR(type, false, Variance.covar);
+      return pyOther(`${name} = ${typeStr}`);
     }
     if (toplevel.kind === "interface") {
       return this.renderInterface(toplevel);
