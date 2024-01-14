@@ -7,8 +7,15 @@ import {
   TypeNode,
   VariableDeclaration,
 } from "ts-morph";
-import { Converter } from "../extract.ts";
-import { renderPyClass } from "../render.ts";
+import {
+  emit,
+  renderBase,
+  renderProperty2,
+  renderSignatureGroup2,
+  renderTopLevelIR,
+  renderTypeIR,
+} from "../extract.ts";
+import { renderPyClass, renderSignatureGroup } from "../render.ts";
 import { PyClass, PyOther, PyTopLevel, Variance } from "../types.ts";
 import {
   dedent,
@@ -27,95 +34,71 @@ function propertySignatureToIR(
 }
 
 function checkTypeToPython(
-  converter: Converter,
   tsType: string,
   pyType: string,
   variance: Variance = Variance.covar,
 ) {
-  const typeNode = getTypeNode(converter, tsType);
-  const conversion = convertType(converter, typeNode, false, variance);
+  const typeNode = getTypeNode(tsType);
+  const conversion = convertType(typeNode, false, variance);
   expect(conversion).toBe(pyType);
 }
 
 function convertType(
-  converter: Converter,
   typeNode: TypeNode,
   isOptional: boolean,
   variance: Variance,
   topLevelName?: string,
 ): string {
   const ir = typeToIR(typeNode);
-  return converter.renderTypeIR(ir, isOptional, variance, topLevelName);
+  return renderTypeIR(ir, isOptional, variance, topLevelName);
 }
 
 function convertPropertySignature(
-  converter: Converter,
   member: PropertySignature,
   isStatic: boolean = false,
 ): string {
-  return converter.renderProperty(propertySignatureToIR(member, isStatic));
+  return renderProperty2(propertySignatureToIR(member, isStatic));
 }
 
 describe("typeToPython", () => {
   it("convert string", () => {
-    const converter = new Converter();
-    checkTypeToPython(converter, "string", "str");
+    checkTypeToPython("string", "str");
   });
   it("convert number", () => {
-    const converter = new Converter();
-    checkTypeToPython(converter, "number", "int | float");
+    checkTypeToPython("number", "int | float");
   });
   it("convert union", () => {
-    const converter = new Converter();
-    checkTypeToPython(converter, "string | boolean", "str | bool");
+    checkTypeToPython("string | boolean", "str | bool");
   });
   it("convert array", () => {
-    const converter = new Converter();
-    checkTypeToPython(converter, "string[]", "JsArray[str]");
-    checkTypeToPython(
-      converter,
-      "string[]",
-      "PyMutableSequence[str]",
-      Variance.contra,
-    );
+    checkTypeToPython("string[]", "JsArray[str]");
+    checkTypeToPython("string[]", "PyMutableSequence[str]", Variance.contra);
   });
   describe("typeReferenceSubsitutions", () => {
     it("convert Function", () => {
-      const converter = new Converter();
-      checkTypeToPython(converter, "Function", "Callable[..., Any]");
+      checkTypeToPython("Function", "Callable[..., Any]");
     });
     it("convert Exclude", () => {
-      const converter = new Converter();
-      checkTypeToPython(converter, "Exclude<string | symbol>", "str | Symbol");
+      checkTypeToPython("Exclude<string | symbol>", "str | Symbol");
     });
     it("convert Readonly", () => {
-      const converter = new Converter();
-      checkTypeToPython(converter, "Readonly<string | symbol>", "str | Symbol");
+      checkTypeToPython("Readonly<string | symbol>", "str | Symbol");
     });
     it("convert Promise", () => {
-      const converter = new Converter();
-      checkTypeToPython(
-        converter,
-        "Promise<string | symbol>",
-        "Future[str | Symbol]",
-      );
+      checkTypeToPython("Promise<string | symbol>", "Future[str | Symbol]");
     });
     it("convert Iterator", () => {
-      const converter = new Converter();
-      checkTypeToPython(converter, "Iterator<boolean>", "JsIterator[bool]");
+      checkTypeToPython("Iterator<boolean>", "JsIterator[bool]");
       checkTypeToPython(
-        converter,
         "Iterator<boolean>",
         "PyGenerator[bool, None, Any]",
         Variance.contra,
       );
       checkTypeToPython(
-        converter,
         "Iterator<boolean, string, symbol>",
         "JsGenerator[bool, Symbol, str]",
       );
       checkTypeToPython(
-        converter,
         "Iterator<boolean, string, symbol>",
         "PyGenerator[bool, Symbol, str]",
         Variance.contra,
@@ -123,46 +106,39 @@ describe("typeToPython", () => {
     });
   });
   it("default type param", () => {
-    const converter = new Converter();
-    const typeNode = getTypeNode(converter, "ReadableStream");
-    const conversion = convertType(converter, typeNode, false, Variance.covar);
+    const typeNode = getTypeNode("ReadableStream");
+    const conversion = convertType(typeNode, false, Variance.covar);
     expect(conversion).toBe("ReadableStream[Any]");
   });
   describe("variance", () => {
     it("variance 1", () => {
-      const converter = new Converter();
       const typeNode = getTypeNode(
-        converter,
         "(a: Iterable<string>) => Iterable<boolean>;",
       );
       const conversion = removeTypeIgnores(
-        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
+        convertType(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: PyIterable[str], /) -> JsIterable[bool]: ...",
       );
     });
     it("variance 2", () => {
-      const converter = new Converter();
       const typeNode = getTypeNode(
-        converter,
         "(a: Iterable<IterableIterator<boolean>> ) => void;",
       );
       const conversion = removeTypeIgnores(
-        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
+        convertType(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: PyIterable[PyIterator[bool]], /) -> None: ...",
       );
     });
     it("variance 3", () => {
-      const converter = new Converter();
       const typeNode = getTypeNode(
-        converter,
         "(a: (b: Iterable<string>) => Iterable<boolean> ) => void;",
       );
       const conversion = removeTypeIgnores(
-        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
+        convertType(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: Callable[[JsIterable[str]], PyIterable[bool]], /) -> None: ...",
@@ -171,57 +147,46 @@ describe("typeToPython", () => {
   });
   describe("callable types", () => {
     it("basic", () => {
-      const converter = new Converter();
-      const typeNode = getTypeNode(converter, "() => void");
-      const conversion = convertType(
-        converter,
-        typeNode,
-        false,
-        Variance.covar,
-      );
+      const typeNode = getTypeNode("() => void");
+      const conversion = convertType(typeNode, false, Variance.covar);
       expect(conversion).toBe("Callable[[], None]");
     });
     it("toplevel", () => {
-      const converter = new Converter();
-      const typeNode = getTypeNode(converter, "() => void");
+      const typeNode = getTypeNode("() => void");
       const conversion = removeTypeIgnores(
-        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
+        convertType(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe("def myFunc(self, /) -> None: ...");
     });
     it("optional args", () => {
-      const converter = new Converter();
-      const typeNode = getTypeNode(converter, "(a?: string) => void");
+      const typeNode = getTypeNode("(a?: string) => void");
       const conversion = removeTypeIgnores(
-        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
+        convertType(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: str | None = None, /) -> None: ...",
       );
     });
     it("optional or null", () => {
-      const converter = new Converter();
-      const typeNode = getTypeNode(converter, "(a?: string | null) => void;");
+      const typeNode = getTypeNode("(a?: string | null) => void;");
       const conversion = removeTypeIgnores(
-        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
+        convertType(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: str | None = None, /) -> None: ...",
       );
     });
     it("type predicate", () => {
-      const converter = new Converter();
-      const typeNode = getTypeNode(converter, "(a: any) => a is string;");
+      const typeNode = getTypeNode("(a: any) => a is string;");
       const conversion = removeTypeIgnores(
-        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
+        convertType(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe("def myFunc(self, a: Any, /) -> bool: ...");
     });
     it("dotdotdot arg", () => {
-      const converter = new Converter();
-      const typeNode = getTypeNode(converter, "(...a: string[][]) => void;");
+      const typeNode = getTypeNode("(...a: string[][]) => void;");
       const conversion = removeTypeIgnores(
-        convertType(converter, typeNode, false, Variance.covar, "myFunc"),
+        convertType(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, /, *a: PyMutableSequence[str]) -> None: ...",
@@ -233,7 +198,6 @@ describe("typeToPython", () => {
 describe("property signature", () => {
   it("mandatory function", () => {
     const fname = "/a.ts";
-    const converter = new Converter();
     const project = makeProject();
     project.createSourceFile(
       fname,
@@ -243,12 +207,11 @@ describe("property signature", () => {
     );
     const file = project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
-    const res = removeTypeIgnores(convertPropertySignature(converter, propsig));
+    const res = removeTypeIgnores(convertPropertySignature(propsig));
     expect(res).toBe("def f(self, /) -> None: ...");
   });
   it("optional function", () => {
     const fname = "/a.ts";
-    const converter = new Converter();
     const project = makeProject();
     project.createSourceFile(
       fname,
@@ -258,7 +221,7 @@ describe("property signature", () => {
     );
     const file = project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
-    const res = removeTypeIgnores(convertPropertySignature(converter, propsig));
+    const res = removeTypeIgnores(convertPropertySignature(propsig));
     expect(res).toBe("f: Callable[[], None] | None = ...");
   });
 });
@@ -266,10 +229,9 @@ describe("property signature", () => {
 function convertVarDecl(
   astVarDecl: VariableDeclaration,
 ): PyTopLevel | undefined {
-  const converter = new Converter();
   const astConverter = new AstConverter();
   const irVarDecl = astConverter.varDeclToIR(astVarDecl);
-  return converter.renderTopLevelIR(irVarDecl);
+  return renderTopLevelIR(irVarDecl);
 }
 
 function pyOther(text: string): PyOther {
@@ -283,10 +245,9 @@ function convertFuncDeclGroup(
   name: string,
   decls: FunctionDeclaration[],
 ): PyOther[] {
-  const converter = new Converter();
   const astConverter = new AstConverter();
   const sigsIR = astConverter.funcDeclsToIR(name, decls);
-  return converter.renderSignatureGroup(sigsIR, false).map(pyOther);
+  return renderSignatureGroup2(sigsIR, false).map(pyOther);
 }
 
 describe("sanitizeReservedWords", () => {
@@ -343,10 +304,9 @@ it("No args function", () => {
 function getBaseNames(
   defs: (InterfaceDeclaration | ClassDeclaration)[],
 ): string[] {
-  const converter = new Converter();
   const astConverter = new AstConverter();
   const bases = astConverter.declsToBases(defs);
-  return bases.map((base) => converter.renderBase(base));
+  return bases.map((base) => renderBase(base));
 }
 
 describe("getBaseNames", () => {
@@ -408,10 +368,9 @@ it("Type variable", () => {
 });
 
 function emitFile(text) {
-  const converter = new Converter();
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
-  return converter.emit([project.getSourceFileOrThrow("/a.ts")]);
+  return emit([project.getSourceFileOrThrow("/a.ts")]);
 }
 
 describe("emit", () => {

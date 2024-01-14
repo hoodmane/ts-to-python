@@ -1,5 +1,4 @@
 import { Project, SyntaxKind } from "ts-morph";
-import { Converter } from "../extract";
 import { Converter as AstConverter } from "../astToIR";
 import { TypeNode } from "ts-morph";
 
@@ -7,7 +6,7 @@ export function typeToIR(t: TypeNode) {
   return new AstConverter().typeToIR(t);
 }
 
-export function makeProject() {
+export function makeProject(): Project {
   return new Project({
     tsConfigFilePath: "../type-generation-input-project/tsconfig.json",
     libFolderPath:
@@ -16,7 +15,7 @@ export function makeProject() {
 }
 
 let n = 0;
-export function getTypeNode(converter: Converter, type) {
+export function getTypeNode(type: string): TypeNode {
   n++;
   const fname = `/getTypeNode_$${n}.ts`;
   const project = makeProject();
@@ -26,11 +25,11 @@ export function getTypeNode(converter: Converter, type) {
   return alias.getTypeNode();
 }
 
-export function removeTypeIgnores(a: string) {
+export function removeTypeIgnores(a: string): string {
   return a.replaceAll(/\s*#.*$/gm, "");
 }
 
-export function dedent(s) {
+export function dedent(s: string): string {
   const lines = s.split("\n");
   let numSpaces = Infinity;
   for (const line of lines) {
