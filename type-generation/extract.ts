@@ -96,20 +96,9 @@ function topologicalSortClasses(nameToCls: Map<string, PyClass>): PyClass[] {
 }
 
 export class Converter {
-  project: Project;
   astConverter: AstConverter;
   constructor() {
-    this.project = new Project({
-      tsConfigFilePath: "../type-generation-input-project/tsconfig.json",
-      libFolderPath:
-        "../type-generation-input-project/node_modules/typescript/lib",
-    });
     this.astConverter = new AstConverter();
-  }
-
-  getBaseNames(defs: (InterfaceDeclaration | ClassDeclaration)[]): string[] {
-    const bases = this.astConverter.declsToBases(defs);
-    return bases.map((base) => this.renderBase(base));
   }
 
   emit(files: SourceFile[]): string[] {

@@ -1,4 +1,4 @@
-import { SyntaxKind } from "ts-morph";
+import { Project, SyntaxKind } from "ts-morph";
 import { Converter } from "../extract";
 import { Converter as AstConverter } from "../astToIR";
 import { TypeNode } from "ts-morph";
@@ -7,12 +7,21 @@ export function typeToIR(t: TypeNode) {
   return new AstConverter().typeToIR(t);
 }
 
+export function makeProject() {
+  return new Project({
+    tsConfigFilePath: "../type-generation-input-project/tsconfig.json",
+    libFolderPath:
+      "../type-generation-input-project/node_modules/typescript/lib",
+  });
+}
+
 let n = 0;
 export function getTypeNode(converter: Converter, type) {
   n++;
   const fname = `/getTypeNode_$${n}.ts`;
-  converter.project.createSourceFile(fname, `type A = ${type};`);
-  const file = converter.project.getSourceFileOrThrow(fname);
+    const project = makeProject();
+    project.createSourceFile(fname, `type A = ${type};`);
+  const file = project.getSourceFileOrThrow(fname);
   const alias = file.getFirstDescendantByKind(SyntaxKind.TypeAliasDeclaration);
   return alias.getTypeNode();
 }
