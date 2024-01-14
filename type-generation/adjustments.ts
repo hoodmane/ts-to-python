@@ -4,14 +4,13 @@ import { TypeIR } from "./astToIR";
 import { renderTypeIR } from "./extract";
 
 export const IMPORTS = `
-from collections.abc import Callable, Iterable as PyIterable, Iterator as PyIterator, MutableSequence as PyMutableSequence
+from collections.abc import Callable, Iterable as PyIterable, Iterator as PyIterator, MutableSequence as PyMutableSequence, Sequence as PySequence
 from asyncio import Future
 from typing import overload, Any, Literal, Self, TypeVar, Generic, ClassVar, Never, Protocol
 
-from pyodide.ffi import JsProxy, JsIterable, JsIterator, JsArray, JsMutableMap as Map, JsMap as ReadonlyMap, JsBuffer
+from pyodide.ffi import JsProxy, JsIterable, JsIterator, JsArray, JsMutableMap, JsMap as ReadonlyMap, JsBuffer
 from pyodide.webloop import PyodideFuture as PromiseLike
 from _pyodide._core_docs import _JsProxyMetaClass
-Promise = PromiseLike
 ConcatArray = JsArray
 ArrayLike = JsArray
 Dispatcher = Any
@@ -23,6 +22,34 @@ HeadersInit = PyIterable[tuple[str, str]] | Record[str, str] | Headers
 # These classes we are declaring are actually JavaScript objects, so the class
 # objects themselves need to be instances of JsProxy. So their type needs to
 # subclass JsProxy. We do this with a custom metaclass.
+
+__KT = TypeVar("__KT")  # Key type.
+__VT = TypeVar("__VT")  # Value type.
+__T = TypeVar("__T")
+
+
+class Promise(PromiseLike[__T]):
+    @classmethod
+    def new(
+        cls,
+        executor: Callable[[], None]
+        | Callable[[Callable[[__T], None]], None]
+        | Callable[[Callable[[__T], None], Callable[[BaseException], None]], None],
+    ) -> Promise[__T]:
+        ...
+
+
+class Map(JsMutableMap[__KT, __VT]):
+  @classmethod
+  @overload
+  def new(cls) -> "JsMutableMap[__KT, __VT]":
+      ...
+
+  @classmethod
+  @overload
+  def new(cls, args: PySequence[tuple[__KT, __VT]]) -> "JsMutableMap[__KT, __VT]":
+      ...
+
 
 class _JsMeta(_JsProxyMetaClass, JsProxy):
     pass
