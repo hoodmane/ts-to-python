@@ -1,5 +1,13 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
-  preset: "ts-jest",
+  extensionsToTreatAsEsm: ['.ts'],
   testEnvironment: "node",
+  transform: {
+    "^.+\\.ts?$": [
+      "ts-jest",
+      {
+        useESM: true,
+      },
+    ],
+  },
 };

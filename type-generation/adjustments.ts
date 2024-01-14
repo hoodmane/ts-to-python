@@ -2,75 +2,26 @@ import { PyClass, Variance, reverseVariance } from "./types";
 import { PySig } from "./render";
 import { TypeIR } from "./astToIR";
 import { renderTypeIR } from "./extract";
-
-export const IMPORTS = `
-from collections.abc import Callable, Iterable as PyIterable, Iterator as PyIterator, MutableSequence as PyMutableSequence, Sequence as PySequence
-from asyncio import Future
-from typing import overload, Any, Literal, Self, TypeVar, Generic, ClassVar, Never, Protocol
-
-from pyodide.ffi import JsProxy, JsIterable, JsIterator, JsArray, JsMutableMap, JsMap as ReadonlyMap, JsBuffer
-from pyodide.webloop import PyodideFuture as PromiseLike
-from _pyodide._core_docs import _JsProxyMetaClass
-ConcatArray = JsArray
-ArrayLike = JsArray
-Dispatcher = Any
-URL_ = URL
-HeadersInit = PyIterable[tuple[str, str]] | Record[str, str] | Headers
-
-# Shenanigans to convince skeptical type system to behave correctly:
-#
-# These classes we are declaring are actually JavaScript objects, so the class
-# objects themselves need to be instances of JsProxy. So their type needs to
-# subclass JsProxy. We do this with a custom metaclass.
-
-__KT = TypeVar("__KT")  # Key type.
-__VT = TypeVar("__VT")  # Value type.
-__T = TypeVar("__T")
+import {readFileSync} from "fs";
 
 
-class Promise(PromiseLike[__T]):
-    @classmethod
-    def new(
-        cls,
-        executor: Callable[[], None]
-        | Callable[[Callable[[__T], None]], None]
-        | Callable[[Callable[[__T], None], Callable[[BaseException], None]], None],
-    ) -> Promise[__T]:
-        ...
+import { URL } from 'url';
 
-
-class Map(JsMutableMap[__KT, __VT]):
-  @classmethod
-  @overload
-  def new(cls) -> "JsMutableMap[__KT, __VT]":
-      ...
-
-  @classmethod
-  @overload
-  def new(cls, args: PySequence[tuple[__KT, __VT]]) -> "JsMutableMap[__KT, __VT]":
-      ...
-
-
-class _JsMeta(_JsProxyMetaClass, JsProxy):
-    pass
-
-class DoNotCallThis:
-    pass
-
-class _JsObject(metaclass=_JsMeta):
-    def __new__(self, do_not_call: DoNotCallThis) -> _JsObject:
-      ...
-
-class Record(JsProxy, Generic[S, T]):
-  pass
-`.trim();
+// @ts-ignore
+const PRELUDE_FILE = new URL('./prelude.pyi', import.meta.url).pathname;
+export const PRELUDE = readFileSync(PRELUDE_FILE, {encoding: "utf-8"});
 export const BUILTIN_NAMES = [
   "Iterable",
+  "Iterable_iface",
   "Iterator",
+  "Iterator_iface",
   "IterableIterator",
+  "IterableIterator_iface",
   "ArrayLike",
+  "ArrayLike_iface",
   "ConcatArray",
   "PromiseLike",
+  "PromiseLike_iface",
   "Promise",
   "Map",
   "ReadonlyMap",

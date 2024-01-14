@@ -11,7 +11,7 @@ import {
 } from "./render.ts";
 import { PyClass } from "./types.ts";
 import {
-  IMPORTS,
+  PRELUDE,
   getExtraBases,
   typeReferenceSubsitutions,
 } from "./adjustments.ts";
@@ -127,7 +127,7 @@ export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
     typeParams,
     (x) => `${x} = TypeVar("${x}")`,
   ).join("\n");
-  const output = [IMPORTS, typevarDecls];
+  const output = [PRELUDE, typevarDecls];
   for (const topLevel of pyTopLevels) {
     switch (topLevel.kind) {
       case "class":
