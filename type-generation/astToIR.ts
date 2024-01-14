@@ -10,6 +10,7 @@ import {
   PropertySignature,
   Signature,
   SignaturedDeclaration,
+  SourceFile,
   SyntaxKind,
   TypeElementTypes,
   TypeLiteralNode,
@@ -20,7 +21,7 @@ import {
   VariableDeclaration,
 } from "ts-morph";
 import { BUILTIN_NAMES, TYPE_TEXT_MAP } from "./adjustments";
-import { split } from "./groupBy";
+import { groupBy, popElt, split } from "./groupBy";
 import {
   assertUnreachable,
   classifyIdentifier,
@@ -29,7 +30,7 @@ import {
   groupMembers,
 } from "./astUtils";
 import { sanitizeReservedWords, uniqBy } from "./render";
-import { ClassifiedIdentifier, Needed } from "./types";
+import { Needed } from "./types";
 
 export type TypeIR =
   | SimpleTypeIR
@@ -756,5 +757,69 @@ export class Converter {
         console.warn("Skipping varDecl", ident.getText());
     }
     return undefined;
+  }
+
+  convert(files: SourceFile[]): TopLevelIR[] {
+    const varDecls = files.flatMap((file) => file.getVariableDeclarations());
+
+    const irTopLevels: TopLevelIR[] = [];
+    for (const varDecl of varDecls) {
+      const name = sanitizeReservedWords(varDecl.getName());
+      if (this.convertedSet.has(name)) {
+        continue;
+      }
+      this.convertedSet.add(name);
+      const result = this.varDeclToIR(varDecl);
+      if (result) {
+        irTopLevels.push(result);
+      }
+    }
+    const funcDecls = files.flatMap((file) => file.getFunctions());
+    const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName());
+    for (const [name, decls] of Object.entries(funcDeclsByName)) {
+      irTopLevels.push(this.funcDeclsToIR(name, decls));
+    }
+    let next: Needed | undefined;
+    while ((next = popElt(this.neededSet))) {
+      if (next.type === "ident") {
+        let res = this.identToIRIfNeeded(next.ident);
+        if (res) {
+          irTopLevels.push(res);
+        }
+        continue;
+      }
+      if (next.type === "interface") {
+        const ident = next.ident;
+        const name = ident.getText() + "_iface";
+        if (this.convertedSet.has(name)) {
+          continue;
+        }
+        this.convertedSet.add(name);
+
+        const defs = ident
+          .getDefinitionNodes()
+          .filter(Node.isInterfaceDeclaration);
+        if (defs.length) {
+          const baseNames = this.declsToBases(defs).filter(
+            (base) => base.name !== name,
+          );
+          const typeParams = defs
+            .flatMap((i) => i.getTypeParameters())
+            .map((p) => p.getName());
+          const res = this.interfaceToIR(
+            name,
+            baseNames,
+            defs.flatMap((def) => def.getMembers()),
+            [],
+            typeParams,
+          );
+          irTopLevels.push(res);
+          continue;
+        }
+        // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
+        console.warn("No interface declaration for " + name);
+      }
+    }
+    return irTopLevels;
   }
 }
