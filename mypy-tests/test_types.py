@@ -40,8 +40,8 @@ def test_type_errors(tmp_path: Path) -> None:
                 r'Invariant type variable "[A-Za-z]*" used in protocol where [a-zA-Z]*variant one is expected'
             ),
             re.compile(
-                r'Metaclass conflict: the metaclass of a derived class must be a \(non-strict\) subclass of the metaclasses of all its bases'
-            )
+                r"Metaclass conflict: the metaclass of a derived class must be a \(non-strict\) subclass of the metaclasses of all its bases"
+            ),
         ]
         for message in warnings_by_code["misc"]:
             for pat in pats:
@@ -88,7 +88,6 @@ def type_eval() -> None:
     reveal_type(eval("abc"))  # R: Any
 
 
-@pytest.mark.xfail("setTimeout has wrong type")
 @pytest.mark.mypy_testing
 def type_timeout(callback: Callable[[], None], timeout: int) -> None:
     from js import setTimeout, clearTimeout, setInterval, clearInterval
@@ -237,7 +236,7 @@ def type_iterable() -> None:
     from js import Int8Array
 
     for x in Int8Array.new([1, 2, 3]):
-        reveal_type(x)  # R: Union[builtins.int, builtins.float]
+        reveal_type(x)  # R: builtins.int
 
 
 @pytest.mark.mypy_testing
@@ -250,12 +249,31 @@ def type_sized() -> None:
     reveal_type(len(s))  # R: builtins.int
 
 
-@pytest.mark.xfail("Map issue?")
 @pytest.mark.mypy_testing
 def type_map() -> None:
     from js import Map
 
     len(Map.new([(1, 2)]))
+
+
+@pytest.mark.mypy_testing
+def type_promise() -> None:
+    from js import Promise
+
+    def executor1() -> None:
+        ...
+
+    def executor2(resolve: Callable[[int], None]) -> None:
+        ...
+
+    def executor3(
+        resolve: Callable[[int], None], reject: Callable[[BaseException], None]
+    ) -> None:
+        ...
+
+    reveal_type(Promise.new(executor1))  # R: js.Promise[Never]
+    reveal_type(Promise.new(executor2))  # R: js.Promise[builtins.int]
+    reveal_type(Promise.new(executor3))  # R: js.Promise[builtins.int]
 
 
 @pytest.mark.mypy_testing

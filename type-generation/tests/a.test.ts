@@ -3,6 +3,7 @@ import {
   FunctionDeclaration,
   Identifier,
   InterfaceDeclaration,
+  Node,
   Project,
   PropertySignature,
   SyntaxKind,
@@ -70,6 +71,18 @@ function convertBuiltinFunction(funcName: string): string[] {
   const id = x.getStatements()[0].getChildren()[0] as Identifier;
   const funcDecl = id.getDefinitionNodes()[0] as FunctionDeclaration;
   const ir = convertDecls([], [funcDecl]);
+  return emitIR(ir).map(removeTypeIgnores);
+}
+
+function convertBuiltinVariable(varName: string): string[] {
+  const project = makeProject();
+  project.createSourceFile("/a.ts", varName);
+  const x = project.getSourceFileOrThrow("/a.ts");
+  const id = x.getStatements()[0].getChildren()[0] as Identifier;
+  console.log(id.getDefinitionNodes().map(x => x.getKindName()));
+  // process.exit(1);
+  const varDecl = id.getDefinitionNodes().filter(Node.isVariableDeclaration)[0];
+  const ir = convertDecls([varDecl], []);
   return emitIR(ir).map(removeTypeIgnores);
 }
 
@@ -706,15 +719,23 @@ describe("emit", () => {
       `).trim(),
     );
   });
-  it("check timeout type adjustments", () => {
-    let res;
-    res = convertBuiltinFunction("setTimeout");
-    expect(res.at(-2)).toBe(
-      "def setTimeout(handler: TimerHandler, timeout: int | float | None = None, /, *arguments: Any) -> int | JsProxy: ...",
-    );
-    res = convertBuiltinFunction("clearTimeout");
-    expect(res.at(-1)).toBe(
-      "def clearTimeout(id: int | JsProxy, /) -> None: ...",
-    );
-  });
+  describe("adjustments", () => {
+    it("setTimeout", () => {
+      const res = convertBuiltinFunction("setTimeout");
+      expect(res.at(-2)).toBe(
+        "def setTimeout(handler: TimerHandler, timeout: int | float | None = None, /, *arguments: Any) -> int | JsProxy: ...",
+      );
+    });
+    it("clearTimeout", () => {
+      const res = convertBuiltinFunction("clearTimeout");
+      expect(res.at(-1)).toBe(
+        "def clearTimeout(id: int | JsProxy, /) -> None: ...",
+      );
+    });
+    // it.only("Response", () => {
+    //   const res = convertBuiltinVariable("Response");
+    //   process.exit(1);
+    //   console.log(res.join("\n\n"));
+    // });
+  })
 });
