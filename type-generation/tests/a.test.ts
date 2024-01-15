@@ -13,11 +13,11 @@ import {
   emitFiles,
   emitIR,
   renderBase,
-  renderProperty2,
   renderCallableIR,
   renderTopLevelIR,
   renderTypeIR,
 } from "../extract.ts";
+import { renderProperty } from "../render.ts";
 import { Variance } from "../types.ts";
 import {
   dedent,
@@ -59,7 +59,7 @@ function convertPropertySignature(
   member: PropertySignature,
   isStatic: boolean = false,
 ): string {
-  return renderProperty2(propertySignatureToIR(member, isStatic));
+  return renderProperty(propertySignatureToIR(member, isStatic));
 }
 
 function convertBuiltinFunction(funcName: string): string[] {

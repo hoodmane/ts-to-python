@@ -24,7 +24,6 @@ import {
   BaseIR,
   InterfaceIR,
   ParamIR,
-  PropertyIR,
   CallableIR,
   SigIR,
   TopLevelIR,
@@ -260,7 +259,7 @@ function renderInterface({
   numberType,
 }: InterfaceIR): string {
   const entries = ([] as string[]).concat(
-    properties.map((prop) => renderProperty2(prop, numberType)),
+    properties.map((prop) => renderProperty(prop, numberType)),
     methods.flatMap((gp) => renderCallableIR(gp, true, numberType)),
   );
   const bases = irBases.map((b) => renderBase(b));
@@ -279,19 +278,6 @@ function renderInterface({
     basesString = `(${bases.join(", ")})`;
   }
   return `class ${name}${basesString}:${CLASS_TYPE_IGNORES}\n${body}`;
-}
-
-export function renderProperty2(
-  property: PropertyIR,
-  numberType?: string,
-): string {
-  const { isOptional, name, type, isReadonly, isStatic } = property;
-  const pyType = renderTypeIR(type, {
-    isOptional,
-    topLevelName: name,
-    numberType,
-  });
-  return renderProperty(name, pyType, isReadonly, isStatic);
 }
 
 type RenderTypeSettings = {
