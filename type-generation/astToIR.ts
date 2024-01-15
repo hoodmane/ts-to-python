@@ -43,9 +43,11 @@ export type TypeIR =
   | TypeOperatorTypeIR
   | TupleTypeIR
   | ArrayTypeIR
-  | CallableIR;
+  | CallableIR
+  | NumberTypeIR;
 
 type SimpleTypeIR = { kind: "simple"; text: string };
+type NumberTypeIR = { kind: "number" };
 type UnionTypeIR = { kind: "union"; types: TypeIR[] };
 type TupleTypeIR = { kind: "tuple"; types: TypeIR[] };
 type ArrayTypeIR = { kind: "array"; type: TypeIR };
@@ -67,7 +69,7 @@ export type ReferenceTypeIR = {
 export type ParamIR = {
   name: string;
   type: TypeIR;
-  optional: boolean;
+  isOptional: boolean;
 };
 export type SigIR = {
   params: ParamIR[];
@@ -115,8 +117,14 @@ export type InterfaceIR = {
   properties: PropertyIR[];
   typeParams: string[];
   bases: BaseIR[];
+  // Synthetic bases adjusted into the class.
   extraBases?: string[];
+  // This is used to decide whether the class should be a Protocol or not.
   concrete?: boolean;
+  // Control how numbers are rendered in the class. Normally they are rendered
+  // as int | float, but sometimes we just want it to be written as int.
+  // This is handled in an adhoc manner in adjustInterfaceIR.
+  numberType?: string;
 };
 
 export type BaseIR = {
@@ -138,7 +146,7 @@ export type TypeAliasIR = {
 
 export type TopLevelIR = DeclarationIR | InterfaceIR | TypeAliasIR | CallableIR;
 
-function simpleType(text: string): SimpleTypeIR {
+export function simpleType(text: string): SimpleTypeIR {
   return { kind: "simple", text };
 }
 
@@ -355,7 +363,7 @@ export class Converter {
   typeToIR(typeNode: TypeNode, isOptional: boolean = false): TypeIR {
     const typeText = typeNode.getText();
     if (typeText === "number") {
-      return unionType([simpleType("int"), simpleType("float")]);
+      return { kind: "number" };
     }
     if (typeText in TYPE_TEXT_MAP) {
       return simpleType(TYPE_TEXT_MAP[typeText]);
@@ -418,7 +426,11 @@ export class Converter {
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
         const type = this.typeToIR(param.getTypeNode()!, optional);
-        const pyParam: ParamIR = { name: param.getName(), type, optional };
+        const pyParam: ParamIR = {
+          name: param.getName(),
+          type,
+          isOptional: optional,
+        };
         if (spread) {
           spreadParam = pyParam;
           if (type.kind === "array") {
@@ -465,7 +477,7 @@ export class Converter {
       const name = prop.getName();
       const optional = !!prop.getQuestionTokenNode();
       const type = this.typeToIR(prop.getTypeNode()!, optional);
-      kwargs.push({ name, type, optional });
+      kwargs.push({ name, type, isOptional: optional });
     }
     sigIRDestructured.kwparams = kwargs;
     return [sigIR, sigIRDestructured];
@@ -584,7 +596,9 @@ export class Converter {
     irMethods.push({
       kind: "callable",
       name: "__call__",
-      signatures: callSignatures.flatMap(sig => this.sigToIRDestructure(sig.getSignature())),
+      signatures: callSignatures.flatMap((sig) =>
+        this.sigToIRDestructure(sig.getSignature()),
+      ),
       isStatic: false,
     });
     const irProps = ([] as PropertyIR[]).concat(
@@ -648,7 +662,14 @@ export class Converter {
       this.addNeededInterface(ident);
       bases.push({ name, typeParams });
     }
-    return this.interfaceToIR(name, bases, members, staticMembers, [], typeParams);
+    return this.interfaceToIR(
+      name,
+      bases,
+      members,
+      staticMembers,
+      [],
+      typeParams,
+    );
   }
 
   typeNodeToDeclaration(name: string, typeNode: TypeNode): DeclarationIR {

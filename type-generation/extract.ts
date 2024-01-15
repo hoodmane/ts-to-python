@@ -12,6 +12,7 @@ import {
 import { PyClass } from "./types.ts";
 import {
   PRELUDE,
+  adjustInterfaceIR,
   getExtraBases,
   typeReferenceSubsitutions,
 } from "./adjustments.ts";
@@ -122,6 +123,9 @@ export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
     (x): x is InterfaceIR => x.kind === "interface",
   );
   fixupClassBases(unsortedClasses);
+  for (let cls of unsortedClasses) {
+    adjustInterfaceIR(cls);
+  }
   const pyTopLevels = topLevels.map((e) => renderTopLevelIR(e));
   const typevarDecls = Array.from(
     typeParams,
@@ -146,12 +150,12 @@ export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
 export function renderTopLevelIR(toplevel: TopLevelIR): PyTopLevel {
   if (toplevel.kind === "declaration") {
     const { name, type } = toplevel;
-    const typeStr = renderTypeIR(type, false, Variance.covar);
+    const typeStr = renderTypeIR(type);
     return pyOther(renderSimpleDeclaration(name, typeStr));
   }
   if (toplevel.kind === "typeAlias") {
     const { name, type } = toplevel;
-    const typeStr = renderTypeIR(type, false, Variance.covar);
+    const typeStr = renderTypeIR(type);
     return pyOther(`${name} = ${typeStr}`);
   }
   if (toplevel.kind === "interface") {
@@ -165,10 +169,19 @@ export function renderTopLevelIR(toplevel: TopLevelIR): PyTopLevel {
 
 function renderIRSignatures(
   irSigs: readonly SigIR[],
-  variance: Variance,
-  topLevelName?: string,
+  {
+    variance,
+    topLevelName,
+    numberType,
+  }: {
+    variance?: Variance;
+    topLevelName?: string;
+    numberType?: string;
+  },
 ): string {
-  const pySigs = irSigs.map((sig) => renderSig(sig, variance));
+  const pySigs = irSigs.map((sig) =>
+    renderSig(sig, variance, [], false, numberType),
+  );
   if (!topLevelName) {
     const converted = pySigs.map(renderInnerSignature);
     return converted.join(" | ");
@@ -185,10 +198,15 @@ function renderSig(
   variance: Variance,
   decorators: string[] = [],
   isStatic: boolean = false,
+  numberType?: string,
 ): PySig {
-  const renderParam = ({ name, optional, type }: ParamIR): PyParam => {
-    const pyType = renderTypeIR(type, optional, paramVariance);
-    return { name, optional, pyType };
+  const renderParam = ({ name, isOptional, type }: ParamIR): PyParam => {
+    const pyType = renderTypeIR(type, {
+      isOptional,
+      variance: paramVariance,
+      numberType,
+    });
+    return { name, isOptional, pyType };
   };
   const {
     params: origParams,
@@ -202,7 +220,7 @@ function renderSig(
   const spreadParam = origSpreadParam
     ? renderParam(origSpreadParam)
     : undefined;
-  const returns = renderTypeIR(origReturns, false, variance);
+  const returns = renderTypeIR(origReturns, { variance, numberType });
   if (isStatic) {
     decorators.push("classmethod");
   }
@@ -212,18 +230,17 @@ function renderSig(
 export function renderSignatureGroup2(
   { name, signatures: sigs, isStatic }: CallableIR,
   isMethod: boolean,
+  numberType?: string,
 ): string[] {
   const pySigs = sigs.map((sig) =>
-    renderSig(sig, Variance.covar, [], isStatic),
+    renderSig(sig, Variance.covar, [], isStatic, numberType),
   );
   return renderSignatureGroup({ name, sigs: pySigs }, isMethod);
 }
 
 export function renderBase({ name, typeParams }: BaseIR): string {
   if (typeParams.length > 0) {
-    const joined = typeParams
-      .map((t) => renderTypeIR(t, false, Variance.covar))
-      .join(", ");
+    const joined = typeParams.map((t) => renderTypeIR(t)).join(", ");
     name += `[${joined}]`;
   }
   return name;
@@ -236,10 +253,11 @@ function renderInterface({
   typeParams,
   bases,
   extraBases,
+  numberType,
 }: InterfaceIR): PyClass {
   const entries = ([] as string[]).concat(
-    properties.map((prop) => renderProperty2(prop)),
-    methods.flatMap((gp) => renderSignatureGroup2(gp, true)),
+    properties.map((prop) => renderProperty2(prop, numberType)),
+    methods.flatMap((gp) => renderSignatureGroup2(gp, true, numberType)),
   );
   const newSupers = bases.map((b) => renderBase(b));
   if (typeParams.length > 0) {
@@ -251,22 +269,37 @@ function renderInterface({
   return pyClass(name, newSupers, entries.join("\n"));
 }
 
-export function renderProperty2(property: PropertyIR): string {
+export function renderProperty2(
+  property: PropertyIR,
+  numberType?: string,
+): string {
   const { isOptional, name, type, isReadonly, isStatic } = property;
-  const pyType = renderTypeIR(type, isOptional, Variance.covar, name);
+  const pyType = renderTypeIR(type, {
+    isOptional,
+    topLevelName: name,
+    numberType,
+  });
   return renderProperty(name, pyType, isReadonly, isStatic);
 }
 
+type RenderTypeSettings = {
+  isOptional?: boolean;
+  variance?: Variance;
+  topLevelName?: string;
+  numberType?: string;
+};
+
 export function renderTypeIR(
   ir: TypeIR,
-  isOptional: boolean,
-  variance: Variance,
-  topLevelName?: string,
+  settings: RenderTypeSettings = {},
 ): string {
+  settings.variance ??= Variance.covar;
+  let { isOptional } = settings;
   if (isOptional) {
-    topLevelName = undefined;
+    settings.topLevelName = undefined;
+    settings.isOptional = false;
   }
-  let result = renderTypeIRInner(ir, variance, topLevelName);
+  let result = renderTypeIRInner(ir, settings);
   if (!isOptional) {
     return result;
   }
@@ -281,32 +314,27 @@ export function renderTypeIR(
   return result;
 }
 
-function renderTypeIRInner(
-  ir: TypeIR,
-  variance: Variance,
-  topLevelName?: string,
-): string {
+function renderTypeIRInner(ir: TypeIR, settings: RenderTypeSettings): string {
+  const { variance, numberType } = settings;
   if (ir.kind === "simple") {
     return ir.text;
   }
   if (ir.kind === "union") {
-    return ir.types.map((ty) => renderTypeIR(ty, false, variance)).join(" | ");
+    return ir.types.map((ty) => renderTypeIR(ty, settings)).join(" | ");
   }
   if (ir.kind === "paren") {
-    const inner = renderTypeIR(ir.type, false, variance);
+    const inner = renderTypeIR(ir.type, settings);
     return `(${inner})`;
   }
   if (ir.kind === "array") {
-    const eltType = renderTypeIR(ir.type, false, variance);
+    const eltType = renderTypeIR(ir.type, settings);
     if (variance === Variance.contra) {
       return `PyMutableSequence[${eltType}]`;
     }
     return `JsArray[${eltType}]`;
   }
   if (ir.kind == "tuple") {
-    let elts = ir.types
-      .map((elt) => renderTypeIR(elt, false, variance))
-      .join(", ");
+    let elts = ir.types.map((elt) => renderTypeIR(elt, settings)).join(", ");
     if (elts === "") {
       elts = "()";
     }
@@ -314,10 +342,10 @@ function renderTypeIRInner(
   }
   if (ir.kind === "operator") {
     // Ignore type operators
-    return renderTypeIR(ir.type, false, variance);
+    return renderTypeIR(ir.type, settings);
   }
   if (ir.kind === "callable") {
-    return renderIRSignatures(ir.signatures, variance, topLevelName);
+    return renderIRSignatures(ir.signatures, settings);
   }
   if (ir.kind === "other") {
     return "Any";
@@ -331,12 +359,17 @@ function renderTypeIRInner(
     if (res) {
       return res;
     }
-    const args = typeArgs.map((ty) => renderTypeIR(ty, false, Variance.none));
+    const args = typeArgs.map((ty) =>
+      renderTypeIR(ty, { variance: Variance.none, numberType }),
+    );
     let fmtArgs = "";
     if (args.length) {
       fmtArgs = `[${args.join(", ")}]`;
     }
     return `${name}${fmtArgs}`;
+  }
+  if (ir.kind === "number") {
+    return numberType || "int | float";
   }
   assertUnreachable(ir);
 }

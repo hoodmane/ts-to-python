@@ -2,7 +2,6 @@ import {
   CLASS_TYPE_IGNORES,
   METHOD_TYPE_IGNORES,
   PROPERTY_TYPE_IGNORES,
-  adjustPyClass,
   adjustPySig,
 } from "./adjustments.ts";
 import { PyClass } from "./types.ts";
@@ -10,7 +9,7 @@ import { PyClass } from "./types.ts";
 export type PyParam = {
   name: string;
   pyType: string;
-  optional: boolean;
+  isOptional: boolean;
 };
 export type PySig = {
   params: PyParam[];
@@ -39,7 +38,6 @@ function indent(x: string, prefix: string): string {
 }
 
 export function renderPyClass(cls: PyClass): string {
-  adjustPyClass(cls);
   let { name, supers, body } = cls;
   if (body.trim() === "") {
     body = "pass";
@@ -126,7 +124,7 @@ export function sanitizeReservedWords(name) {
   return name;
 }
 
-function renderParam({ name, pyType, optional }: PyParam) {
+function renderParam({ name, pyType, isOptional: optional }: PyParam) {
   const maybeDefault = optional ? " = None" : "";
   name = sanitizeReservedWords(name);
   return `${name}: ${pyType}${maybeDefault}`;

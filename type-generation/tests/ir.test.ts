@@ -16,11 +16,7 @@ describe("typeToIR", () => {
     it("convert number", () => {
       const typeIR = typeToIRHelper("number");
       expect(typeIR).toEqual({
-        kind: "union",
-        types: [
-          { kind: "simple", text: "int" },
-          { kind: "simple", text: "float" },
-        ],
+        kind: "number",
       });
     });
     it("convert union", () => {
@@ -130,7 +126,7 @@ describe("typeToIR", () => {
               {
                 name: "a",
                 type: { kind: "simple", text: "str" },
-                optional: true,
+                isOptional: true,
               },
             ],
             spreadParam: undefined,
@@ -155,7 +151,7 @@ describe("typeToIR", () => {
                     { kind: "simple", text: "None" },
                   ],
                 },
-                optional: true,
+                isOptional: true,
               },
             ],
             spreadParam: undefined,
@@ -174,7 +170,7 @@ describe("typeToIR", () => {
               {
                 name: "a",
                 type: { kind: "simple", text: "Any" },
-                optional: false,
+                isOptional: false,
               },
             ],
             spreadParam: undefined,
@@ -193,7 +189,7 @@ describe("typeToIR", () => {
             spreadParam: {
               name: "a",
               type: { kind: "array", type: { kind: "simple", text: "str" } },
-              optional: false,
+              isOptional: false,
             },
             returns: { kind: "simple", text: "None" },
           },
