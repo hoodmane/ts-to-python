@@ -18,7 +18,7 @@ export type PySig = {
 };
 export type PySigGroup = { name: string; sigs: PySig[] };
 
-export function uniqBy<T, S>(l: T[], key: (k: T) => S) {
+export function uniqBy<T, S>(l: readonly T[], key: (k: T) => S) {
   const seen = new Set();
   return l.filter(function (item) {
     const k = key(item);

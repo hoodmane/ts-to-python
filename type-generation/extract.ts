@@ -137,31 +137,60 @@ export function renderTopLevelIR(toplevel: TopLevelIR): string {
     return renderInterface(toplevel);
   }
   if (toplevel.kind === "callable") {
-    return renderSignatureGroup(toplevel, false).join("\n");
+    return renderCallableIR(toplevel, false).join("\n");
   }
   assertUnreachable(toplevel);
 }
 
-function renderIRSignatures(
+export function renderCallableIR(
+  { name, signatures: sigs, isStatic }: CallableIR,
+  isMethod: boolean,
+  numberType?: string,
+): string[] {
+  const decorators = isStatic ? ["classmethod"] : [];
+  return renderIRSigs(sigs, {
+    topLevelName: name,
+    numberType,
+    isMethod,
+    decorators,
+  });
+}
+
+function renderIRSigs(
   irSigs: readonly SigIR[],
   settings: {
     variance?: Variance;
     topLevelName?: string;
     numberType?: string;
+    isMethod?: boolean;
+    decorators?: string[];
   },
-): string {
-  const topLevelName = settings.topLevelName;
+): string[] {
+  irSigs = uniqBy(irSigs, (sig) => {
+    sig = structuredClone(sig);
+    // Remove parameter names to perform comparison so if two sigs only differ
+    // in param names they should compare equal.
+    // TODO: prune sigs more aggressively?
+    // TODO: move this out of the render stage into the transform stage
+    const deleteName = (param) => delete param["name"];
+    sig.params.map(deleteName);
+    sig.kwparams?.map(deleteName);
+    delete sig?.spreadParam?.name;
+    return JSON.stringify(sig);
+  });
+  const { topLevelName, isMethod, decorators = [] } = settings;
   const settings2 = Object.assign(settings, { isStatic: false });
   const pySigs = irSigs.map((sig) => renderSig(sig, settings2));
   if (!topLevelName) {
     const converted = pySigs.map(renderInnerSignature);
-    return converted.join(" | ");
+    return [converted.join(" | ")];
   }
-  const converted = pySigs.map((sig) => renderSignature(topLevelName, sig));
-  if (converted.length === 1) {
-    return converted[0];
+  if (pySigs.length > 1) {
+    decorators.push("overload");
   }
-  return converted.map((x) => "@overload\n" + x).join("\n\n");
+  return pySigs.map((sig) =>
+    renderSignature(topLevelName, sig, decorators, isMethod),
+  );
 }
 
 function renderSig(
@@ -202,33 +231,6 @@ function renderSig(
   return { params, spreadParam, kwparams, returns, decorators };
 }
 
-export function renderSignatureGroup(
-  { name, signatures: sigs, isStatic }: CallableIR,
-  isMethod: boolean,
-  numberType?: string,
-): string[] {
-  const uniqueSigs = uniqBy(sigs, (sig) => {
-    sig = structuredClone(sig);
-    // Remove parameter names to perform comparison so if two sigs only differ
-    // in param names they should compare equal.
-    // TODO: prune sigs more aggressively?
-    // TODO: move this out of the render stage into the transform stage
-    const deleteName = (param) => delete param["name"];
-    sig.params.map(deleteName);
-    sig.kwparams?.map(deleteName);
-    delete sig?.spreadParam?.name;
-    return JSON.stringify(sig);
-  });
-  const pySigs = uniqueSigs.map((sig) =>
-    renderSig(sig, { isStatic, numberType }),
-  );
-  const decorators: string[] = [];
-  if (uniqueSigs.length > 1) {
-    decorators.push("overload");
-  }
-  return pySigs.map((sig) => renderSignature(name, sig, decorators, isMethod));
-}
-
 export function renderBase({ name, typeParams }: BaseIR): string {
   if (typeParams.length > 0) {
     const joined = typeParams.map((t) => renderTypeIR(t)).join(", ");
@@ -248,7 +250,7 @@ function renderInterface({
 }: InterfaceIR): string {
   const entries = ([] as string[]).concat(
     properties.map((prop) => renderProperty2(prop, numberType)),
-    methods.flatMap((gp) => renderSignatureGroup(gp, true, numberType)),
+    methods.flatMap((gp) => renderCallableIR(gp, true, numberType)),
   );
   const newSupers = bases.map((b) => renderBase(b));
   if (typeParams.length > 0) {
@@ -337,11 +339,11 @@ function renderTypeIRInner(ir: TypeIR, settings: RenderTypeSettings): string {
     return renderTypeIR(ir.type, settings);
   }
   if (ir.kind === "callable") {
-    return renderIRSignatures(ir.signatures, {
+    return renderIRSigs(ir.signatures, {
       variance,
       topLevelName,
       numberType,
-    });
+    }).join("\n");
   }
   if (ir.kind === "other") {
     return "Any";
