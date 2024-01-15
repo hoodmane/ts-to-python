@@ -1,15 +1,13 @@
-import { PyClass, Variance, reverseVariance } from "./types";
+import { Variance, reverseVariance } from "./types";
 import { PySig } from "./render";
-import { TypeIR } from "./astToIR";
+import { CallableIR, InterfaceIR, TypeIR, simpleType } from "./astToIR";
 import { renderTypeIR } from "./extract";
-import {readFileSync} from "fs";
+import { readFileSync } from "fs";
 
+import { URL } from "url";
 
-import { URL } from 'url';
-
-// @ts-ignore
-const PRELUDE_FILE = new URL('./prelude.pyi', import.meta.url).pathname;
-export const PRELUDE = readFileSync(PRELUDE_FILE, {encoding: "utf-8"});
+const PRELUDE_FILE = new URL("./prelude.pyi", import.meta.url).pathname;
+export const PRELUDE = readFileSync(PRELUDE_FILE, { encoding: "utf-8" });
 export const BUILTIN_NAMES = [
   "Iterable",
   "Iterable_iface",
@@ -77,28 +75,29 @@ export const TYPE_TEXT_MAP: Record<string, string> = {
   "Window & typeof globalThis": "Any",
 };
 
-export function adjustPyClass(cls: PyClass): void {
+export function adjustInterfaceIR(cls: InterfaceIR): void {
   if (cls.name === "Response") {
     // JavaScript allows static methods and instance methods to share the same
     // name, Python does not usually allow this. I think the only place where it
     // happens is with `Response.json`. We can hack it by allowing all
     // signatures on instances and on the class. This adds the missing class
     // signature.
-    const lines = cls.body.split("\n");
-    const idx = lines.findLastIndex((v) => v.includes("json"));
-    const toAdd = [
-      "@classmethod",
-      "@overload",
-      "def json(self, /) -> Future[Any]: ...",
-    ];
-    lines.splice(idx + 1, 0, ...toAdd);
-    cls.body = lines.join("\n");
+    let meth: CallableIR;
+    for (meth of cls.methods) {
+      if (meth.name === "json") {
+        break;
+      }
+    }
+    meth.signatures.push({
+      params: [],
+      returns: simpleType("Future[Any]"),
+    });
   }
   if (
     ["Response_iface", "Response", "String", "DataView"].includes(cls.name) ||
     (cls.name.includes("Array") && !cls.name.includes("Float"))
   ) {
-    cls.body = cls.body.replaceAll("int | float", "int");
+    cls.numberType = "int";
   }
 }
 
@@ -140,7 +139,7 @@ export function typeReferenceSubsitutions(
     return "Any";
   }
 
-  const args = () => typeArgs.map((arg) => renderTypeIR(arg, false, variance));
+  const args = () => typeArgs.map((arg) => renderTypeIR(arg, { variance }));
   const fmtArgs = () => {
     const a = args();
     if (a.length) {
@@ -163,9 +162,11 @@ export function typeReferenceSubsitutions(
     }
   }
   if (name === "Iterator") {
-    const T = renderTypeIR(typeArgs[0], false, variance);
-    const TReturn = renderTypeIR(typeArgs[1], false, variance);
-    const TNext = renderTypeIR(typeArgs[2], false, reverseVariance(variance));
+    const T = renderTypeIR(typeArgs[0], { variance });
+    const TReturn = renderTypeIR(typeArgs[1], { variance });
+    const TNext = renderTypeIR(typeArgs[2], {
+      variance: reverseVariance(variance),
+    });
     const args = `[${T}, ${TNext}, ${TReturn}]`;
     if (variance === Variance.contra) {
       return `PyGenerator` + args;

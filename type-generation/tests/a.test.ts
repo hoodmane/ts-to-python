@@ -53,7 +53,7 @@ function convertType(
   topLevelName?: string,
 ): string {
   const ir = typeToIR(typeNode);
-  return renderTypeIR(ir, isOptional, variance, topLevelName);
+  return renderTypeIR(ir, { isOptional, variance, topLevelName });
 }
 
 function convertPropertySignature(
@@ -78,7 +78,7 @@ function convertBuiltinVariable(varName: string): string[] {
   project.createSourceFile("/a.ts", varName);
   const x = project.getSourceFileOrThrow("/a.ts");
   const id = x.getStatements()[0].getChildren()[0] as Identifier;
-  console.log(id.getDefinitionNodes().map(x => x.getKindName()));
+  console.log(id.getDefinitionNodes().map((x) => x.getKindName()));
   // process.exit(1);
   const varDecl = id.getDefinitionNodes().filter(Node.isVariableDeclaration)[0];
   const ir = convertDecls([varDecl], []);
@@ -742,10 +742,5 @@ describe("emit", () => {
         "def clearTimeout(id: int | JsProxy, /) -> None: ...",
       );
     });
-    // it.only("Response", () => {
-    //   const res = convertBuiltinVariable("Response");
-    //   process.exit(1);
-    //   console.log(res.join("\n\n"));
-    // });
-  })
+  });
 });
