@@ -135,43 +135,30 @@ export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
       obj.methods.forEach(adjustFunction);
     }
   }
-  const pyTopLevels = topLevels.map((e) => renderTopLevelIR(e));
   const typevarDecls = Array.from(
     typeParams,
     (x) => `${x} = TypeVar("${x}")`,
   ).join("\n");
-  const output = [PRELUDE, typevarDecls];
-  for (const topLevel of pyTopLevels) {
-    switch (topLevel.kind) {
-      case "class":
-        output.push(renderPyClass(topLevel));
-        break;
-
-      case "other":
-        const { text } = topLevel;
-        output.push(text);
-        break;
-    }
-  }
-  return output;
+  const rendered = topLevels.map((e) => renderTopLevelIR(e));
+  return [PRELUDE, typevarDecls, ...rendered];
 }
 
-export function renderTopLevelIR(toplevel: TopLevelIR): PyTopLevel {
+export function renderTopLevelIR(toplevel: TopLevelIR): string {
   if (toplevel.kind === "declaration") {
     const { name, type } = toplevel;
     const typeStr = renderTypeIR(type);
-    return pyOther(renderSimpleDeclaration(name, typeStr));
+    return renderSimpleDeclaration(name, typeStr);
   }
   if (toplevel.kind === "typeAlias") {
     const { name, type } = toplevel;
     const typeStr = renderTypeIR(type);
-    return pyOther(`${name} = ${typeStr}`);
+    return `${name} = ${typeStr}`;
   }
   if (toplevel.kind === "interface") {
     return renderInterface(toplevel);
   }
   if (toplevel.kind === "callable") {
-    return pyOther(renderSignatureGroup2(toplevel, false).join("\n"));
+    return renderSignatureGroup2(toplevel, false).join("\n");
   }
   assertUnreachable(toplevel);
 }
@@ -263,7 +250,7 @@ function renderInterface({
   bases,
   extraBases,
   numberType,
-}: InterfaceIR): PyClass {
+}: InterfaceIR): string {
   const entries = ([] as string[]).concat(
     properties.map((prop) => renderProperty2(prop, numberType)),
     methods.flatMap((gp) => renderSignatureGroup2(gp, true, numberType)),
@@ -275,7 +262,7 @@ function renderInterface({
   }
   extraBases ??= [];
   newSupers.push(...extraBases);
-  return pyClass(name, newSupers, entries.join("\n"));
+  return renderPyClass(pyClass(name, newSupers, entries.join("\n")));
 }
 
 export function renderProperty2(

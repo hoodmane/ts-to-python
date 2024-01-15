@@ -285,9 +285,7 @@ describe("property signature", () => {
   });
 });
 
-function convertVarDecl(
-  astVarDecl: VariableDeclaration,
-): PyTopLevel | undefined {
+function convertVarDecl(astVarDecl: VariableDeclaration): string {
   const astConverter = new AstConverter();
   const irVarDecl = astConverter.varDeclToIR(astVarDecl);
   return renderTopLevelIR(irVarDecl);
@@ -315,7 +313,7 @@ describe("sanitizeReservedWords", () => {
     project.createSourceFile("/a.ts", "declare var global : string;");
     const file = project.getSourceFileOrThrow("/a.ts");
     const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-    const res = removeTypeIgnores((convertVarDecl(decl) as PyOther).text);
+    const res = removeTypeIgnores(convertVarDecl(decl));
     expect(res).toBe("global_: str = ...");
   });
 });
@@ -338,8 +336,7 @@ it("Constructor reference", () => {
   project.createSourceFile("/a.ts", text);
   const file = project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-  const cls = convertVarDecl(decl) as PyClass;
-  const res = removeTypeIgnores(renderPyClass(cls));
+  const res = removeTypeIgnores(convertVarDecl(decl));
   expect(res).toBe(expected);
 });
 
@@ -421,8 +418,7 @@ it("Type variable", () => {
   project.createSourceFile("/a.ts", text);
   const file = project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
-  const cls = convertVarDecl(decl) as PyClass;
-  const res = removeTypeIgnores(renderPyClass(cls));
+  const res = removeTypeIgnores(convertVarDecl(decl));
   expect(res).toBe(expected);
 });
 
