@@ -168,45 +168,32 @@ function renderIRSigs(
   },
 ): string[] {
   irSigs = uniqBy(irSigs, (sig) => {
-    sig = structuredClone(sig);
     // Remove parameter names to perform comparison so if two sigs only differ
     // in param names they should compare equal.
     // TODO: prune sigs more aggressively?
     // TODO: move this out of the render stage into the transform stage
-    const deleteName = (param) => delete param["name"];
-    sig.params.map(deleteName);
-    sig.kwparams?.map(deleteName);
-    delete sig?.spreadParam?.name;
-    return JSON.stringify(sig);
+    return JSON.stringify(sig, (key, value) =>
+      key !== "name" ? value : undefined,
+    );
   });
-  const { topLevelName, isMethod, decorators = [] } = settings;
-  const settings2 = Object.assign(settings, { isStatic: false });
-  const pySigs = irSigs.map((sig) => renderSig(sig, settings2));
-  if (!topLevelName) {
-    const converted = pySigs.map(renderInnerSignature);
-    return [converted.join(" | ")];
+  if (irSigs.length > 1) {
+    settings = structuredClone(settings);
+    settings.decorators.push("overload");
   }
-  if (pySigs.length > 1) {
-    decorators.push("overload");
-  }
-  return pySigs.map((sig) =>
-    renderSignature(topLevelName, sig, decorators, isMethod),
-  );
+  return irSigs.map((sig) => renderSig(sig, settings));
 }
 
-function renderSig(
+function irSigToPySig(
   sig: SigIR,
   {
     variance = Variance.covar,
     numberType,
-    isStatic,
   }: {
     variance?: Variance;
-    topLevelName?: string;
     numberType?: string;
-    isStatic: boolean;
   },
 ): PySig {
+  const paramVariance = reverseVariance(variance);
   const renderParam = ({ name, isOptional, type }: ParamIR): PyParam => {
     const pyType = renderTypeIR(type, {
       isOptional,
@@ -221,15 +208,38 @@ function renderSig(
     kwparams: origKwparams,
     returns: origReturns,
   } = sig;
-  const paramVariance = reverseVariance(variance);
   const params = origParams.map(renderParam);
   const kwparams = origKwparams?.map(renderParam);
   const spreadParam = origSpreadParam
     ? renderParam(origSpreadParam)
     : undefined;
   const returns = renderTypeIR(origReturns, { variance, numberType });
-  const decorators = isStatic ? ["classmethod"] : [];
-  return { params, spreadParam, kwparams, returns, decorators };
+  return { params, spreadParam, kwparams, returns };
+}
+
+function renderSig(
+  irSig: SigIR,
+  {
+    variance = Variance.covar,
+    numberType,
+    topLevelName,
+    decorators = [],
+    isMethod,
+  }: {
+    variance?: Variance;
+    topLevelName?: string;
+    numberType?: string;
+    decorators?: string[];
+    isMethod?: boolean;
+  },
+): string {
+  const pySig = irSigToPySig(irSig, { variance, numberType });
+  if (topLevelName) {
+    return renderSignature(topLevelName, pySig, decorators, isMethod);
+  }
+  // TODO: consider warning here if interesting values are provided for the
+  // stuff we're ignoring...
+  return renderInnerSignature(pySig);
 }
 
 export function renderBase({ name, typeParams }: BaseIR): string {
@@ -295,6 +305,7 @@ export function renderTypeIR(
   ir: TypeIR,
   settings: RenderTypeSettings = {},
 ): string {
+  settings = Object.assign({}, settings);
   settings.variance ??= Variance.covar;
   let { isOptional } = settings;
   if (isOptional) {
