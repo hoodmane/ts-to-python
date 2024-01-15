@@ -14,7 +14,7 @@ import {
   emitIR,
   renderBase,
   renderProperty2,
-  renderSignatureGroup2,
+  renderSignatureGroup,
   renderTopLevelIR,
   renderTypeIR,
 } from "../extract.ts";
@@ -296,7 +296,7 @@ function convertFuncDeclGroup(
 ): string[] {
   const astConverter = new AstConverter();
   const sigsIR = astConverter.funcDeclsToIR(name, decls);
-  return renderSignatureGroup2(sigsIR, false);
+  return renderSignatureGroup(sigsIR, false);
 }
 
 describe("sanitizeReservedWords", () => {

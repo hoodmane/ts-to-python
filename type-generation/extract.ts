@@ -6,8 +6,8 @@ import {
   renderProperty,
   renderPyClass,
   renderSignature,
-  renderSignatureGroup,
   renderSimpleDeclaration,
+  uniqBy,
 } from "./render.ts";
 import {
   PRELUDE,
@@ -137,7 +137,7 @@ export function renderTopLevelIR(toplevel: TopLevelIR): string {
     return renderInterface(toplevel);
   }
   if (toplevel.kind === "callable") {
-    return renderSignatureGroup2(toplevel, false).join("\n");
+    return renderSignatureGroup(toplevel, false).join("\n");
   }
   assertUnreachable(toplevel);
 }
@@ -202,13 +202,25 @@ function renderSig(
   return { params, spreadParam, kwparams, returns, decorators };
 }
 
-export function renderSignatureGroup2(
+export function renderSignatureGroup(
   { name, signatures: sigs, isStatic }: CallableIR,
   isMethod: boolean,
   numberType?: string,
 ): string[] {
   const pySigs = sigs.map((sig) => renderSig(sig, { isStatic, numberType }));
-  return renderSignatureGroup({ name, sigs: pySigs }, isMethod);
+  const extraDecorators: string[] = [];
+  const uniqueSigs = uniqBy(pySigs, (sig) => {
+    sig = structuredClone(sig);
+    sig.params.map((param) => delete param["name"]);
+    return JSON.stringify(sig);
+  });
+  if (uniqueSigs.length > 1) {
+    extraDecorators.push("overload");
+  }
+
+  return uniqueSigs.map((sig) =>
+    renderSignature(name, sig, extraDecorators, isMethod),
+  );
 }
 
 export function renderBase({ name, typeParams }: BaseIR): string {
@@ -230,7 +242,7 @@ function renderInterface({
 }: InterfaceIR): string {
   const entries = ([] as string[]).concat(
     properties.map((prop) => renderProperty2(prop, numberType)),
-    methods.flatMap((gp) => renderSignatureGroup2(gp, true, numberType)),
+    methods.flatMap((gp) => renderSignatureGroup(gp, true, numberType)),
   );
   const newSupers = bases.map((b) => renderBase(b));
   if (typeParams.length > 0) {
