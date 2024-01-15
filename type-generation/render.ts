@@ -2,6 +2,8 @@ import {
   METHOD_TYPE_IGNORES,
   PROPERTY_TYPE_IGNORES,
 } from "./adjustments.ts";
+import { renderTypeIR } from "./extract.ts";
+import { PropertyIR } from "./astToIR.ts";
 
 export type PyParam = {
   name: string;
@@ -138,29 +140,32 @@ export function renderSimpleDeclaration(name: string, type: string) {
 }
 
 export function renderProperty(
-  name: string,
-  type: string,
-  readOnly: boolean,
-  isStatic: boolean = false,
+  property: PropertyIR,
+  numberType?: string
 ): string {
+  let { isOptional, name, type: typeIR, isReadonly, isStatic } = property;
+  let typeString = renderTypeIR(typeIR, {
+    isOptional,
+    topLevelName: name,
+    numberType,
+  });
   if (isIllegal(name)) {
     return "";
   }
   name = sanitizeReservedWords(name);
-  const isDef = type.includes("def");
-  if (!isDef && readOnly && !isStatic) {
+  const isDef = typeString.includes("def");
+  if (!isDef && isReadonly && !isStatic) {
     const decs = ["property"];
-    return renderSignature(name, { params: [], returns: type }, decs);
+    return renderSignature(name, { params: [], returns: typeString }, decs);
   }
   if (isDef) {
     if (isStatic) {
-      type = "@classmethod\n" + type;
+      typeString = "@classmethod\n" + typeString;
     }
-    return type;
+    return typeString;
   }
   if (isStatic) {
-    type = `ClassVar[${type}]`;
+    typeString = `ClassVar[${typeString}]`;
   }
-  return renderSimpleDeclaration(name, type);
+  return renderSimpleDeclaration(name, typeString);
 }
-
