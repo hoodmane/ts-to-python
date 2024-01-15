@@ -18,7 +18,7 @@ import {
   typeReferenceSubsitutions,
 } from "./adjustments.ts";
 
-import { PyOther, PyTopLevel, Variance, reverseVariance } from "./types.ts";
+import { Variance, reverseVariance } from "./types.ts";
 import { assertUnreachable } from "./astUtils.ts";
 import {
   BaseIR,
@@ -43,13 +43,6 @@ function pyClass(name: string, supers: string[], body: string): PyClass {
     superStems,
     supers,
     body,
-  };
-}
-
-function pyOther(text: string): PyOther {
-  return {
-    kind: "other",
-    text,
   };
 }
 

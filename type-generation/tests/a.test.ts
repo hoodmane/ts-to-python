@@ -18,8 +18,7 @@ import {
   renderTopLevelIR,
   renderTypeIR,
 } from "../extract.ts";
-import { renderPyClass, renderSignatureGroup } from "../render.ts";
-import { PyClass, PyOther, PyTopLevel, Variance } from "../types.ts";
+import { Variance } from "../types.ts";
 import {
   dedent,
   getTypeNode,
@@ -291,20 +290,13 @@ function convertVarDecl(astVarDecl: VariableDeclaration): string {
   return renderTopLevelIR(irVarDecl);
 }
 
-function pyOther(text: string): PyOther {
-  return {
-    kind: "other",
-    text,
-  };
-}
-
 function convertFuncDeclGroup(
   name: string,
   decls: FunctionDeclaration[],
-): PyOther[] {
+): string[] {
   const astConverter = new AstConverter();
   const sigsIR = astConverter.funcDeclsToIR(name, decls);
-  return renderSignatureGroup2(sigsIR, false).map(pyOther);
+  return renderSignatureGroup2(sigsIR, false);
 }
 
 describe("sanitizeReservedWords", () => {
@@ -352,7 +344,7 @@ it("No args function", () => {
   const file = project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.FunctionDeclaration);
   const result = removeTypeIgnores(
-    convertFuncDeclGroup(decl.getName(), [decl])[0].text,
+    convertFuncDeclGroup(decl.getName(), [decl])[0],
   );
   expect(result).toBe(expected);
 });
