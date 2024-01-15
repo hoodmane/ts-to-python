@@ -60,15 +60,6 @@ export type Needed =
   | { type: "ident"; ident: Identifier }
   | { type: "interface"; ident: Identifier };
 
-export interface PyClass {
-  kind: "class";
-  name: string;
-  superStems: string[];
-  supers: string[];
-  body: string;
-  concrete?: boolean;
-}
-
 export enum Variance {
   covar = 1,
   contra = -1,
