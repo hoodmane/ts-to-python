@@ -207,20 +207,26 @@ export function renderSignatureGroup(
   isMethod: boolean,
   numberType?: string,
 ): string[] {
-  const pySigs = sigs.map((sig) => renderSig(sig, { isStatic, numberType }));
-  const extraDecorators: string[] = [];
-  const uniqueSigs = uniqBy(pySigs, (sig) => {
+  const uniqueSigs = uniqBy(sigs, (sig) => {
     sig = structuredClone(sig);
-    sig.params.map((param) => delete param["name"]);
+    // Remove parameter names to perform comparison so if two sigs only differ
+    // in param names they should compare equal.
+    // TODO: prune sigs more aggressively?
+    // TODO: move this out of the render stage into the transform stage
+    const deleteName = (param) => delete param["name"];
+    sig.params.map(deleteName);
+    sig.kwparams?.map(deleteName);
+    delete sig?.spreadParam?.name;
     return JSON.stringify(sig);
   });
-  if (uniqueSigs.length > 1) {
-    extraDecorators.push("overload");
-  }
-
-  return uniqueSigs.map((sig) =>
-    renderSignature(name, sig, extraDecorators, isMethod),
+  const pySigs = uniqueSigs.map((sig) =>
+    renderSig(sig, { isStatic, numberType }),
   );
+  const decorators: string[] = [];
+  if (uniqueSigs.length > 1) {
+    decorators.push("overload");
+  }
+  return pySigs.map((sig) => renderSignature(name, sig, decorators, isMethod));
 }
 
 export function renderBase({ name, typeParams }: BaseIR): string {
