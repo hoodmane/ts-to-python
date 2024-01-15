@@ -12,6 +12,7 @@ import {
 import { PyClass } from "./types.ts";
 import {
   PRELUDE,
+  adjustFunction,
   adjustInterfaceIR,
   getExtraBases,
   typeReferenceSubsitutions,
@@ -125,6 +126,14 @@ export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
   fixupClassBases(unsortedClasses);
   for (let cls of unsortedClasses) {
     adjustInterfaceIR(cls);
+  }
+  for (let obj of topLevels) {
+    if (obj.kind === "callable") {
+      adjustFunction(obj);
+    }
+    if (obj.kind === "interface") {
+      obj.methods.forEach(adjustFunction);
+    }
   }
   const pyTopLevels = topLevels.map((e) => renderTopLevelIR(e));
   const typevarDecls = Array.from(

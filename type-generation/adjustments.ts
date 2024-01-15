@@ -101,18 +101,21 @@ export function adjustInterfaceIR(cls: InterfaceIR): void {
   }
 }
 
-export function adjustPySig(name: string, sig: PySig): void {
+export function adjustFunction({ name, signatures }: CallableIR): void {
   if (["setTimeout", "setInterval"].includes(name)) {
-    sig.returns = "int | JsProxy";
-  }
-  if (["setTimeout", "setInterval"].includes(name)) {
-    sig.returns = "int | JsProxy";
+    for (const sig of signatures) {
+      sig.returns = simpleType("int | JsProxy");
+    }
   }
   if (["clearTimeout", "clearInterval"].includes(name)) {
-    sig.params[0].pyType = "int | JsProxy";
+    for (const sig of signatures) {
+      sig.params[0].type = simpleType("int | JsProxy");
+    }
   }
   if (name === "fromEntries") {
-    sig.returns = "JsProxy";
+    for (const sig of signatures) {
+      sig.returns = simpleType("JsProxy");
+    }
   }
 }
 
