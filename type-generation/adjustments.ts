@@ -1,7 +1,6 @@
 import { Variance, reverseVariance } from "./types";
-import { PySig } from "./render";
 import { CallableIR, InterfaceIR, TypeIR, simpleType } from "./astToIR";
-import { renderTypeIR } from "./extract";
+import { renderTypeIR } from "./render";
 import { readFileSync } from "fs";
 
 import { URL } from "url";

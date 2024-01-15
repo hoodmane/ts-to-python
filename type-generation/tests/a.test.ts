@@ -9,15 +9,14 @@ import {
   TypeNode,
   VariableDeclaration,
 } from "ts-morph";
+import { emitFiles, emitIR } from "../extract.ts";
 import {
-  emitFiles,
-  emitIR,
+  renderProperty,
   renderBase,
   renderCallableIR,
   renderTopLevelIR,
   renderTypeIR,
-} from "../extract.ts";
-import { renderProperty } from "../render.ts";
+} from "../render.ts";
 import { Variance } from "../types.ts";
 import {
   dedent,
