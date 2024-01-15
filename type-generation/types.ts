@@ -69,13 +69,6 @@ export interface PyClass {
   concrete?: boolean;
 }
 
-export interface PyOther {
-  kind: "other";
-  text: string;
-}
-
-export type PyTopLevel = PyClass | PyOther;
-
 export enum Variance {
   covar = 1,
   contra = -1,
