@@ -2,7 +2,6 @@ import {
   CLASS_TYPE_IGNORES,
   METHOD_TYPE_IGNORES,
   PROPERTY_TYPE_IGNORES,
-  adjustPySig,
 } from "./adjustments.ts";
 import { PyClass } from "./types.ts";
 
@@ -139,7 +138,6 @@ export function renderSignature(
   if (isIllegal(name)) {
     return "";
   }
-  adjustPySig(name, sig);
   name = sanitizeReservedWords(name);
   const formattedParams = sig.params.map(renderParam);
   if (isMethod) {
