@@ -751,6 +751,13 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("duplicate signature", () => {
+    const res = emitFile(`\
+      declare function f(x: string): void;
+      declare function f(y: string): void;
+    `);
+    expect(removeTypeIgnores(res.at(-1))).toBe("def f(x: str, /) -> None: ...");
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = convertBuiltinFunction("setTimeout");
