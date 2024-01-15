@@ -224,12 +224,7 @@ describe("property signature", () => {
   it("mandatory function", () => {
     const fname = "/a.ts";
     const project = makeProject();
-    project.createSourceFile(
-      fname,
-      `
-            declare var X: {f: () => void};
-        `,
-    );
+    project.createSourceFile(fname, `declare var X: {f: () => void};`);
     const file = project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
     const res = removeTypeIgnores(convertPropertySignature(propsig));
@@ -238,16 +233,55 @@ describe("property signature", () => {
   it("optional function", () => {
     const fname = "/a.ts";
     const project = makeProject();
-    project.createSourceFile(
-      fname,
-      `
-            declare var X: {f?: () => void};
-        `,
-    );
+    project.createSourceFile(fname, `declare var X: {f?: () => void};`);
     const file = project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
     const res = removeTypeIgnores(convertPropertySignature(propsig));
     expect(res).toBe("f: Callable[[], None] | None = ...");
+  });
+  it("alternatives function", () => {
+    const fname = "/a.ts";
+    const project = makeProject();
+    project.createSourceFile(
+      fname,
+      `declare var X: {f: (() => void) | string};`,
+    );
+    const file = project.getSourceFileOrThrow(fname);
+    const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
+    const res = removeTypeIgnores(convertPropertySignature(propsig));
+    expect(res).toBe("f: (Callable[[], None]) | str = ...");
+  });
+  it("optional interface function", () => {
+    const res = emitFile(`
+      interface X {
+          f? : () => void;
+      }
+      declare var Test: X[];
+    `);
+    expect(removeTypeIgnores(res.slice(2).join("\n\n"))).toBe(
+      dedent(`\
+        Test: JsArray[X_iface] = ...
+
+        class X_iface(Protocol):
+            f: Callable[[], None] | None = ...
+      `).trim(),
+    );
+  });
+  it("alternatives interface function", () => {
+    const res = emitFile(`
+      interface X {
+          f : (() => void) | string;
+      }
+      declare var Test: X[];
+    `);
+    expect(removeTypeIgnores(res.slice(2).join("\n\n"))).toBe(
+      dedent(`\
+        Test: JsArray[X_iface] = ...
+
+        class X_iface(Protocol):
+            f: (Callable[[], None]) | str = ...
+      `).trim(),
+    );
   });
 });
 

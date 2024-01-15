@@ -315,7 +315,8 @@ export function renderTypeIR(
 }
 
 function renderTypeIRInner(ir: TypeIR, settings: RenderTypeSettings): string {
-  const { variance, numberType } = settings;
+  const { variance, numberType, topLevelName } = settings;
+  settings.topLevelName = undefined;
   if (ir.kind === "simple") {
     return ir.text;
   }
@@ -345,7 +346,11 @@ function renderTypeIRInner(ir: TypeIR, settings: RenderTypeSettings): string {
     return renderTypeIR(ir.type, settings);
   }
   if (ir.kind === "callable") {
-    return renderIRSignatures(ir.signatures, settings);
+    return renderIRSignatures(ir.signatures, {
+      variance,
+      topLevelName,
+      numberType,
+    });
   }
   if (ir.kind === "other") {
     return "Any";
