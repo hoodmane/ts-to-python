@@ -144,19 +144,15 @@ export function renderTopLevelIR(toplevel: TopLevelIR): string {
 
 function renderIRSignatures(
   irSigs: readonly SigIR[],
-  {
-    variance,
-    topLevelName,
-    numberType,
-  }: {
+  settings: {
     variance?: Variance;
     topLevelName?: string;
     numberType?: string;
   },
 ): string {
-  const pySigs = irSigs.map((sig) =>
-    renderSig(sig, variance, [], false, numberType),
-  );
+  const topLevelName = settings.topLevelName;
+  const settings2 = Object.assign(settings, { isStatic: false });
+  const pySigs = irSigs.map((sig) => renderSig(sig, settings2));
   if (!topLevelName) {
     const converted = pySigs.map(renderInnerSignature);
     return converted.join(" | ");
@@ -170,10 +166,16 @@ function renderIRSignatures(
 
 function renderSig(
   sig: SigIR,
-  variance: Variance,
-  decorators: string[] = [],
-  isStatic: boolean = false,
-  numberType?: string,
+  {
+    variance = Variance.covar,
+    numberType,
+    isStatic,
+  }: {
+    variance?: Variance;
+    topLevelName?: string;
+    numberType?: string;
+    isStatic: boolean;
+  },
 ): PySig {
   const renderParam = ({ name, isOptional, type }: ParamIR): PyParam => {
     const pyType = renderTypeIR(type, {
@@ -196,9 +198,7 @@ function renderSig(
     ? renderParam(origSpreadParam)
     : undefined;
   const returns = renderTypeIR(origReturns, { variance, numberType });
-  if (isStatic) {
-    decorators.push("classmethod");
-  }
+  const decorators = isStatic ? ["classmethod"] : [];
   return { params, spreadParam, kwparams, returns, decorators };
 }
 
@@ -207,9 +207,7 @@ export function renderSignatureGroup2(
   isMethod: boolean,
   numberType?: string,
 ): string[] {
-  const pySigs = sigs.map((sig) =>
-    renderSig(sig, Variance.covar, [], isStatic, numberType),
-  );
+  const pySigs = sigs.map((sig) => renderSig(sig, { isStatic, numberType }));
   return renderSignatureGroup({ name, sigs: pySigs }, isMethod);
 }
 
