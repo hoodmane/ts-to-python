@@ -13,9 +13,7 @@ export type PySig = {
   spreadParam?: PyParam;
   kwparams?: PyParam[];
   returns: string;
-  decorators?: string[];
 };
-export type PySigGroup = { name: string; sigs: PySig[] };
 
 export function uniqBy<T, S>(l: readonly T[], key: (k: T) => S) {
   const seen = new Set();
@@ -95,10 +93,15 @@ function renderParam({ name, pyType, isOptional: optional }: PyParam) {
   return `${name}: ${pyType}${maybeDefault}`;
 }
 
+export function renderInnerSignature(sig: PySig): string {
+  const paramTypes = sig.params.map(({ pyType }) => pyType);
+  return `Callable[[${paramTypes.join(", ")}], ${sig.returns}]`;
+}
+
 export function renderSignature(
   name: string,
   sig: PySig,
-  extraDecorators: string[] = [],
+  decorators: string[] = [],
   isMethod: boolean = true,
 ): string {
   if (isIllegal(name)) {
@@ -121,8 +124,7 @@ export function renderSignature(
     formattedParams.push(...sig.kwparams.map(renderParam));
   }
   const joinedParams = formattedParams.join(", ");
-  const decs = (sig.decorators || [])
-    .concat(extraDecorators)
+  const decs = decorators
     .map((x) => "@" + x + "\n")
     .join("");
   return (
@@ -162,7 +164,3 @@ export function renderProperty(
   return renderSimpleDeclaration(name, type);
 }
 
-export function renderInnerSignature(sig: PySig): string {
-  const paramTypes = sig.params.map(({ pyType }) => pyType);
-  return `Callable[[${paramTypes.join(", ")}], ${sig.returns}]`;
-}
