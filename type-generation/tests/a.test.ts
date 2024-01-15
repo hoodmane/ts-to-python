@@ -11,12 +11,12 @@ import {
 } from "ts-morph";
 import { emitFiles, emitIR } from "../extract.ts";
 import {
-  renderProperty,
-  renderBase,
-  renderCallableIR,
-  renderTopLevelIR,
-  renderTypeIR,
-} from "../render.ts";
+  propertyIRToString,
+  baseIRToString,
+  callableIRToString,
+  topLevelIRToString,
+  typeIRToString,
+} from "../irToString.ts";
 import { Variance } from "../types.ts";
 import {
   dedent,
@@ -51,14 +51,14 @@ function convertType(
   topLevelName?: string,
 ): string {
   const ir = typeToIR(typeNode);
-  return renderTypeIR(ir, { isOptional, variance, topLevelName });
+  return typeIRToString(ir, { isOptional, variance, topLevelName });
 }
 
 function convertPropertySignature(
   member: PropertySignature,
   isStatic: boolean = false,
 ): string {
-  return renderProperty(propertySignatureToIR(member, isStatic));
+  return propertyIRToString(propertySignatureToIR(member, isStatic));
 }
 
 function convertBuiltinFunction(funcName: string): string[] {
@@ -286,7 +286,7 @@ describe("property signature", () => {
 function convertVarDecl(astVarDecl: VariableDeclaration): string {
   const astConverter = new AstConverter();
   const irVarDecl = astConverter.varDeclToIR(astVarDecl);
-  return renderTopLevelIR(irVarDecl);
+  return topLevelIRToString(irVarDecl);
 }
 
 function convertFuncDeclGroup(
@@ -295,7 +295,7 @@ function convertFuncDeclGroup(
 ): string {
   const astConverter = new AstConverter();
   const sigsIR = astConverter.funcDeclsToIR(name, decls);
-  return renderCallableIR(sigsIR, false).join("\n");
+  return callableIRToString(sigsIR, false).join("\n");
 }
 
 describe("sanitizeReservedWords", () => {
@@ -352,8 +352,8 @@ function getBaseNames(
   defs: (InterfaceDeclaration | ClassDeclaration)[],
 ): string[] {
   const astConverter = new AstConverter();
-  const bases = astConverter.declsToBases(defs);
-  return bases.map((base) => renderBase(base));
+  const bases = astConverter.getBasesOfDecls(defs);
+  return bases.map((base) => baseIRToString(base));
 }
 
 describe("getBaseNames", () => {

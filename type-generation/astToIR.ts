@@ -30,7 +30,7 @@ import {
   getNodeLocation,
   groupMembers,
 } from "./astUtils";
-import { sanitizeReservedWords, uniqBy } from "./render";
+import { sanitizeReservedWords, uniqBy } from "./irToString";
 import { Needed } from "./types";
 
 export type TypeIR =
@@ -616,7 +616,9 @@ export class Converter {
     };
   }
 
-  declsToBases(decls: (InterfaceDeclaration | ClassDeclaration)[]): BaseIR[] {
+  getBasesOfDecls(
+    decls: (InterfaceDeclaration | ClassDeclaration)[],
+  ): BaseIR[] {
     let extends_ = decls.flatMap((decl) => decl.getExtends() || []);
     extends_ = uniqBy(extends_, (base) => base.getText());
     return extends_.flatMap((extend): BaseIR | [] => {
@@ -768,7 +770,7 @@ export class Converter {
     switch (classified.kind) {
       case "interfaces":
         const ifaces = classified.ifaces;
-        const baseNames = this.declsToBases(ifaces);
+        const baseNames = this.getBasesOfDecls(ifaces);
         const typeParams = ifaces
           .flatMap((i) => i.getTypeParameters())
           .map((p) => p.getName());
@@ -846,7 +848,7 @@ export function convertDecls(
         .filter(Node.isInterfaceDeclaration);
       if (defs.length) {
         const baseNames = converter
-          .declsToBases(defs)
+          .getBasesOfDecls(defs)
           .filter((base) => base.name !== name);
         const typeParams = defs
           .flatMap((i) => i.getTypeParameters())

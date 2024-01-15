@@ -68,30 +68,73 @@ export function sanitizeReservedWords(name) {
 // Functions that format strings but don't touch the IR
 //
 
-export type PyParam = {
-  name: string;
-  pyType: string;
-  isOptional: boolean;
-};
-export type PySig = {
+/**
+ * Signatures need to be represented in two different ways. Suppose we have the
+ * following:
+ *
+ * ```
+ * function f(a: string): void;
+ * function f(a: string, b: string): void;
+ * ```
+ *
+ * 1. in a context where a type is needed, it should be converted to
+ *    Callable[[str], None] | Callable[[str, str], None]
+ *
+ * 2. in a context where a declaration is needed, it should be converted to:
+ *
+ *    ```
+ *    @overload
+ *    def f(a: str) -> None: ...
+ *    @overload
+ *    def f(a: str, b: str) -> None: ...
+ *    ```
+ *
+ * We use PySig to store the data of the signature until we pick the
+ * representation.
+ *
+ * TODO: Ideally we should add a third representation: if we need to represent
+ * `(a?: string): void`, this cannot be written with `Callable` it must instead
+ * be declared like:
+ * ```
+ * class FuncType7(Protocol):
+ *    def __call__(self, a: str = ""): ...
+ * ```
+ */
+type PySig = {
   params: PyParam[];
   spreadParam?: PyParam;
   kwparams?: PyParam[];
   returns: string;
 };
 
-function renderParam({ name, pyType, isOptional: optional }: PyParam) {
+type PyParam = {
+  name: string;
+  pyType: string;
+  isOptional: boolean;
+};
+
+/**
+ * Convert a PySig to a type.
+ *
+ * Ignores optional params, spreadParam, and kwparams.
+ * TODO: handle these
+ */
+function pySigToTypeString(sig: PySig): string {
+  const paramTypes = sig.params.map(({ pyType }) => pyType);
+  return `Callable[[${paramTypes.join(", ")}], ${sig.returns}]`;
+}
+
+function pyParamToString({
+  name,
+  pyType,
+  isOptional: optional,
+}: PyParam): string {
   const maybeDefault = optional ? " = None" : "";
   name = sanitizeReservedWords(name);
   return `${name}: ${pyType}${maybeDefault}`;
 }
 
-export function renderInnerSignature(sig: PySig): string {
-  const paramTypes = sig.params.map(({ pyType }) => pyType);
-  return `Callable[[${paramTypes.join(", ")}], ${sig.returns}]`;
-}
-
-export function renderSignature(
+function pySigToDeclarationString(
   name: string,
   sig: PySig,
   decorators: string[] = [],
@@ -101,7 +144,7 @@ export function renderSignature(
     return "";
   }
   name = sanitizeReservedWords(name);
-  const formattedParams = sig.params.map(renderParam);
+  const formattedParams = sig.params.map(pyParamToString);
   if (isMethod) {
     formattedParams.unshift("self");
   }
@@ -114,7 +157,7 @@ export function renderSignature(
   }
   if (sig.kwparams?.length > 0) {
     formattedParams.push("*");
-    formattedParams.push(...sig.kwparams.map(renderParam));
+    formattedParams.push(...sig.kwparams.map(pyParamToString));
   }
   const joinedParams = formattedParams.join(", ");
   const decs = decorators.map((x) => "@" + x + "\n").join("");
@@ -124,7 +167,7 @@ export function renderSignature(
   );
 }
 
-export function renderSimpleDeclaration(name: string, type: string) {
+function simpleDeclaration(name: string, type: string) {
   return `${name}: ${type} = ...` + PROPERTY_TYPE_IGNORES;
 }
 
@@ -132,27 +175,27 @@ export function renderSimpleDeclaration(name: string, type: string) {
 // Functions that format IR into strings
 //
 
-export function renderTopLevelIR(toplevel: TopLevelIR): string {
+export function topLevelIRToString(toplevel: TopLevelIR): string {
   if (toplevel.kind === "declaration") {
     const { name, type } = toplevel;
-    const typeStr = renderTypeIR(type);
-    return renderSimpleDeclaration(name, typeStr);
+    const typeStr = typeIRToString(type);
+    return simpleDeclaration(name, typeStr);
   }
   if (toplevel.kind === "typeAlias") {
     const { name, type } = toplevel;
-    const typeStr = renderTypeIR(type);
+    const typeStr = typeIRToString(type);
     return `${name} = ${typeStr}`;
   }
   if (toplevel.kind === "interface") {
-    return renderInterface(toplevel);
+    return interfaceIRToString(toplevel);
   }
   if (toplevel.kind === "callable") {
-    return renderCallableIR(toplevel, false).join("\n");
+    return callableIRToString(toplevel, false).join("\n");
   }
   assertUnreachable(toplevel);
 }
 
-function renderInterface({
+function interfaceIRToString({
   name,
   properties,
   methods,
@@ -161,7 +204,7 @@ function renderInterface({
   extraBases = [],
   numberType,
 }: InterfaceIR): string {
-  const bases = irBases.map((b) => renderBase(b));
+  const bases = irBases.map((b) => baseIRToString(b));
   if (typeParams.length > 0) {
     const joined = typeParams.join(", ");
     bases.push(`Generic[${joined}]`);
@@ -173,8 +216,8 @@ function renderInterface({
   }
 
   const entries = ([] as string[]).concat(
-    properties.map((prop) => renderProperty(prop, numberType)),
-    methods.flatMap((gp) => renderCallableIR(gp, true, numberType)),
+    properties.map((prop) => propertyIRToString(prop, numberType)),
+    methods.flatMap((gp) => callableIRToString(gp, true, numberType)),
   );
   let body = entries.join("\n");
   if (body.trim() === "") {
@@ -185,20 +228,20 @@ function renderInterface({
   return `class ${name}${basesString}:${CLASS_TYPE_IGNORES}\n${body}`;
 }
 
-export function renderBase({ name, typeParams }: BaseIR): string {
+export function baseIRToString({ name, typeParams }: BaseIR): string {
   if (typeParams.length > 0) {
-    const joined = typeParams.map((t) => renderTypeIR(t)).join(", ");
+    const joined = typeParams.map((t) => typeIRToString(t)).join(", ");
     name += `[${joined}]`;
   }
   return name;
 }
 
-export function renderProperty(
+export function propertyIRToString(
   property: PropertyIR,
   numberType?: string,
 ): string {
   let { isOptional, name, type: typeIR, isReadonly, isStatic } = property;
-  let typeString = renderTypeIR(typeIR, {
+  let typeString = typeIRToString(typeIR, {
     isOptional,
     topLevelName: name,
     numberType,
@@ -210,7 +253,11 @@ export function renderProperty(
   const isDef = typeString.includes("def");
   if (!isDef && isReadonly && !isStatic) {
     const decs = ["property"];
-    return renderSignature(name, { params: [], returns: typeString }, decs);
+    return pySigToDeclarationString(
+      name,
+      { params: [], returns: typeString },
+      decs,
+    );
   }
   if (isDef) {
     if (isStatic) {
@@ -221,16 +268,16 @@ export function renderProperty(
   if (isStatic) {
     typeString = `ClassVar[${typeString}]`;
   }
-  return renderSimpleDeclaration(name, typeString);
+  return simpleDeclaration(name, typeString);
 }
 
-export function renderCallableIR(
+export function callableIRToString(
   { name, signatures: sigs, isStatic }: CallableIR,
   isMethod: boolean,
   numberType?: string,
 ): string[] {
   const decorators = isStatic ? ["classmethod"] : [];
-  return renderIRSigs(sigs, {
+  return sigIRListToString(sigs, {
     topLevelName: name,
     numberType,
     isMethod,
@@ -238,7 +285,7 @@ export function renderCallableIR(
   });
 }
 
-function renderIRSigs(
+function sigIRListToString(
   irSigs: readonly SigIR[],
   settings: {
     variance?: Variance;
@@ -252,7 +299,7 @@ function renderIRSigs(
     // Remove parameter names to perform comparison so if two sigs only differ
     // in param names they should compare equal.
     // TODO: prune sigs more aggressively?
-    // TODO: move this out of the render stage into the transform stage
+    // TODO: move this out of the render stage into the transform stage?
     return JSON.stringify(sig, (key, value) =>
       key !== "name" ? value : undefined,
     );
@@ -261,7 +308,7 @@ function renderIRSigs(
     settings = structuredClone(settings);
     settings.decorators.push("overload");
   }
-  return irSigs.map((sig) => renderSig(sig, settings));
+  return irSigs.map((sig) => irSigToString(sig, settings));
 }
 
 function irSigToPySig(
@@ -275,8 +322,8 @@ function irSigToPySig(
   },
 ): PySig {
   const paramVariance = reverseVariance(variance);
-  const renderParam = ({ name, isOptional, type }: ParamIR): PyParam => {
-    const pyType = renderTypeIR(type, {
+  const irParamToPyParam = ({ name, isOptional, type }: ParamIR): PyParam => {
+    const pyType = typeIRToString(type, {
       isOptional,
       variance: paramVariance,
       numberType,
@@ -289,16 +336,16 @@ function irSigToPySig(
     kwparams: origKwparams,
     returns: origReturns,
   } = sig;
-  const params = origParams.map(renderParam);
-  const kwparams = origKwparams?.map(renderParam);
+  const params = origParams.map(irParamToPyParam);
+  const kwparams = origKwparams?.map(irParamToPyParam);
   const spreadParam = origSpreadParam
-    ? renderParam(origSpreadParam)
+    ? irParamToPyParam(origSpreadParam)
     : undefined;
-  const returns = renderTypeIR(origReturns, { variance, numberType });
+  const returns = typeIRToString(origReturns, { variance, numberType });
   return { params, spreadParam, kwparams, returns };
 }
 
-function renderSig(
+function irSigToString(
   irSig: SigIR,
   {
     variance = Variance.covar,
@@ -316,11 +363,11 @@ function renderSig(
 ): string {
   const pySig = irSigToPySig(irSig, { variance, numberType });
   if (topLevelName) {
-    return renderSignature(topLevelName, pySig, decorators, isMethod);
+    return pySigToDeclarationString(topLevelName, pySig, decorators, isMethod);
   }
   // TODO: consider warning here if interesting values are provided for the
   // stuff we're ignoring...
-  return renderInnerSignature(pySig);
+  return pySigToTypeString(pySig);
 }
 
 type RenderTypeSettings = {
@@ -330,7 +377,7 @@ type RenderTypeSettings = {
   numberType?: string;
 };
 
-export function renderTypeIR(
+export function typeIRToString(
   ir: TypeIR,
   settings: RenderTypeSettings = {},
 ): string {
@@ -341,7 +388,7 @@ export function renderTypeIR(
     settings.topLevelName = undefined;
     settings.isOptional = false;
   }
-  let result = renderTypeIRInner(ir, settings);
+  let result = typeIRToStringHelper(ir, settings);
   if (!isOptional) {
     return result;
   }
@@ -356,28 +403,31 @@ export function renderTypeIR(
   return result;
 }
 
-function renderTypeIRInner(ir: TypeIR, settings: RenderTypeSettings): string {
+function typeIRToStringHelper(
+  ir: TypeIR,
+  settings: RenderTypeSettings,
+): string {
   const { variance, numberType, topLevelName } = settings;
   settings.topLevelName = undefined;
   if (ir.kind === "simple") {
     return ir.text;
   }
   if (ir.kind === "union") {
-    return ir.types.map((ty) => renderTypeIR(ty, settings)).join(" | ");
+    return ir.types.map((ty) => typeIRToString(ty, settings)).join(" | ");
   }
   if (ir.kind === "paren") {
-    const inner = renderTypeIR(ir.type, settings);
+    const inner = typeIRToString(ir.type, settings);
     return `(${inner})`;
   }
   if (ir.kind === "array") {
-    const eltType = renderTypeIR(ir.type, settings);
+    const eltType = typeIRToString(ir.type, settings);
     if (variance === Variance.contra) {
       return `PyMutableSequence[${eltType}]`;
     }
     return `JsArray[${eltType}]`;
   }
   if (ir.kind == "tuple") {
-    let elts = ir.types.map((elt) => renderTypeIR(elt, settings)).join(", ");
+    let elts = ir.types.map((elt) => typeIRToString(elt, settings)).join(", ");
     if (elts === "") {
       elts = "()";
     }
@@ -385,10 +435,10 @@ function renderTypeIRInner(ir: TypeIR, settings: RenderTypeSettings): string {
   }
   if (ir.kind === "operator") {
     // Ignore type operators
-    return renderTypeIR(ir.type, settings);
+    return typeIRToString(ir.type, settings);
   }
   if (ir.kind === "callable") {
-    return renderIRSigs(ir.signatures, {
+    return sigIRListToString(ir.signatures, {
       variance,
       topLevelName,
       numberType,
@@ -407,7 +457,7 @@ function renderTypeIRInner(ir: TypeIR, settings: RenderTypeSettings): string {
       return res;
     }
     const args = typeArgs.map((ty) =>
-      renderTypeIR(ty, { variance: Variance.none, numberType }),
+      typeIRToString(ty, { variance: Variance.none, numberType }),
     );
     let fmtArgs = "";
     if (args.length) {

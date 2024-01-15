@@ -1,6 +1,6 @@
 import { Variance, reverseVariance } from "./types";
 import { CallableIR, InterfaceIR, TypeIR, simpleType } from "./astToIR";
-import { renderTypeIR } from "./render";
+import { typeIRToString } from "./irToString";
 import { readFileSync } from "fs";
 
 import { URL } from "url";
@@ -141,7 +141,7 @@ export function typeReferenceSubsitutions(
     return "Any";
   }
 
-  const args = () => typeArgs.map((arg) => renderTypeIR(arg, { variance }));
+  const args = () => typeArgs.map((arg) => typeIRToString(arg, { variance }));
   const fmtArgs = () => {
     const a = args();
     if (a.length) {
@@ -164,9 +164,9 @@ export function typeReferenceSubsitutions(
     }
   }
   if (name === "Iterator") {
-    const T = renderTypeIR(typeArgs[0], { variance });
-    const TReturn = renderTypeIR(typeArgs[1], { variance });
-    const TNext = renderTypeIR(typeArgs[2], {
+    const T = typeIRToString(typeArgs[0], { variance });
+    const TReturn = typeIRToString(typeArgs[1], { variance });
+    const TNext = typeIRToString(typeArgs[2], {
       variance: reverseVariance(variance),
     });
     const args = `[${T}, ${TNext}, ${TReturn}]`;

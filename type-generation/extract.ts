@@ -7,7 +7,7 @@ import {
 } from "./adjustments.ts";
 
 import { InterfaceIR, convertFiles, ConversionResult } from "./astToIR.ts";
-import { renderTopLevelIR } from "./render.ts";
+import { topLevelIRToString } from "./irToString.ts";
 
 function topologicalSortClasses(
   nameToCls: Map<string, InterfaceIR>,
@@ -95,6 +95,6 @@ export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
     typeParams,
     (x) => `${x} = TypeVar("${x}")`,
   ).join("\n");
-  const rendered = topLevels.map((e) => renderTopLevelIR(e));
+  const rendered = topLevels.map((e) => topLevelIRToString(e));
   return [PRELUDE, typevarDecls, ...rendered];
 }
