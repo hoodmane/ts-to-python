@@ -33,8 +33,18 @@ export function groupMembers(members: TypeElementTypes[]): {
 } {
   const grouped = groupBySyntaxKind(members);
   const allProperties = grouped[SyntaxKind.PropertySignature] || [];
+  function isMethod(prop: PropertySignature) {
+    if (prop.hasQuestionToken()) {
+      // We have to treat all optional methods as properties instead:
+      // f : () => void   translates to   def f(self) -> None: ...
+      // f?: () => void   translates to   f: Callable[[], None] | None = ...
+      return false;
+    }
+    return prop.getTypeNode()?.isKind(SyntaxKind.FunctionType);
+  }
+
   const { functions = [], properties = [] } = groupBy(allProperties, (prop) =>
-    prop.getTypeNode()?.isKind(SyntaxKind.FunctionType)
+    isMethod(prop)
       ? "functions"
       : "properties",
   );
