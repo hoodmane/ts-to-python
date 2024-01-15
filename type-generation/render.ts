@@ -3,7 +3,6 @@ import {
   METHOD_TYPE_IGNORES,
   PROPERTY_TYPE_IGNORES,
 } from "./adjustments.ts";
-import { PyClass } from "./types.ts";
 
 export type PyParam = {
   name: string;
@@ -36,8 +35,7 @@ function indent(x: string, prefix: string): string {
     .join("\n");
 }
 
-export function renderPyClass(cls: PyClass): string {
-  let { name, supers, body } = cls;
+export function renderPyClass(name: string, supers: string[], body: string): string {
   if (body.trim() === "") {
     body = "pass";
   }

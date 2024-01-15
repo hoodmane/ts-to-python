@@ -9,7 +9,6 @@ import {
   renderSignatureGroup,
   renderSimpleDeclaration,
 } from "./render.ts";
-import { PyClass } from "./types.ts";
 import {
   PRELUDE,
   adjustFunction,
@@ -32,19 +31,6 @@ import {
   convertFiles,
   ConversionResult,
 } from "./astToIR.ts";
-
-function pyClass(name: string, supers: string[], body: string): PyClass {
-  const superStems = supers
-    .map((sup) => sup.split("[")[0])
-    .filter((x) => x !== "Generic");
-  return {
-    kind: "class",
-    name,
-    superStems,
-    supers,
-    body,
-  };
-}
 
 function topologicalSortClasses(
   nameToCls: Map<string, InterfaceIR>,
@@ -255,7 +241,7 @@ function renderInterface({
   }
   extraBases ??= [];
   newSupers.push(...extraBases);
-  return renderPyClass(pyClass(name, newSupers, entries.join("\n")));
+  return renderPyClass(name, newSupers, entries.join("\n"));
 }
 
 export function renderProperty2(
