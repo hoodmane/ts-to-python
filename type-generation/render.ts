@@ -47,25 +47,6 @@ export function renderPyClass(name: string, supers: string[], body: string): str
   return `class ${name}${supersList}:${CLASS_TYPE_IGNORES}\n${body}`;
 }
 
-export function renderSignatureGroup(
-  sigGroup: PySigGroup,
-  isMethod: boolean,
-): string[] {
-  const extraDecorators: string[] = [];
-  const uniqueSigs = uniqBy(sigGroup.sigs, (sig) => {
-    sig = structuredClone(sig);
-    sig.params.map((param) => delete param["name"]);
-    return JSON.stringify(sig);
-  });
-  if (uniqueSigs.length > 1) {
-    extraDecorators.push("overload");
-  }
-
-  return uniqueSigs.map((sig) =>
-    renderSignature(sigGroup.name, sig, extraDecorators, isMethod),
-  );
-}
-
 function isIllegal(name) {
   return (
     /["[$]/.test(name) ||
