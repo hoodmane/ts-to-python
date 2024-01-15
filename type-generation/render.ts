@@ -1,5 +1,4 @@
 import {
-  CLASS_TYPE_IGNORES,
   METHOD_TYPE_IGNORES,
   PROPERTY_TYPE_IGNORES,
 } from "./adjustments.ts";
@@ -28,23 +27,11 @@ export function uniqBy<T, S>(l: readonly T[], key: (k: T) => S) {
   });
 }
 
-function indent(x: string, prefix: string): string {
+export function indent(x: string, prefix: string): string {
   return x
     .split("\n")
     .map((e) => prefix + e)
     .join("\n");
-}
-
-export function renderPyClass(name: string, supers: string[], body: string): string {
-  if (body.trim() === "") {
-    body = "pass";
-  }
-  body = indent(body, " ".repeat(4));
-  let supersList = "";
-  if (supers.length > 0) {
-    supersList = `(${supers.join(", ")})`;
-  }
-  return `class ${name}${supersList}:${CLASS_TYPE_IGNORES}\n${body}`;
 }
 
 function isIllegal(name) {

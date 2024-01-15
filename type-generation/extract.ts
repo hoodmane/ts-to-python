@@ -2,14 +2,15 @@ import { SourceFile } from "ts-morph";
 import {
   PyParam,
   PySig,
+  indent,
   renderInnerSignature,
   renderProperty,
-  renderPyClass,
   renderSignature,
   renderSimpleDeclaration,
   uniqBy,
 } from "./render.ts";
 import {
+  CLASS_TYPE_IGNORES,
   PRELUDE,
   adjustFunction,
   adjustInterfaceIR,
@@ -244,22 +245,30 @@ function renderInterface({
   properties,
   methods,
   typeParams,
-  bases,
-  extraBases,
+  bases: irBases,
+  extraBases = [],
   numberType,
 }: InterfaceIR): string {
   const entries = ([] as string[]).concat(
     properties.map((prop) => renderProperty2(prop, numberType)),
     methods.flatMap((gp) => renderCallableIR(gp, true, numberType)),
   );
-  const newSupers = bases.map((b) => renderBase(b));
+  const bases = irBases.map((b) => renderBase(b));
   if (typeParams.length > 0) {
     const joined = typeParams.join(", ");
-    newSupers.push(`Generic[${joined}]`);
+    bases.push(`Generic[${joined}]`);
   }
-  extraBases ??= [];
-  newSupers.push(...extraBases);
-  return renderPyClass(name, newSupers, entries.join("\n"));
+  bases.push(...extraBases);
+  let body = entries.join("\n");
+  if (body.trim() === "") {
+    body = "pass";
+  }
+  body = indent(body, " ".repeat(4));
+  let basesString = "";
+  if (bases.length > 0) {
+    basesString = `(${bases.join(", ")})`;
+  }
+  return `class ${name}${basesString}:${CLASS_TYPE_IGNORES}\n${body}`;
 }
 
 export function renderProperty2(
