@@ -14,7 +14,7 @@ import {
   emitIR,
   renderBase,
   renderProperty2,
-  renderSignatureGroup,
+  renderCallableIR,
   renderTopLevelIR,
   renderTypeIR,
 } from "../extract.ts";
@@ -293,10 +293,10 @@ function convertVarDecl(astVarDecl: VariableDeclaration): string {
 function convertFuncDeclGroup(
   name: string,
   decls: FunctionDeclaration[],
-): string[] {
+): string {
   const astConverter = new AstConverter();
   const sigsIR = astConverter.funcDeclsToIR(name, decls);
-  return renderSignatureGroup(sigsIR, false);
+  return renderCallableIR(sigsIR, false).join("\n");
 }
 
 describe("sanitizeReservedWords", () => {
@@ -344,7 +344,7 @@ it("No args function", () => {
   const file = project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.FunctionDeclaration);
   const result = removeTypeIgnores(
-    convertFuncDeclGroup(decl.getName(), [decl])[0],
+    convertFuncDeclGroup(decl.getName(), [decl]),
   );
   expect(result).toBe(expected);
 });
