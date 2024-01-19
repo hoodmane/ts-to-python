@@ -122,6 +122,7 @@ export function typeReferenceSubsitutions(
   name: string,
   typeArgs: TypeIR[],
   variance: Variance,
+  classTypeParams: string[],
 ): string | undefined {
   if (name.endsWith("_iface")) {
     name = name.slice(0, -"_iface".length);
@@ -141,7 +142,8 @@ export function typeReferenceSubsitutions(
     return "Any";
   }
 
-  const args = () => typeArgs.map((arg) => typeIRToString(arg, { variance }));
+  const args = () =>
+    typeArgs.map((arg) => typeIRToString(arg, { variance, classTypeParams }));
   const fmtArgs = () => {
     const a = args();
     if (a.length) {
@@ -164,10 +166,11 @@ export function typeReferenceSubsitutions(
     }
   }
   if (name === "Iterator") {
-    const T = typeIRToString(typeArgs[0], { variance });
-    const TReturn = typeIRToString(typeArgs[1], { variance });
+    const T = typeIRToString(typeArgs[0], { variance, classTypeParams });
+    const TReturn = typeIRToString(typeArgs[1], { variance, classTypeParams });
     const TNext = typeIRToString(typeArgs[2], {
       variance: reverseVariance(variance),
+      classTypeParams,
     });
     const args = `[${T}, ${TNext}, ${TReturn}]`;
     if (variance === Variance.contra) {

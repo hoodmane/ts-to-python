@@ -43,9 +43,6 @@ def test_type_errors(tmp_path: Path) -> None:
                 r"Overloaded function signature [0-9]+ will never be matched: signature [0-9]+'s parameter type\(s\) are the same or broader"
             ),
             re.compile(
-                r'Invariant type variable "[A-Za-z]*" used in protocol where [a-zA-Z]*variant one is expected'
-            ),
-            re.compile(
                 r"Metaclass conflict: the metaclass of a derived class must be a \(non-strict\) subclass of the metaclasses of all its bases"
             ),
         ]

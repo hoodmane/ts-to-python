@@ -6,8 +6,20 @@ import {
   getExtraBases,
 } from "./adjustments.ts";
 
-import { InterfaceIR, convertFiles, ConversionResult } from "./astToIR.ts";
-import { topLevelIRToString } from "./irToString.ts";
+import {
+  InterfaceIR,
+  convertFiles,
+  TopLevelIR,
+  TypeParamIR,
+  ConversionResult,
+} from "./astToIR.ts";
+import {
+  topLevelIRToString,
+  typeParamIRToString,
+  uniqBy,
+} from "./irToString.ts";
+import { Variance } from "./types.ts";
+import { calculateInterfaceTypeParamVariances } from "./varianceConstraints.ts";
 
 function topologicalSortClasses(
   nameToCls: Map<string, InterfaceIR>,
@@ -66,12 +78,12 @@ function fixupClassBases(nameToCls: Map<string, InterfaceIR>): void {
   }
 }
 
-export function emitFiles(files: SourceFile[]): string[] {
+export function emitFiles(files: SourceFile[], quiet?: boolean): string[] {
   const result = convertFiles(files);
   return emitIR(result);
 }
 
-export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
+function adjustIR(topLevels: TopLevelIR[]) {
   const classes = topLevels.filter(
     (x): x is InterfaceIR => x.kind === "interface",
   );
@@ -81,6 +93,8 @@ export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
   }
   fixupClassBases(nameToCls);
   classes.forEach(adjustInterfaceIR);
+  calculateInterfaceTypeParamVariances(nameToCls);
+
   for (let obj of topLevels) {
     if (obj.kind === "callable") {
       adjustFunction(obj);
@@ -89,10 +103,39 @@ export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
       obj.methods.forEach(adjustFunction);
     }
   }
-  const typevarDecls = Array.from(
-    typeParams,
-    (x) => `${x} = TypeVar("${x}")`,
-  ).join("\n");
+}
+
+function getTypeVarDecls(
+  classes: InterfaceIR[],
+  funcParams: Set<string>,
+): string {
+  let typeVars: TypeParamIR[] = classes
+    .flatMap(({ typeParams }) => typeParams)
+    .map((param) => ({
+      name: typeParamIRToString(param),
+      variance: param.variance,
+    }));
+  typeVars.push(...Array.from(funcParams, (name) => ({ name })));
+  typeVars = uniqBy(typeVars, ({ name }) => name);
+  const typeVarDecls = typeVars.map(({ name, variance }) => {
+    let varStr = "";
+    if (variance === Variance.covar) {
+      varStr = ", covariant=True";
+    }
+    if (variance === Variance.contra) {
+      varStr = ", contravariant=True";
+    }
+    return `${name} = TypeVar("${name}"${varStr})`;
+  });
+  return typeVarDecls.join("\n");
+}
+
+export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
+  adjustIR(topLevels);
+  const classes = topLevels.filter(
+    (x): x is InterfaceIR => x.kind === "interface",
+  );
+  const typevarDecls = getTypeVarDecls(classes, typeParams);
   const rendered = topLevels.map((e) => topLevelIRToString(e));
   return [PRELUDE, typevarDecls, ...rendered];
 }
