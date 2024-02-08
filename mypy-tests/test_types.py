@@ -12,25 +12,31 @@ def test_type_errors(tmp_path: Path) -> None:
 
     source_path = Path(__file__).parent / "js/__init__.pyi"
     target_path = tmp_path / "js.pyi"
-    with open(source_path) as f:
-        removed_type_ignores = "".join(line.partition("#")[0] + "\n" for line in f)
+    text = source_path.read_text()
+    removed_type_ignores = "".join(
+        line.partition("#")[0] + "\n" for line in text.splitlines()
+    )
     target_path.write_text(removed_type_ignores)
     stdout, stderr, exitcode = api.run([str(target_path)])
     try:
+        unexpected = []
         assert stderr == ""
-        warnings_by_code: dict[str, list[str]] = {
+        warnings_by_code: dict[str, list[tuple[str, str]]] = {
             k: [] for k in ["assignment", "misc", "overload-overlap", "override"]
         }
         for origline in stdout.splitlines():
             if "error:" not in origline:
                 continue
+            loc = origline.split(":")[1]
             line = origline.partition("error:")[-1]
             code = line.rpartition("[")[-1][:-1]
             message = line.rpartition("[")[0].strip()
             if code not in warnings_by_code:
                 print(origline)
-            assert code in warnings_by_code
-            warnings_by_code[code].append(message)
+            if code in warnings_by_code:
+                warnings_by_code[code].append((message, loc))
+            else:
+                unexpected.append([code, message, loc])
 
         pats = [
             re.compile(
@@ -43,12 +49,15 @@ def test_type_errors(tmp_path: Path) -> None:
                 r"Metaclass conflict: the metaclass of a derived class must be a \(non-strict\) subclass of the metaclasses of all its bases"
             ),
         ]
-        for message in warnings_by_code["misc"]:
+        for message, loc in warnings_by_code["misc"]:
             for pat in pats:
                 if pat.fullmatch(message):
                     break
             else:
-                raise Exception("Unexpected error message:\n" + message)
+                unexpected.append(["misc", message, loc])
+        if unexpected:
+            print("\n".join([" ".join(x) for x in unexpected]))
+            assert False
     except Exception:
         Path("issues.txt").write_text(stdout)
         raise
