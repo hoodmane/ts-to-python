@@ -451,7 +451,7 @@ function typeIRToStringHelper(
     return ir.name;
   }
   if (ir.kind === "reference") {
-    let { identName: name, typeArgs } = ir;
+    let { name: name, typeArgs } = ir;
     const res = typeReferenceSubsitutions(name, typeArgs, variance);
     if (res) {
       return res;

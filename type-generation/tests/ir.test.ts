@@ -50,7 +50,7 @@ describe("typeToIR", () => {
       const typeIR = typeToIRHelper("Function");
       expect(typeIR).toEqual({
         kind: "reference",
-        identName: "Function",
+        name: "Function",
         typeArgs: [],
       });
     });
@@ -58,7 +58,7 @@ describe("typeToIR", () => {
       const typeIR = typeToIRHelper("ReadableStream");
       expect(typeIR).toEqual({
         kind: "reference",
-        identName: "ReadableStream",
+        name: "ReadableStream",
         typeArgs: [{ kind: "simple", text: "Any" }],
       });
     });
@@ -66,7 +66,7 @@ describe("typeToIR", () => {
       const typeIR = typeToIRHelper("Promise<string | symbol>");
       expect(typeIR).toEqual({
         kind: "reference",
-        identName: "Promise",
+        name: "Promise",
         typeArgs: [
           {
             kind: "union",
@@ -83,7 +83,7 @@ describe("typeToIR", () => {
       typeIR = typeToIRHelper("Iterator<boolean>");
       expect(typeIR).toEqual({
         kind: "reference",
-        identName: "Iterator_iface",
+        name: "Iterator_iface",
         typeArgs: [
           { kind: "simple", text: "bool" },
           { kind: "simple", text: "Any" },
@@ -93,7 +93,7 @@ describe("typeToIR", () => {
       typeIR = typeToIRHelper("Iterator<boolean, string, symbol>");
       expect(typeIR).toEqual({
         kind: "reference",
-        identName: "Iterator_iface",
+        name: "Iterator_iface",
         typeArgs: [
           { kind: "simple", text: "bool" },
           { kind: "simple", text: "str" },

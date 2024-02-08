@@ -62,7 +62,7 @@ type OtherTypeIR = { kind: "other"; nodeKind: string; location: string };
 type ParameterReferenceTypeIR = { kind: "parameterReference"; name: string };
 export type ReferenceTypeIR = {
   kind: "reference";
-  identName: string;
+  name: string;
   typeArgs: TypeIR[];
 };
 
@@ -346,7 +346,7 @@ export class Converter {
         this.addNeededIdentifier(ident);
       }
     }
-    return { kind: "reference", identName: name, typeArgs };
+    return { kind: "reference", name: name, typeArgs };
   }
 
   otherTypeToIR(node: Node): OtherTypeIR {
@@ -551,7 +551,7 @@ export class Converter {
       if (returns.kind === "parameterReference") {
         throw new Error("Cannot happen!");
       }
-      returns.identName = "PyIterator";
+      returns.name = "PyIterator";
       returns.typeArgs = [returns.typeArgs[0]];
       extraMethods.push({
         kind: "callable",
