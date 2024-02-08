@@ -216,7 +216,7 @@ function getInterfaceDeclToDestructure(
 /**
  * Helper for getting the bases in membersDeclarationToIR
  */
-function getInterfaceTypeParams(ident: EntityName): TypeIR[] {
+function getInterfaceTypeArgs(ident: EntityName): TypeIR[] {
   return uniqBy(
     (ident as Identifier)
       .getDefinitionNodes()
@@ -233,12 +233,12 @@ const operatorToName = {
 };
 
 export class Converter {
-  typeParams: Set<string>;
+  funcTypeParams: Set<string>;
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
 
   constructor() {
-    this.typeParams = new Set();
+    this.funcTypeParams = new Set();
     this.neededSet = new Set();
     this.convertedSet = new Set(BUILTIN_NAMES);
   }
@@ -329,7 +329,7 @@ export class Converter {
     const ident = typeNode.getTypeName();
     if (typeNode.getType().isTypeParameter()) {
       const name = ident.getText();
-      this.typeParams.add(name);
+      this.funcTypeParams.add(name);
       return { kind: "parameterReference", name };
     }
     const typeArgs = getExpressionTypeArgs(ident, typeNode).map((ty) =>
@@ -660,7 +660,7 @@ export class Converter {
       }
       const ident = typeNode.getTypeName() as Identifier;
       const name = ident.getText() + "_iface";
-      const typeParams = getInterfaceTypeParams(ident);
+      const typeParams = getInterfaceTypeArgs(ident);
       this.addNeededInterface(ident);
       bases.push({ name, typeParams });
     }
@@ -868,6 +868,6 @@ export function convertDecls(
       console.warn("No interface declaration for " + name);
     }
   }
-  const typeParams = converter.typeParams;
+  const typeParams = converter.funcTypeParams;
   return { topLevels, typeParams };
 }
