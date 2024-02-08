@@ -25,7 +25,11 @@ import {
   removeTypeIgnores,
   typeToIR,
 } from "./helpers.ts";
-import { Converter as AstConverter, convertDecls } from "../astToIR";
+import {
+  Converter as AstConverter,
+  ConversionResult,
+  convertDecls,
+} from "../astToIR";
 
 function propertySignatureToIR(
   member: PropertySignature,
@@ -40,11 +44,11 @@ function checkTypeToPython(
   variance: Variance = Variance.covar,
 ) {
   const typeNode = getTypeNode(tsType);
-  const conversion = convertType(typeNode, false, variance);
+  const conversion = typeAstToString(typeNode, false, variance);
   expect(conversion).toBe(pyType);
 }
 
-function convertType(
+function typeAstToString(
   typeNode: TypeNode,
   isOptional: boolean,
   variance: Variance,
@@ -54,21 +58,24 @@ function convertType(
   return typeIRToString(ir, { isOptional, variance, topLevelName });
 }
 
-function convertPropertySignature(
+function propertySignatureAstToString(
   member: PropertySignature,
   isStatic: boolean = false,
 ): string {
   return propertyIRToString(propertySignatureToIR(member, isStatic));
 }
 
-function convertBuiltinFunction(funcName: string): string[] {
+function convertBuiltinFunction(funcName: string): ConversionResult {
   const project = makeProject();
   project.createSourceFile("/a.ts", funcName);
   const x = project.getSourceFileOrThrow("/a.ts");
   const id = x.getStatements()[0].getChildren()[0] as Identifier;
   const funcDecl = id.getDefinitionNodes()[0] as FunctionDeclaration;
-  const ir = convertDecls([], [funcDecl]);
-  return emitIR(ir).map(removeTypeIgnores);
+  return convertDecls([], [funcDecl]);
+}
+
+function emitIRNoTypeIgnores(x: ConversionResult): string[] {
+  return emitIR(x).map(removeTypeIgnores);
 }
 
 function convertBuiltinVariable(varName: string): string[] {
@@ -130,7 +137,7 @@ describe("typeToPython", () => {
   });
   it("default type param", () => {
     const typeNode = getTypeNode("ReadableStream");
-    const conversion = convertType(typeNode, false, Variance.covar);
+    const conversion = typeAstToString(typeNode, false, Variance.covar);
     expect(conversion).toBe("ReadableStream[Any]");
   });
   describe("variance", () => {
@@ -139,7 +146,7 @@ describe("typeToPython", () => {
         "(a: Iterable<string>) => Iterable<boolean>;",
       );
       const conversion = removeTypeIgnores(
-        convertType(typeNode, false, Variance.covar, "myFunc"),
+        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: PyIterable[str], /) -> JsIterable[bool]: ...",
@@ -150,7 +157,7 @@ describe("typeToPython", () => {
         "(a: Iterable<IterableIterator<boolean>> ) => void;",
       );
       const conversion = removeTypeIgnores(
-        convertType(typeNode, false, Variance.covar, "myFunc"),
+        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: PyIterable[PyIterator[bool]], /) -> None: ...",
@@ -161,7 +168,7 @@ describe("typeToPython", () => {
         "(a: (b: Iterable<string>) => Iterable<boolean> ) => void;",
       );
       const conversion = removeTypeIgnores(
-        convertType(typeNode, false, Variance.covar, "myFunc"),
+        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: Callable[[JsIterable[str]], PyIterable[bool]], /) -> None: ...",
@@ -171,20 +178,20 @@ describe("typeToPython", () => {
   describe("callable types", () => {
     it("basic", () => {
       const typeNode = getTypeNode("() => void");
-      const conversion = convertType(typeNode, false, Variance.covar);
+      const conversion = typeAstToString(typeNode, false, Variance.covar);
       expect(conversion).toBe("Callable[[], None]");
     });
     it("toplevel", () => {
       const typeNode = getTypeNode("() => void");
       const conversion = removeTypeIgnores(
-        convertType(typeNode, false, Variance.covar, "myFunc"),
+        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe("def myFunc(self, /) -> None: ...");
     });
     it("optional args", () => {
       const typeNode = getTypeNode("(a?: string) => void");
       const conversion = removeTypeIgnores(
-        convertType(typeNode, false, Variance.covar, "myFunc"),
+        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: str | None = None, /) -> None: ...",
@@ -193,7 +200,7 @@ describe("typeToPython", () => {
     it("optional or null", () => {
       const typeNode = getTypeNode("(a?: string | null) => void;");
       const conversion = removeTypeIgnores(
-        convertType(typeNode, false, Variance.covar, "myFunc"),
+        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, a: str | None = None, /) -> None: ...",
@@ -202,14 +209,14 @@ describe("typeToPython", () => {
     it("type predicate", () => {
       const typeNode = getTypeNode("(a: any) => a is string;");
       const conversion = removeTypeIgnores(
-        convertType(typeNode, false, Variance.covar, "myFunc"),
+        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe("def myFunc(self, a: Any, /) -> bool: ...");
     });
     it("dotdotdot arg", () => {
       const typeNode = getTypeNode("(...a: string[][]) => void;");
       const conversion = removeTypeIgnores(
-        convertType(typeNode, false, Variance.covar, "myFunc"),
+        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
       expect(conversion).toBe(
         "def myFunc(self, /, *a: PyMutableSequence[str]) -> None: ...",
@@ -225,7 +232,7 @@ describe("property signature", () => {
     project.createSourceFile(fname, `declare var X: {f: () => void};`);
     const file = project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
-    const res = removeTypeIgnores(convertPropertySignature(propsig));
+    const res = removeTypeIgnores(propertySignatureAstToString(propsig));
     expect(res).toBe("def f(self, /) -> None: ...");
   });
   it("optional function", () => {
@@ -234,7 +241,7 @@ describe("property signature", () => {
     project.createSourceFile(fname, `declare var X: {f?: () => void};`);
     const file = project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
-    const res = removeTypeIgnores(convertPropertySignature(propsig));
+    const res = removeTypeIgnores(propertySignatureAstToString(propsig));
     expect(res).toBe("f: Callable[[], None] | None = ...");
   });
   it("alternatives function", () => {
@@ -246,7 +253,7 @@ describe("property signature", () => {
     );
     const file = project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
-    const res = removeTypeIgnores(convertPropertySignature(propsig));
+    const res = removeTypeIgnores(propertySignatureAstToString(propsig));
     expect(res).toBe("f: (Callable[[], None]) | str = ...");
   });
   it("optional interface function", () => {
@@ -759,13 +766,13 @@ describe("emit", () => {
   });
   describe("adjustments", () => {
     it("setTimeout", () => {
-      const res = convertBuiltinFunction("setTimeout");
+      const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
       expect(res.at(-2)).toBe(
         "def setTimeout(handler: TimerHandler, timeout: int | float | None = None, /, *arguments: Any) -> int | JsProxy: ...",
       );
     });
     it("clearTimeout", () => {
-      const res = convertBuiltinFunction("clearTimeout");
+      const res = emitIRNoTypeIgnores(convertBuiltinFunction("clearTimeout"));
       expect(res.at(-1)).toBe(
         "def clearTimeout(id: int | JsProxy, /) -> None: ...",
       );
