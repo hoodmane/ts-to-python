@@ -1,7 +1,7 @@
 # ts-to-python
 
 This is an experimental alternate approach to
-[Webtypy](https://github.com/pyodide/webtypy). 
+[Webtypy](https://github.com/pyodide/webtypy).
 
 ## WebIDL vs TypeScript as a source of truth
 
@@ -28,11 +28,14 @@ It seems to work with node >= 18.
 ### Generating the types
 
 First you must install the two subdirectories:
+
 ```sh
 npm install -C type-generation-input-project
 npm install -C type-generation
 ```
+
 then to build the types, run:
+
 ```sh
 npm run -C type-generation build
 ```
@@ -40,15 +43,19 @@ npm run -C type-generation build
 ### Running tests
 
 You can run the unit tests for the type generation with:
+
 ```sh
 npm run -C type-generation test
 ```
+
 To run the Python tests for the generated types requires the following setup
 first:
+
 ```sh
 cd mypy-tests
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
 Then from the `mypy-tests` directory run `pytest` to run the tests.

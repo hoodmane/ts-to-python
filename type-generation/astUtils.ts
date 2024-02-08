@@ -1,4 +1,20 @@
-import { ConstructSignatureDeclaration, EntityName, FunctionTypeNode, Identifier, InterfaceDeclaration, MethodSignature, Node, PropertySignature, Signature, SyntaxKind, TypeAliasDeclaration, TypeArgumentedNode, TypeElementTypes, TypeNode, TypeParameterDeclaration } from "ts-morph";
+import {
+  ConstructSignatureDeclaration,
+  EntityName,
+  FunctionTypeNode,
+  Identifier,
+  InterfaceDeclaration,
+  MethodSignature,
+  Node,
+  PropertySignature,
+  Signature,
+  SyntaxKind,
+  TypeAliasDeclaration,
+  TypeArgumentedNode,
+  TypeElementTypes,
+  TypeNode,
+  TypeParameterDeclaration,
+} from "ts-morph";
 import { WrappedGen, groupBy, groupByGen, split } from "./groupBy";
 import { ClassifiedIdentifier, GroupedBySyntaxKind } from "./types";
 
@@ -44,9 +60,7 @@ export function groupMembers(members: TypeElementTypes[]): {
   }
 
   const { functions = [], properties = [] } = groupBy(allProperties, (prop) =>
-    isMethod(prop)
-      ? "functions"
-      : "properties",
+    isMethod(prop) ? "functions" : "properties",
   );
   const methodSigs = grouped[SyntaxKind.MethodSignature] || [];
   const empty: [string, FunctionTypeNode | MethodSignature][] = [];
@@ -118,7 +132,10 @@ export function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
     };
   }
   if (rest.length > 1) {
-    console.log(name, rest.map(x => x.getKindName()));
+    console.log(
+      name,
+      rest.map((x) => x.getKindName()),
+    );
     const decl = rest.filter(Node.isVariableDeclaration)?.[0];
     if (decl) {
       return {

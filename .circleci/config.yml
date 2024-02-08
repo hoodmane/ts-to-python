@@ -4,7 +4,7 @@ orbs:
   python: circleci/python@2.1.1
 jobs:
   js-unit:
-    executor: 
+    executor:
       name: node/default
       tag: 20.10.0
     steps:
@@ -16,7 +16,7 @@ jobs:
       - run: |
           npm run -C type-generation test
   generate:
-    executor: 
+    executor:
       name: node/default
       tag: 20.10.0
     steps:
