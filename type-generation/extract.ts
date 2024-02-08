@@ -38,11 +38,7 @@ function topologicalSortClasses(
   return result;
 }
 
-function fixupClassBases(unsortedClasses: InterfaceIR[]): void {
-  const nameToCls = new Map(unsortedClasses.map((cls) => [cls.name, cls]));
-  if (nameToCls.size < unsortedClasses.length) {
-    throw new Error("Duplicate");
-  }
+function fixupClassBases(nameToCls: Map<string, InterfaceIR>): void {
   const classes = topologicalSortClasses(nameToCls);
   const classNameToIndex = new Map(classes.map((cls, idx) => [cls.name, idx]));
   for (const cls of classes) {
@@ -76,13 +72,15 @@ export function emitFiles(files: SourceFile[]): string[] {
 }
 
 export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
-  const unsortedClasses = topLevels.filter(
+  const classes = topLevels.filter(
     (x): x is InterfaceIR => x.kind === "interface",
   );
-  fixupClassBases(unsortedClasses);
-  for (let cls of unsortedClasses) {
-    adjustInterfaceIR(cls);
+  const nameToCls = new Map(classes.map((cls) => [cls.name, cls]));
+  if (nameToCls.size < classes.length) {
+    throw new Error("Duplicate");
   }
+  fixupClassBases(nameToCls);
+  classes.forEach(adjustInterfaceIR);
   for (let obj of topLevels) {
     if (obj.kind === "callable") {
       adjustFunction(obj);
