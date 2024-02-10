@@ -6,8 +6,18 @@ import {
   getExtraBases,
 } from "./adjustments.ts";
 
-import { InterfaceIR, convertFiles, ConversionResult } from "./astToIR.ts";
-import { topLevelIRToString } from "./irToString.ts";
+import {
+  InterfaceIR,
+  convertFiles,
+  ConversionResult,
+  TopLevels,
+} from "./astToIR.ts";
+import {
+  callableIRToString,
+  declarationIRToString,
+  interfaceIRToString,
+  typeAliasIRToString,
+} from "./irToString.ts";
 
 function topologicalSortClasses(
   nameToCls: Map<string, InterfaceIR>,
@@ -71,28 +81,38 @@ export function emitFiles(files: SourceFile[]): string[] {
   return emitIR(result);
 }
 
-export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
-  const classes = topLevels.filter(
-    (x): x is InterfaceIR => x.kind === "interface",
-  );
+function adjustIR(topLevels: TopLevels): void {
+  const classes = topLevels.ifaces;
   const nameToCls = new Map(classes.map((cls) => [cls.name, cls]));
   if (nameToCls.size < classes.length) {
     throw new Error("Duplicate");
   }
   fixupClassBases(nameToCls);
   classes.forEach(adjustInterfaceIR);
-  for (let obj of topLevels) {
-    if (obj.kind === "callable") {
-      adjustFunction(obj);
-    }
-    if (obj.kind === "interface") {
-      obj.methods.forEach(adjustFunction);
-    }
+  topLevels.callables.forEach(adjustFunction);
+  for (const iface of topLevels.ifaces) {
+    iface.methods.forEach(adjustFunction);
   }
-  const typevarDecls = Array.from(
+}
+
+export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
+  adjustIR(topLevels);
+  const typevarStrings = Array.from(
     typeParams,
     (x) => `${x} = TypeVar("${x}")`,
   ).join("\n");
-  const rendered = topLevels.map((e) => topLevelIRToString(e));
-  return [PRELUDE, typevarDecls, ...rendered];
+  const typeAliasStrings = topLevels.typeAliases.map(typeAliasIRToString);
+  const declarationStrings = topLevels.decls.map(declarationIRToString);
+  const callableStrings = topLevels.callables.flatMap((tl) =>
+    callableIRToString(tl, false),
+  );
+  const interfaceStrings = topLevels.ifaces.flatMap(interfaceIRToString);
+  return [
+    PRELUDE,
+    typevarStrings,
+    ...typeAliasStrings,
+    ...declarationStrings,
+    ...callableStrings,
+    ...interfaceStrings,
+  ];
 }

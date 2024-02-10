@@ -7,11 +7,13 @@ import {
 import {
   BaseIR,
   CallableIR,
+  DeclarationIR,
   InterfaceIR,
   ParamIR,
   PropertyIR,
   SigIR,
   TopLevelIR,
+  TypeAliasIR,
   TypeIR,
 } from "./astToIR.ts";
 import { assertUnreachable } from "./astUtils.ts";
@@ -175,27 +177,17 @@ function simpleDeclaration(name: string, type: string) {
 // Functions that format IR into strings
 //
 
-export function topLevelIRToString(toplevel: TopLevelIR): string {
-  if (toplevel.kind === "declaration") {
-    const { name, type } = toplevel;
-    const typeStr = typeIRToString(type);
-    return simpleDeclaration(name, typeStr);
-  }
-  if (toplevel.kind === "typeAlias") {
-    const { name, type } = toplevel;
-    const typeStr = typeIRToString(type);
-    return `${name} = ${typeStr}`;
-  }
-  if (toplevel.kind === "interface") {
-    return interfaceIRToString(toplevel);
-  }
-  if (toplevel.kind === "callable") {
-    return callableIRToString(toplevel, false).join("\n");
-  }
-  assertUnreachable(toplevel);
+export function declarationIRToString({ name, type }: DeclarationIR): string {
+  const typeStr = typeIRToString(type);
+  return simpleDeclaration(name, typeStr);
 }
 
-function interfaceIRToString({
+export function typeAliasIRToString({ name, type }: TypeAliasIR): string {
+  const typeStr = typeIRToString(type);
+  return `${name} = ${typeStr}`;
+}
+
+export function interfaceIRToString({
   name,
   properties,
   methods,
