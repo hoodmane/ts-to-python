@@ -102,21 +102,21 @@ function convertBuiltinVariable(varName: string): ConversionResult {
 function emitBuiltinVariable(varName: string): string[] {
   return emitIRNoTypeIgnores(convertBuiltinVariable(varName));
 }
-function convertBuiltinIface(varName: string): ConversionResult {
-  const project = makeProject();
-  project.createSourceFile("/a.ts", `let _added: ${varName};`);
-  const x = project.getSourceFileOrThrow("/a.ts");
-  const ref = x
-    .getFirstDescendantByKindOrThrow(SyntaxKind.VariableDeclaration)
-    .getTypeNode()
-    .asKindOrThrow(SyntaxKind.TypeReference);
-  const id = ref.getTypeName() as Identifier;
-  const converter = new Converter();
-  return {
-    topLevels: [converter.identToIR(id)],
-    typeParams: converter.funcTypeParams,
-  };
-}
+// function convertBuiltinIface(varName: string): ConversionResult {
+//   const project = makeProject();
+//   project.createSourceFile("/a.ts", `let _added: ${varName};`);
+//   const x = project.getSourceFileOrThrow("/a.ts");
+//   const ref = x
+//     .getFirstDescendantByKindOrThrow(SyntaxKind.VariableDeclaration)
+//     .getTypeNode()
+//     .asKindOrThrow(SyntaxKind.TypeReference);
+//   const id = ref.getTypeName() as Identifier;
+//   const converter = new Converter();
+//   return {
+//     topLevels: [converter.identToIR(id)],
+//     typeParams: converter.funcTypeParams,
+//   };
+// }
 
 describe("typeToPython", () => {
   it("convert string", () => {
@@ -323,7 +323,7 @@ function convertVarDecl(astVarDecl: VariableDeclaration): string {
   const irVarDecl = astConverter.varDeclToIR(astVarDecl);
   switch (irVarDecl.kind) {
     case "callable":
-      return callableIRToString(irVarDecl, false).join("\n");
+      return callableIRToString(irVarDecl, {isMethod: false}).join("\n");
     case "declaration":
       return declarationIRToString(irVarDecl);
     case "interface":

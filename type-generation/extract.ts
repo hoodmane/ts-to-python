@@ -20,7 +20,7 @@ import {
   typeAliasIRToString,
   typeParamIRToString,
 } from "./irToString.ts";
-import { topLevelIRToString, uniqBy } from "./irToString.ts";
+import { uniqBy } from "./irToString.ts";
 import { Variance } from "./types.ts";
 
 function topologicalSortClasses(
@@ -99,10 +99,10 @@ function adjustIR(topLevels: TopLevels): void {
   }
 }
 
-function getTypeVarDecls(
+function getTypeVarStrings(
   classes: InterfaceIR[],
   funcParams: Set<string>,
-): string {
+): string[] {
   let typeVars: TypeParamIR[] = classes
     .flatMap(({ typeParams }) => typeParams)
     .map((param) => ({
@@ -121,15 +121,12 @@ function getTypeVarDecls(
     }
     return `${name} = TypeVar("${name}"${varStr})`;
   });
-  return typeVarDecls.join("\n");
+  return typeVarDecls;
 }
 
 export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
   adjustIR(topLevels);
-  const typevarStrings = Array.from(
-    typeParams,
-    (x) => `${x} = TypeVar("${x}")`,
-  ).join("\n");
+  const typeVarStrings = getTypeVarStrings(topLevels.ifaces, typeParams);
   const typeAliasStrings = topLevels.typeAliases.map(typeAliasIRToString);
   const declarationStrings = topLevels.decls.map(declarationIRToString);
   const callableStrings = topLevels.callables.flatMap((tl) =>
@@ -138,7 +135,7 @@ export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
   const interfaceStrings = topLevels.ifaces.flatMap(interfaceIRToString);
   return [
     PRELUDE,
-    typevarStrings,
+    ...typeVarStrings,
     ...typeAliasStrings,
     ...declarationStrings,
     ...callableStrings,
