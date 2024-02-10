@@ -16,7 +16,6 @@ import {
   callableIRToString,
   declarationIRToString,
   interfaceIRToString,
-  topLevelIRToString,
   typeAliasIRToString,
 } from "./irToString.ts";
 

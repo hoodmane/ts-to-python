@@ -14,8 +14,10 @@ import {
   propertyIRToString,
   baseIRToString,
   callableIRToString,
-  topLevelIRToString,
   typeIRToString,
+  declarationIRToString,
+  interfaceIRToString,
+  typeAliasIRToString,
 } from "../irToString.ts";
 import { Variance } from "../types.ts";
 import {
@@ -293,7 +295,16 @@ describe("property signature", () => {
 function convertVarDecl(astVarDecl: VariableDeclaration): string {
   const astConverter = new AstConverter();
   const irVarDecl = astConverter.varDeclToIR(astVarDecl);
-  return topLevelIRToString(irVarDecl);
+  switch(irVarDecl.kind) {
+    case "callable":
+      return callableIRToString(irVarDecl, false).join("\n");
+    case "declaration":
+      return declarationIRToString(irVarDecl);
+    case "interface":
+      return interfaceIRToString(irVarDecl);
+    case "typeAlias":
+      return typeAliasIRToString(irVarDecl);
+  }
 }
 
 function convertFuncDeclGroup(
@@ -767,7 +778,7 @@ describe("emit", () => {
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
-      expect(res.at(-2)).toBe(
+      expect(res.at(-1)).toBe(
         "def setTimeout(handler: TimerHandler, timeout: int | float | None = None, /, *arguments: Any) -> int | JsProxy: ...",
       );
     });
