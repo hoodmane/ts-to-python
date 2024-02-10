@@ -7,6 +7,7 @@ import {
   PropertySignature,
   SyntaxKind,
   TypeNode,
+  TypeReferenceNode,
   VariableDeclaration,
 } from "ts-morph";
 import { emitFiles, emitIR } from "../extract.ts";
@@ -30,6 +31,9 @@ import {
 import {
   Converter as AstConverter,
   ConversionResult,
+  Converter,
+  InterfaceIR,
+  TopLevelIR,
   convertDecls,
 } from "../astToIR";
 
@@ -37,7 +41,7 @@ function propertySignatureToIR(
   member: PropertySignature,
   isStatic: boolean = false,
 ) {
-  return new AstConverter().propertySignatureToIR(member, isStatic);
+  return new AstConverter().propertySignatureToIR(member, isStatic, []);
 }
 
 function checkTypeToPython(
@@ -80,7 +84,11 @@ function emitIRNoTypeIgnores(x: ConversionResult): string[] {
   return emitIR(x).map(removeTypeIgnores);
 }
 
-function convertBuiltinVariable(varName: string): string[] {
+// function emitBuiltinFunction(funcName: string): string[] {
+//   return emitIRNoTypeIgnores(convertBuiltinFunction(funcName));
+// }
+
+function convertBuiltinVariable(varName: string): ConversionResult {
   const project = makeProject();
   project.createSourceFile("/a.ts", varName);
   const x = project.getSourceFileOrThrow("/a.ts");
@@ -88,8 +96,26 @@ function convertBuiltinVariable(varName: string): string[] {
   console.log(id.getDefinitionNodes().map((x) => x.getKindName()));
   // process.exit(1);
   const varDecl = id.getDefinitionNodes().filter(Node.isVariableDeclaration)[0];
-  const ir = convertDecls([varDecl], []);
-  return emitIR(ir).map(removeTypeIgnores);
+  return convertDecls([varDecl], []);
+}
+
+function emitBuiltinVariable(varName: string): string[] {
+  return emitIRNoTypeIgnores(convertBuiltinVariable(varName));
+}
+function convertBuiltinIface(varName: string): ConversionResult {
+  const project = makeProject();
+  project.createSourceFile("/a.ts", `let _added: ${varName};`);
+  const x = project.getSourceFileOrThrow("/a.ts");
+  const ref = x
+    .getFirstDescendantByKindOrThrow(SyntaxKind.VariableDeclaration)
+    .getTypeNode()
+    .asKindOrThrow(SyntaxKind.TypeReference);
+  const id = ref.getTypeName() as Identifier;
+  const converter = new Converter();
+  return {
+    topLevels: [converter.identToIR(id)],
+    typeParams: converter.funcTypeParams,
+  };
 }
 
 describe("typeToPython", () => {
@@ -313,7 +339,7 @@ function convertFuncDeclGroup(
 ): string {
   const astConverter = new AstConverter();
   const sigsIR = astConverter.funcDeclsToIR(name, decls);
-  return callableIRToString(sigsIR, false).join("\n");
+  return callableIRToString(sigsIR, { isMethod: false }).join("\n");
 }
 
 describe("sanitizeReservedWords", () => {
@@ -370,8 +396,8 @@ function getBaseNames(
   defs: (InterfaceDeclaration | ClassDeclaration)[],
 ): string[] {
   const astConverter = new AstConverter();
-  const bases = astConverter.getBasesOfDecls(defs);
-  return bases.map((base) => baseIRToString(base));
+  const bases = astConverter.getBasesOfDecls(defs, []);
+  return bases.map((base) => baseIRToString(base, []));
 }
 
 describe("getBaseNames", () => {
@@ -419,7 +445,7 @@ it("Type variable", () => {
     declare var Test: TestConstructor;
     `;
   const expected = dedent(`
-    class Test(Test_iface[T]):
+    class Test(Test_iface[T], Generic[T]):
         @classmethod
         def new(self, /) -> Test[T]: ...
   `).trim();
@@ -537,7 +563,9 @@ describe("emit", () => {
 
   it("type var", () => {
     const res = emitFile(`
-      interface Test<T> {}
+      interface Test<T> {
+        a: T;
+      }
       interface TestConstructor {
           new<T> (): Test<T>;
           readonly prototype: Test;
@@ -547,12 +575,12 @@ describe("emit", () => {
     const expected = dedent(`
       T = TypeVar("T")
 
-      class Test(Test_iface[T], _JsObject):
+      class Test(Test_iface[T], Generic[T], _JsObject):
           @classmethod
           def new(self, /) -> Test[T]: ...
 
       class Test_iface(Generic[T], Protocol):
-          pass
+          a: T = ...
     `).trim();
     expect(
       removeTypeIgnores(
@@ -775,6 +803,7 @@ describe("emit", () => {
     `);
     expect(removeTypeIgnores(res.at(-1))).toBe("def f(x: str, /) -> None: ...");
   });
+
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));

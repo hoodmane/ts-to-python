@@ -121,7 +121,7 @@ export function adjustFunction({ name, signatures }: CallableIR): void {
 export function typeReferenceSubsitutions(
   name: string,
   typeArgs: TypeIR[],
-  variance: Variance,
+  context: { variance: Variance; classTypeParams: string[] },
 ): string | undefined {
   if (name.endsWith("_iface")) {
     name = name.slice(0, -"_iface".length);
@@ -141,7 +141,7 @@ export function typeReferenceSubsitutions(
     return "Any";
   }
 
-  const args = () => typeArgs.map((arg) => typeIRToString(arg, { variance }));
+  const args = () => typeArgs.map((arg) => typeIRToString(arg, context));
   const fmtArgs = () => {
     const a = args();
     if (a.length) {
@@ -157,20 +157,21 @@ export function typeReferenceSubsitutions(
     return "Future" + fmtArgs();
   }
   if (name === "Iterable") {
-    if (variance === Variance.contra) {
+    if (context.variance === Variance.contra) {
       return "PyIterable" + fmtArgs();
     } else {
       return "JsIterable" + fmtArgs();
     }
   }
   if (name === "Iterator") {
-    const T = typeIRToString(typeArgs[0], { variance });
-    const TReturn = typeIRToString(typeArgs[1], { variance });
+    const T = typeIRToString(typeArgs[0], context);
+    const TReturn = typeIRToString(typeArgs[1], context);
     const TNext = typeIRToString(typeArgs[2], {
-      variance: reverseVariance(variance),
+      variance: reverseVariance(context.variance),
+      classTypeParams: context.classTypeParams,
     });
     const args = `[${T}, ${TNext}, ${TReturn}]`;
-    if (variance === Variance.contra) {
+    if (context.variance === Variance.contra) {
       return `PyGenerator` + args;
     } else {
       if (TNext === "None" && TReturn === "Any") {
@@ -181,7 +182,7 @@ export function typeReferenceSubsitutions(
     }
   }
   if (name === "IterableIterator") {
-    if (variance === Variance.contra) {
+    if (context.variance === Variance.contra) {
       return "PyIterator" + fmtArgs();
     } else {
       return "JsIterator" + fmtArgs();

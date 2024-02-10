@@ -1,6 +1,7 @@
 import {
   CallSignatureDeclaration,
   ClassDeclaration,
+  ConstructSignatureDeclaration,
   EntityName,
   FunctionDeclaration,
   Identifier,
@@ -31,7 +32,7 @@ import {
   groupMembers,
 } from "./astUtils";
 import { sanitizeReservedWords, uniqBy } from "./irToString";
-import { Needed } from "./types";
+import { Needed, Variance } from "./types";
 
 export type TypeIR =
   | SimpleTypeIR
@@ -46,20 +47,33 @@ export type TypeIR =
   | CallableIR
   | NumberTypeIR;
 
-type SimpleTypeIR = { kind: "simple"; text: string };
-type NumberTypeIR = { kind: "number" };
-type UnionTypeIR = { kind: "union"; types: TypeIR[] };
-type TupleTypeIR = { kind: "tuple"; types: TypeIR[] };
-type ArrayTypeIR = { kind: "array"; type: TypeIR };
-type ParenTypeIR = { kind: "paren"; type: TypeIR };
-type TypeOperatorTypeIR = {
+export type SimpleTypeIR = { kind: "simple"; text: string };
+export type NumberTypeIR = { kind: "number" };
+export type UnionTypeIR = { kind: "union"; types: TypeIR[] };
+export type TupleTypeIR = { kind: "tuple"; types: TypeIR[] };
+export type ArrayTypeIR = { kind: "array"; type: TypeIR };
+export type ParenTypeIR = { kind: "paren"; type: TypeIR };
+export type TypeOperatorTypeIR = {
   kind: "operator";
   operatorName: string;
   type: TypeIR;
 };
-type OtherTypeIR = { kind: "other"; nodeKind: string; location: string };
+export type OtherTypeIR = { kind: "other"; nodeKind: string; location: string };
 
-type ParameterReferenceTypeIR = { kind: "parameterReference"; name: string };
+export type ClassParameterReferenceIR = {
+  kind: "parameterReference";
+  type: "function";
+  name: string;
+};
+export type FunctionParameterReferenceIR = {
+  kind: "parameterReference";
+  type: "class";
+  idx: number;
+};
+export type ParameterReferenceTypeIR =
+  | ClassParameterReferenceIR
+  | FunctionParameterReferenceIR;
+
 export type ReferenceTypeIR = {
   kind: "reference";
   name: string;
@@ -110,12 +124,17 @@ export type PropertyIR = {
   isReadonly: boolean;
 };
 
+export type TypeParamIR = {
+  name: string;
+  variance?: Variance;
+};
+
 export type InterfaceIR = {
   kind: "interface";
   name: string;
   methods: CallableIR[];
   properties: PropertyIR[];
-  typeParams: string[];
+  typeParams: TypeParamIR[];
   bases: BaseIR[];
   // Synthetic bases adjusted into the class.
   extraBases?: string[];
@@ -216,7 +235,10 @@ function getInterfaceDeclToDestructure(
 /**
  * Helper for getting the bases in membersDeclarationToIR
  */
-function getInterfaceTypeArgs(ident: EntityName): TypeIR[] {
+function getInterfaceTypeArgs(
+  ident: EntityName,
+  classTypeParams: string[],
+): TypeIR[] {
   return uniqBy(
     (ident as Identifier)
       .getDefinitionNodes()
@@ -224,7 +246,13 @@ function getInterfaceTypeArgs(ident: EntityName): TypeIR[] {
       .flatMap((def) => def.getTypeParameters())
       .map((param) => param.getName()),
     (param) => param,
-  ).map((name) => ({ kind: "parameterReference", name }));
+  ).map((name): TypeIR => {
+    const idx = classTypeParams.indexOf(name);
+    if (idx === -1) {
+      return { kind: "parameterReference", type: "function", name };
+    }
+    return { kind: "parameterReference", type: "class", idx };
+  });
 }
 
 const operatorToName = {
@@ -236,6 +264,7 @@ export class Converter {
   funcTypeParams: Set<string>;
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
+  classTypeParams: string[];
 
   constructor() {
     this.funcTypeParams = new Set();
@@ -254,23 +283,30 @@ export class Converter {
     this.neededSet.add({ type: "interface", ident });
   }
 
-  typeOperatorToIR(typeNode: TypeOperatorTypeNode): TypeOperatorTypeIR {
+  typeOperatorToIR(
+    typeNode: TypeOperatorTypeNode,
+    clsTypeParams: string[],
+  ): TypeOperatorTypeIR {
     const operator = typeNode.getOperator();
     const operatorName = operatorToName[operator];
     if (!operatorName) {
       throw new Error("Unknown type operator " + operator);
     }
-    const type = this.typeToIR(typeNode.getTypeNode());
+    const type = this.typeToIR(typeNode.getTypeNode(), false, clsTypeParams);
     return { kind: "operator", operatorName, type };
   }
 
-  unionToIR(typeNode: UnionTypeNode, isOptional: boolean): TypeIR {
+  unionToIR(
+    typeNode: UnionTypeNode,
+    isOptional: boolean,
+    clsTypeParams: string[],
+  ): TypeIR {
     const unionTypes = typeNode.getTypeNodes() as TypeNode[];
     const [literals, rest] = split<TypeNode, LiteralTypeNode>(
       unionTypes,
       Node.isLiteralTypeNode,
     );
-    const types = rest.map((ty) => this.typeToIR(ty, false));
+    const types = rest.map((ty) => this.typeToIR(ty, false, clsTypeParams));
     const lits = literals
       .map((lit) => lit.getText())
       .filter((txt) => {
@@ -301,7 +337,7 @@ export class Converter {
     return unionType(types);
   }
 
-  intersectionToIR(typeNode: IntersectionTypeNode) {
+  intersectionToIR(typeNode: IntersectionTypeNode, clsTypeParams: string[]) {
     const filteredTypes = typeNode
       .getTypeNodes()
       .filter(
@@ -311,7 +347,7 @@ export class Converter {
           ),
       );
     if (filteredTypes.length === 1) {
-      return this.typeToIR(filteredTypes[0]);
+      return this.typeToIR(filteredTypes[0], false, clsTypeParams);
     }
     const typeString = typeNode.getType().getText();
     if (typeString === "Window & typeof globalThis") {
@@ -325,15 +361,23 @@ export class Converter {
     return ANY_IR;
   }
 
-  typeReferenceToIR(typeNode: TypeReferenceNode): TypeIR {
+  typeReferenceToIR(
+    typeNode: TypeReferenceNode,
+    clsTypeParams: string[],
+  ): TypeIR {
     const ident = typeNode.getTypeName();
     if (typeNode.getType().isTypeParameter()) {
       const name = ident.getText();
-      this.funcTypeParams.add(name);
-      return { kind: "parameterReference", name };
+      const idx = clsTypeParams.indexOf(name);
+      if (idx === -1) {
+        this.funcTypeParams.add(name);
+        return { kind: "parameterReference", type: "function", name };
+      } else {
+        return { kind: "parameterReference", type: "class", idx };
+      }
     }
     const typeArgs = getExpressionTypeArgs(ident, typeNode).map((ty) =>
-      this.typeToIR(ty),
+      this.typeToIR(ty, false, clsTypeParams),
     );
     if (Node.isQualifiedName(ident)) {
       return ANY_IR;
@@ -357,10 +401,19 @@ export class Converter {
 
   typeToIR(
     typeNode: TypeReferenceNode,
-    isOptional?: boolean,
+    isOptional: boolean,
+    clsTypeParams: string[],
   ): ReferenceTypeIR | ParameterReferenceTypeIR;
-  typeToIR(typeNode: TypeNode, isOptional?: boolean): TypeIR;
-  typeToIR(typeNode: TypeNode, isOptional: boolean = false): TypeIR {
+  typeToIR(
+    typeNode: TypeNode,
+    isOptional: boolean,
+    clsTypeParams: string[],
+  ): TypeIR;
+  typeToIR(
+    typeNode: TypeNode,
+    isOptional: boolean = false,
+    clsTypeParams: string[] = [],
+  ): TypeIR {
     const typeText = typeNode.getText();
     if (typeText === "number") {
       return { kind: "number" };
@@ -372,14 +425,16 @@ export class Converter {
       const sigs = typeNode
         .getType()
         .getCallSignatures()
-        .map((sig) => this.sigToIR(sig));
+        .map((sig) => this.sigToIR(sig, clsTypeParams));
       return { kind: "callable", signatures: sigs };
     }
     if (Node.isUnionTypeNode(typeNode)) {
-      return this.unionToIR(typeNode, isOptional);
+      return this.unionToIR(typeNode, isOptional, clsTypeParams);
     }
     if (Node.isParenthesizedTypeNode(typeNode)) {
-      return parenType(this.typeToIR(typeNode.getTypeNode(), false));
+      return parenType(
+        this.typeToIR(typeNode.getTypeNode(), false, clsTypeParams),
+      );
     }
     if (Node.isThisTypeNode(typeNode)) {
       return simpleType("Self");
@@ -388,23 +443,29 @@ export class Converter {
       return typeLiteralToIR(typeNode);
     }
     if (Node.isIntersectionTypeNode(typeNode)) {
-      return this.intersectionToIR(typeNode);
+      return this.intersectionToIR(typeNode, clsTypeParams);
     }
     if (Node.isTypeOperatorTypeNode(typeNode)) {
-      return this.typeOperatorToIR(typeNode);
+      return this.typeOperatorToIR(typeNode, clsTypeParams);
     }
     if (Node.isTypeReference(typeNode)) {
-      return this.typeReferenceToIR(typeNode);
+      return this.typeReferenceToIR(typeNode, clsTypeParams);
     }
     if (Node.isTemplateLiteralTypeNode(typeNode)) {
       return simpleType("str");
     }
     if (Node.isArrayTypeNode(typeNode)) {
-      const eltType = this.typeToIR(typeNode.getElementTypeNode());
+      const eltType = this.typeToIR(
+        typeNode.getElementTypeNode(),
+        false,
+        clsTypeParams,
+      );
       return arrayType(eltType);
     }
     if (Node.isTupleTypeNode(typeNode)) {
-      const elts = typeNode.getElements().map((elt) => this.typeToIR(elt));
+      const elts = typeNode
+        .getElements()
+        .map((elt) => this.typeToIR(elt, false, clsTypeParams));
       return tupleType(elts);
     }
     if (Node.isTypePredicate(typeNode)) {
@@ -417,7 +478,7 @@ export class Converter {
     return this.otherTypeToIR(typeNode);
   }
 
-  sigToIR(sig: Signature): SigIR {
+  sigToIR(sig: Signature, clsTypeParams: string[]): SigIR {
     const decl = sig.getDeclaration() as SignaturedDeclaration;
     try {
       const pyParams: ParamIR[] = [];
@@ -425,7 +486,11 @@ export class Converter {
       for (const param of decl.getParameters()) {
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
-        const type = this.typeToIR(param.getTypeNode()!, optional);
+        const type = this.typeToIR(
+          param.getTypeNode()!,
+          optional,
+          clsTypeParams,
+        );
         const pyParam: ParamIR = {
           name: param.getName(),
           type,
@@ -446,7 +511,7 @@ export class Converter {
         pyParams.push(pyParam);
       }
       const retNode = decl.getReturnTypeNode()!;
-      const returns = this.typeToIR(retNode);
+      const returns = this.typeToIR(retNode, false, clsTypeParams);
       return { params: pyParams, spreadParam, returns };
     } catch (e) {
       console.warn("failed to convert", sig.getDeclaration().getText());
@@ -464,8 +529,11 @@ export class Converter {
    * TODO: is this correct when all entries of the interface are optional?
    * TODO: What about if the last argument is an object type literal?
    */
-  sigToIRDestructure(sig: Signature): [SigIR] | [SigIR, SigIR] {
-    const sigIR = this.sigToIR(sig);
+  sigToIRDestructure(
+    sig: Signature,
+    clsTypeParams: string[],
+  ): [SigIR] | [SigIR, SigIR] {
+    const sigIR = this.sigToIR(sig, clsTypeParams);
     const toDestructure = getInterfaceDeclToDestructure(sig);
     if (!toDestructure) {
       return [sigIR];
@@ -476,7 +544,7 @@ export class Converter {
     for (const prop of toDestructure.getProperties()) {
       const name = prop.getName();
       const optional = !!prop.getQuestionTokenNode();
-      const type = this.typeToIR(prop.getTypeNode()!, optional);
+      const type = this.typeToIR(prop.getTypeNode()!, optional, clsTypeParams);
       kwargs.push({ name, type, isOptional: optional });
     }
     sigIRDestructured.kwparams = kwargs;
@@ -486,24 +554,32 @@ export class Converter {
   callableToIR(
     name: string,
     signatures: Signature[],
-    isStatic?: boolean,
+    isStatic: boolean,
+    clsTypeParams: string[],
   ): CallableIR {
-    const sigs = signatures.flatMap((sig) => this.sigToIRDestructure(sig));
+    const sigs = signatures.flatMap((sig) =>
+      this.sigToIRDestructure(sig, clsTypeParams),
+    );
     return { kind: "callable", name, signatures: sigs, isStatic };
   }
 
   funcDeclsToIR(name: string, decls: FunctionDeclaration[]): CallableIR {
     const astSigs = decls.map((x) => x.getSignature());
-    return this.callableToIR(name, astSigs, false);
+    return this.callableToIR(name, astSigs, false, []);
   }
 
   propertySignatureToIR(
     member: PropertySignature,
     isStatic: boolean = false,
+    clsTypeParams: string[],
   ): PropertyIR {
     const name = member.getName();
     const isOptional = member.hasQuestionToken();
-    const type = this.typeToIR(member.getTypeNode()!, isOptional);
+    const type = this.typeToIR(
+      member.getTypeNode()!,
+      isOptional,
+      clsTypeParams,
+    );
     const isReadonly = member.isReadonly();
     return { name, type, isOptional, isStatic, isReadonly };
   }
@@ -514,7 +590,7 @@ export class Converter {
     members: TypeElementTypes[],
     staticMembers: TypeElementTypes[],
     callSignatures: CallSignatureDeclaration[],
-    typeParams: string[],
+    typeParams_: string[],
   ): InterfaceIR {
     const { methods: astMethods, properties: astProperties } =
       groupMembers(members);
@@ -529,7 +605,10 @@ export class Converter {
     for (const key of Object.keys(staticAstMethods)) {
       delete astMethods[key];
     }
-    typeParams = Array.from(new Set(typeParams));
+    const clsTypeParams = uniqBy(typeParams_, (name) => name);
+    const typeParams = clsTypeParams.map((name) => ({
+      name,
+    }));
     const extraMethods: CallableIR[] = [];
     if ("[Symbol.iterator]" in astMethods) {
       const x = astMethods["[Symbol.iterator]"];
@@ -547,7 +626,7 @@ export class Converter {
         console.log(getNodeLocation(typeNode));
         throw new Error("Surprise!");
       }
-      const returns = this.typeToIR(typeNode);
+      const returns = this.typeToIR(typeNode, false, clsTypeParams);
       if (returns.kind === "parameterReference") {
         throw new Error("Cannot happen!");
       }
@@ -574,7 +653,9 @@ export class Converter {
       if (!(origName in astMethods)) {
         return;
       }
-      extraMethods.push(this.callableToIR(newName, astMethods[origName]));
+      extraMethods.push(
+        this.callableToIR(newName, astMethods[origName], false, clsTypeParams),
+      );
     };
     redirectMethod("has", "__contains__");
     redirectMethod("includes", "__contains__");
@@ -586,10 +667,10 @@ export class Converter {
     }
     const irMethods = ([] as CallableIR[]).concat(
       Object.entries(astMethods).map(([name, sigs]) =>
-        this.callableToIR(name, sigs, false),
+        this.callableToIR(name, sigs, false, clsTypeParams),
       ),
       Object.entries(staticAstMethods).map(([name, sigs]) =>
-        this.callableToIR(name, sigs, true),
+        this.callableToIR(name, sigs, true, clsTypeParams),
       ),
       extraMethods,
     );
@@ -597,13 +678,17 @@ export class Converter {
       kind: "callable",
       name: "__call__",
       signatures: callSignatures.flatMap((sig) =>
-        this.sigToIRDestructure(sig.getSignature()),
+        this.sigToIRDestructure(sig.getSignature(), clsTypeParams),
       ),
       isStatic: false,
     });
     const irProps = ([] as PropertyIR[]).concat(
-      astProperties.map((prop) => this.propertySignatureToIR(prop, false)),
-      staticAstProperties.map((prop) => this.propertySignatureToIR(prop, true)),
+      astProperties.map((prop) =>
+        this.propertySignatureToIR(prop, false, clsTypeParams),
+      ),
+      staticAstProperties.map((prop) =>
+        this.propertySignatureToIR(prop, true, clsTypeParams),
+      ),
     );
     const props = uniqBy(irProps, ({ name }) => name);
     return {
@@ -611,13 +696,14 @@ export class Converter {
       methods: irMethods,
       properties: props,
       name,
-      typeParams,
+      typeParams: typeParams,
       bases,
     };
   }
 
   getBasesOfDecls(
     decls: (InterfaceDeclaration | ClassDeclaration)[],
+    clsTypeParams: string[],
   ): BaseIR[] {
     let extends_ = decls.flatMap((decl) => decl.getExtends() || []);
     extends_ = uniqBy(extends_, (base) => base.getText());
@@ -630,7 +716,9 @@ export class Converter {
       const astArgs = getExpressionTypeArgs(ident, extend);
       // Unfortunately typescript doesn't expose getVariances on the type
       // checker, so we probably can't figure out what to put here.
-      const typeArgs = astArgs.map((node) => this.typeToIR(node, false));
+      const typeArgs = astArgs.map((node) =>
+        this.typeToIR(node, false, clsTypeParams),
+      );
       name += "_iface";
       this.addNeededInterface(ident as Identifier);
       return { name, typeArgs };
@@ -640,7 +728,6 @@ export class Converter {
   membersDeclarationToIR(
     name: string,
     type: { getMembers: TypeLiteralNode["getMembers"] },
-    bases: BaseIR[] = [],
     typeParams: string[],
   ): InterfaceIR {
     const [prototypes, staticMembers] = split(
@@ -649,6 +736,7 @@ export class Converter {
         m.isKind(SyntaxKind.PropertySignature) && m.getName() === "prototype",
     );
     let members: TypeElementTypes[] = [];
+    const bases: BaseIR[] = [];
     for (const proto of prototypes) {
       const typeNode = proto.getTypeNode();
       if (!Node.isTypeReference(typeNode)) {
@@ -660,7 +748,7 @@ export class Converter {
       }
       const ident = typeNode.getTypeName() as Identifier;
       const name = ident.getText() + "_iface";
-      const typeArgs = getInterfaceTypeArgs(ident);
+      const typeArgs = getInterfaceTypeArgs(ident, typeParams);
       this.addNeededInterface(ident);
       bases.push({ name, typeArgs });
     }
@@ -675,7 +763,7 @@ export class Converter {
   }
 
   typeNodeToDeclaration(name: string, typeNode: TypeNode): DeclarationIR {
-    const type = this.typeToIR(typeNode, false);
+    const type = this.typeToIR(typeNode, false, []);
     return declarationIR(name, type);
   }
 
@@ -685,27 +773,39 @@ export class Converter {
     if (!typeNode) {
       return undefined;
     }
-    if (Node.isTypeLiteral(typeNode)) {
-      // declare var X : {}
-      //
-      // If it looks like declare var X : { prototype: Blah, new(paramspec): ret}
-      // then X is the constructor for a class
-      //
-      // Otherwise it's a global namespace object?
-      try {
-        return this.membersDeclarationToIR(name, typeNode, [], []);
-      } catch (e) {
-        console.warn(varDecl.getText());
-        console.warn(getNodeLocation(varDecl));
-        throw e;
+    try {
+      if (Node.isTypeLiteral(typeNode)) {
+        // declare var X : {}
+        //
+        // If it looks like declare var X : { prototype: Blah, new(paramspec): ret}
+        // then X is the constructor for a class
+        //
+        // Otherwise it's a global namespace object?
+        let typeParams: string[] = [];
+        const constructSig = typeNode.getConstructSignatures()?.[0];
+        if (constructSig) {
+          typeParams =
+            constructSig
+              .getReturnType()
+              ?.getTargetType()
+              ?.getTypeArguments()
+              ?.map((x) => x.getText()) || [];
+        }
+        const res = this.membersDeclarationToIR(name, typeNode, typeParams);
+        // console.dir(res, { depth: Infinity });
+        return res;
       }
+      if (Node.isTypeReference(typeNode)) {
+        // This also could be a constructor like `declare X: XConstructor` where
+        // XConstructor has a prototype and 'new' signatures. Or not...
+        return this.varDeclOfReferenceTypeToIR(name, typeNode);
+      }
+      return this.typeNodeToDeclaration(name, typeNode);
+    } catch (e) {
+      console.warn(varDecl.getText());
+      console.warn(getNodeLocation(varDecl));
+      throw e;
     }
-    if (Node.isTypeReference(typeNode)) {
-      // This also could be a constructor like `declare X: XConstructor` where
-      // XConstructor has a prototype and 'new' signatures. Or not...
-      return this.varDeclOfReferenceTypeToIR(name, typeNode);
-    }
-    return this.typeNodeToDeclaration(name, typeNode);
   }
 
   varDeclOfReferenceTypeToIR(
@@ -731,15 +831,27 @@ export class Converter {
     }
     if (classified.kind === "varDecl" || classified.kind === "interfaces") {
       const { ifaces } = classified;
-      const typeParams = ifaces
-        .flatMap((i) => i.getTypeParameters())
+
+      let tmpTypeParams = ifaces
+        .flatMap((a) => a.getTypeParameters())
         .map((p) => p.getName());
+      const res = ifaces.flatMap((x) => x.getConstructSignatures())?.[0];
+      if (res) {
+        const moreParams =
+          res
+            .getReturnType()
+            .getTargetType()
+            ?.getTypeArguments()
+            ?.map((a) => a.getText()) || [];
+        tmpTypeParams.push(...moreParams);
+      }
+
+      const typeParams = uniqBy(tmpTypeParams, (name) => name);
       return this.membersDeclarationToIR(
         name,
         {
           getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
         },
-        [],
         typeParams,
       );
     }
@@ -770,13 +882,13 @@ export class Converter {
     switch (classified.kind) {
       case "interfaces":
         const ifaces = classified.ifaces;
-        const baseNames = this.getBasesOfDecls(ifaces);
         const typeParams = ifaces
           .flatMap((i) => i.getTypeParameters())
           .map((p) => p.getName());
+        const bases = this.getBasesOfDecls(ifaces, typeParams);
         return this.interfaceToIR(
           name,
-          baseNames,
+          bases,
           ifaces.flatMap((def) => def.getMembers()),
           [],
           ifaces.flatMap((def) => def.getCallSignatures()),
@@ -785,7 +897,7 @@ export class Converter {
       case "class":
         throw new Error("Unhandled");
       case "typeAlias":
-        const type = this.typeToIR(classified.decl.getTypeNode()!);
+        const type = this.typeToIR(classified.decl.getTypeNode()!, false, []);
         return { kind: "typeAlias", name, type };
       case "varDecl":
         console.warn("Skipping varDecl", ident.getText());
@@ -874,15 +986,15 @@ export function convertDecls(
         .getDefinitionNodes()
         .filter(Node.isInterfaceDeclaration);
       if (defs.length) {
-        const baseNames = converter
-          .getBasesOfDecls(defs)
-          .filter((base) => base.name !== name);
         const typeParams = defs
           .flatMap((i) => i.getTypeParameters())
           .map((p) => p.getName());
+        const bases = converter
+          .getBasesOfDecls(defs, typeParams)
+          .filter((base) => base.name !== name);
         const res = converter.interfaceToIR(
           name,
-          baseNames,
+          bases,
           defs.flatMap((def) => def.getMembers()),
           [],
           defs.flatMap((def) => def.getCallSignatures()),
