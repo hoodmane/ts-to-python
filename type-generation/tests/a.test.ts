@@ -323,7 +323,7 @@ function convertVarDecl(astVarDecl: VariableDeclaration): string {
   const irVarDecl = astConverter.varDeclToIR(astVarDecl);
   switch (irVarDecl.kind) {
     case "callable":
-      return callableIRToString(irVarDecl, {isMethod: false}).join("\n");
+      return callableIRToString(irVarDecl, { isMethod: false }).join("\n");
     case "declaration":
       return declarationIRToString(irVarDecl);
     case "interface":
