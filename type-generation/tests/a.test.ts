@@ -295,7 +295,7 @@ describe("property signature", () => {
 function convertVarDecl(astVarDecl: VariableDeclaration): string {
   const astConverter = new AstConverter();
   const irVarDecl = astConverter.varDeclToIR(astVarDecl);
-  switch(irVarDecl.kind) {
+  switch (irVarDecl.kind) {
     case "callable":
       return callableIRToString(irVarDecl, false).join("\n");
     case "declaration":
