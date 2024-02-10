@@ -62,13 +62,13 @@ export type OtherTypeIR = { kind: "other"; nodeKind: string; location: string };
 
 export type ClassParameterReferenceIR = {
   kind: "parameterReference";
-  type: "function";
-  name: string;
+  type: "class";
+  idx: number;
 };
 export type FunctionParameterReferenceIR = {
   kind: "parameterReference";
-  type: "class";
-  idx: number;
+  type: "function";
+  name: string;
 };
 export type ParameterReferenceTypeIR =
   | ClassParameterReferenceIR
@@ -264,7 +264,6 @@ export class Converter {
   funcTypeParams: Set<string>;
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
-  classTypeParams: string[];
 
   constructor() {
     this.funcTypeParams = new Set();
