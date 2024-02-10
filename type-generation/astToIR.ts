@@ -129,7 +129,7 @@ export type InterfaceIR = {
 
 export type BaseIR = {
   name: string;
-  typeParams: TypeIR[];
+  typeArgs: TypeIR[];
 };
 
 export type DeclarationIR = {
@@ -627,13 +627,13 @@ export class Converter {
         return [];
       }
       let name = extend.getExpression().getText();
-      const astParams = getExpressionTypeArgs(ident, extend);
+      const astArgs = getExpressionTypeArgs(ident, extend);
       // Unfortunately typescript doesn't expose getVariances on the type
       // checker, so we probably can't figure out what to put here.
-      const irParams = astParams.map((node) => this.typeToIR(node, false));
+      const typeArgs = astArgs.map((node) => this.typeToIR(node, false));
       name += "_iface";
       this.addNeededInterface(ident as Identifier);
-      return { name, typeParams: irParams };
+      return { name, typeArgs };
     });
   }
 
@@ -660,9 +660,9 @@ export class Converter {
       }
       const ident = typeNode.getTypeName() as Identifier;
       const name = ident.getText() + "_iface";
-      const typeParams = getInterfaceTypeArgs(ident);
+      const typeArgs = getInterfaceTypeArgs(ident);
       this.addNeededInterface(ident);
-      bases.push({ name, typeParams });
+      bases.push({ name, typeArgs });
     }
     return this.interfaceToIR(
       name,

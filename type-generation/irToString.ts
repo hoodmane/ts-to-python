@@ -228,9 +228,9 @@ function interfaceIRToString({
   return `class ${name}${basesString}:${CLASS_TYPE_IGNORES}\n${body}`;
 }
 
-export function baseIRToString({ name, typeParams }: BaseIR): string {
-  if (typeParams.length > 0) {
-    const joined = typeParams.map((t) => typeIRToString(t)).join(", ");
+export function baseIRToString({ name, typeArgs }: BaseIR): string {
+  if (typeArgs.length > 0) {
+    const joined = typeArgs.map((t) => typeIRToString(t)).join(", ");
     name += `[${joined}]`;
   }
   return name;
