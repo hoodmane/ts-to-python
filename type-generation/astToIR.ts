@@ -206,6 +206,62 @@ function typeLiteralToIR(typeNode: LiteralTypeNode): TypeIR {
 }
 
 /**
+ * Calculate the interface type parameters by looking at the return value of
+ * the constructor if it has one. If it doesn't have one, this maybe isn't
+ * actually a class. We just return the empty list in that case.
+ *
+ * @param constructorTypeNode
+ * @returns
+ */
+function calculateClassTypeParams(
+  constructorTypeNodes: {
+    getConstructSignatures(): ConstructSignatureDeclaration[];
+  }[],
+): string[] {
+  return (
+    constructorTypeNodes
+      .flatMap((x) => x.getConstructSignatures())?.[0]
+      ?.getReturnType()
+      ?.getTargetType()
+      ?.getTypeArguments()
+      ?.map((x) => x.getText()) || []
+  );
+}
+
+/**
+ * TODO: unit test this because it's not really clear why we should do it this
+ * way.
+ *
+ * Look up type params from iface declarations and from constructor return
+ * values and put them together.
+ *
+ * The constructor return value should be the most reliable indicator but it's
+ * not always present if the interface is a pure type not a class. If some type
+ * parameters have defaults then they won't necessarily be present in some
+ * interface definition. It's not entirely clear to me what happens when you
+ * have:
+ *
+ * interface A<S, T = number> { ... } interface A<S, U = number> { ... }
+ *
+ * I think this resolves to A<S, T, U> since T is encountered first. But what if
+ * they are in multiple files?
+ *
+ * @param ifaceDecls set of InterfaceDeclarations for an identifier
+ * @returns list of type parameter names
+ */
+function calculateIfacesTypeParams(
+  ifaceDecls: InterfaceDeclaration[],
+): string[] {
+  // Type params from iface declarations
+  const ifaceTypeParams = ifaceDecls
+    .flatMap((a) => a.getTypeParameters())
+    .map((p) => p.getName());
+  // Type params from constructor return value
+  const moreParams = calculateClassTypeParams(ifaceDecls);
+  return uniqBy([...ifaceTypeParams, ...moreParams], (name) => name);
+}
+
+/**
  * Helper for sigToIRDestructure
  *
  * If the parameter of sig is an Interface, from Python we allow the interface
@@ -780,19 +836,8 @@ export class Converter {
         // then X is the constructor for a class
         //
         // Otherwise it's a global namespace object?
-        let typeParams: string[] = [];
-        const constructSig = typeNode.getConstructSignatures()?.[0];
-        if (constructSig) {
-          typeParams =
-            constructSig
-              .getReturnType()
-              ?.getTargetType()
-              ?.getTypeArguments()
-              ?.map((x) => x.getText()) || [];
-        }
-        const res = this.membersDeclarationToIR(name, typeNode, typeParams);
-        // console.dir(res, { depth: Infinity });
-        return res;
+        const typeParams = calculateClassTypeParams([typeNode]);
+        return this.membersDeclarationToIR(name, typeNode, typeParams);
       }
       if (Node.isTypeReference(typeNode)) {
         // This also could be a constructor like `declare X: XConstructor` where
@@ -830,22 +875,7 @@ export class Converter {
     }
     if (classified.kind === "varDecl" || classified.kind === "interfaces") {
       const { ifaces } = classified;
-
-      let tmpTypeParams = ifaces
-        .flatMap((a) => a.getTypeParameters())
-        .map((p) => p.getName());
-      const res = ifaces.flatMap((x) => x.getConstructSignatures())?.[0];
-      if (res) {
-        const moreParams =
-          res
-            .getReturnType()
-            .getTargetType()
-            ?.getTypeArguments()
-            ?.map((a) => a.getText()) || [];
-        tmpTypeParams.push(...moreParams);
-      }
-
-      const typeParams = uniqBy(tmpTypeParams, (name) => name);
+      const typeParams = calculateIfacesTypeParams(ifaces);
       return this.membersDeclarationToIR(
         name,
         {
