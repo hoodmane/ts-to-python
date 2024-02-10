@@ -291,7 +291,7 @@ describe("property signature", () => {
       }
       declare var Test: X[];
     `);
-    expect(removeTypeIgnores(res.slice(2).join("\n\n"))).toBe(
+    expect(removeTypeIgnores(res.slice(1).join("\n\n"))).toBe(
       dedent(`\
         Test: JsArray[X_iface] = ...
 
@@ -307,7 +307,7 @@ describe("property signature", () => {
       }
       declare var Test: X[];
     `);
-    expect(removeTypeIgnores(res.slice(2).join("\n\n"))).toBe(
+    expect(removeTypeIgnores(res.slice(1).join("\n\n"))).toBe(
       dedent(`\
         Test: JsArray[X_iface] = ...
 
