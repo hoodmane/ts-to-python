@@ -794,8 +794,15 @@ export class Converter {
   }
 }
 
+export type TopLevels = {
+  callables: CallableIR[];
+  decls: DeclarationIR[];
+  ifaces: InterfaceIR[];
+  typeAliases: TypeAliasIR[];
+};
+
 export type ConversionResult = {
-  topLevels: TopLevelIR[];
+  topLevels: TopLevels;
   typeParams: Set<string>;
 };
 
@@ -810,29 +817,49 @@ export function convertDecls(
   funcDecls: FunctionDeclaration[],
 ): ConversionResult {
   const converter = new Converter();
-  const topLevels: TopLevelIR[] = [];
+  const topLevels: TopLevels = {
+    callables: [],
+    decls: [],
+    ifaces: [],
+    typeAliases: [],
+  };
+
+  function pushTopLevel(tl: TopLevelIR | undefined): void {
+    if (!tl) {
+      return;
+    }
+    switch (tl.kind) {
+      case "callable":
+        topLevels.callables.push(tl);
+        break;
+      case "declaration":
+        topLevels.decls.push(tl);
+        break;
+      case "interface":
+        topLevels.ifaces.push(tl);
+        break;
+      case "typeAlias":
+        topLevels.typeAliases.push(tl);
+        break;
+    }
+  }
+
   for (const varDecl of varDecls) {
     const name = sanitizeReservedWords(varDecl.getName());
     if (converter.convertedSet.has(name)) {
       continue;
     }
     converter.convertedSet.add(name);
-    const result = converter.varDeclToIR(varDecl);
-    if (result) {
-      topLevels.push(result);
-    }
+    pushTopLevel(converter.varDeclToIR(varDecl));
   }
   const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName());
   for (const [name, decls] of Object.entries(funcDeclsByName)) {
-    topLevels.push(converter.funcDeclsToIR(name, decls));
+    pushTopLevel(converter.funcDeclsToIR(name, decls));
   }
   let next: Needed | undefined;
   while ((next = popElt(converter.neededSet))) {
     if (next.type === "ident") {
-      let res = converter.identToIRIfNeeded(next.ident);
-      if (res) {
-        topLevels.push(res);
-      }
+      pushTopLevel(converter.identToIRIfNeeded(next.ident));
       continue;
     }
     if (next.type === "interface") {
@@ -861,7 +888,7 @@ export function convertDecls(
           defs.flatMap((def) => def.getCallSignatures()),
           typeParams,
         );
-        topLevels.push(res);
+        pushTopLevel(res);
         continue;
       }
       // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
