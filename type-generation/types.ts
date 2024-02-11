@@ -61,10 +61,12 @@ export type Needed =
   | { type: "interface"; ident: Identifier };
 
 export enum Variance {
+  invar = 0,
   covar = 1,
   contra = -1,
-  none = 0,
+  bivar = NaN,
 }
+
 export function reverseVariance(v: Variance): Variance {
   return -v;
 }

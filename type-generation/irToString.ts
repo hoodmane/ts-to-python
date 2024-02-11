@@ -15,6 +15,7 @@ import {
   TopLevelIR,
   TypeAliasIR,
   TypeIR,
+  TypeParamIR,
 } from "./astToIR.ts";
 import { assertUnreachable } from "./astUtils.ts";
 import { Variance, reverseVariance } from "./types.ts";
@@ -177,6 +178,16 @@ function simpleDeclaration(name: string, type: string) {
 // Functions that format IR into strings
 //
 
+export function typeParamIRToString({ name, variance }: TypeParamIR) {
+  if (variance === Variance.covar) {
+    name += "co";
+  }
+  if (variance === Variance.contra) {
+    name += "contra";
+  }
+  return name;
+}
+
 export function declarationIRToString({ name, type }: DeclarationIR): string {
   const typeStr = typeIRToString(type);
   return simpleDeclaration(name, typeStr);
@@ -196,9 +207,10 @@ export function interfaceIRToString({
   extraBases = [],
   numberType,
 }: InterfaceIR): string {
-  const bases = irBases.map((b) => baseIRToString(b));
+  const classTypeParams = typeParams.map(typeParamIRToString);
+  const bases = irBases.map((b) => baseIRToString(b, classTypeParams));
   if (typeParams.length > 0) {
-    const joined = typeParams.join(", ");
+    const joined = classTypeParams.join(", ");
     bases.push(`Generic[${joined}]`);
   }
   bases.push(...extraBases);
@@ -206,10 +218,13 @@ export function interfaceIRToString({
   if (bases.length > 0) {
     basesString = `(${bases.join(", ")})`;
   }
-
   const entries = ([] as string[]).concat(
-    properties.map((prop) => propertyIRToString(prop, numberType)),
-    methods.flatMap((gp) => callableIRToString(gp, true, numberType)),
+    properties.map((prop) =>
+      propertyIRToString(prop, { numberType, classTypeParams }),
+    ),
+    methods.flatMap((gp) =>
+      callableIRToString(gp, { isMethod: true, numberType, classTypeParams }),
+    ),
   );
   let body = entries.join("\n");
   if (body.trim() === "") {
@@ -220,9 +235,14 @@ export function interfaceIRToString({
   return `class ${name}${basesString}:${CLASS_TYPE_IGNORES}\n${body}`;
 }
 
-export function baseIRToString({ name, typeArgs }: BaseIR): string {
+export function baseIRToString(
+  { name, typeArgs }: BaseIR,
+  classTypeParams: string[],
+): string {
   if (typeArgs.length > 0) {
-    const joined = typeArgs.map((t) => typeIRToString(t)).join(", ");
+    const joined = typeArgs
+      .map((t) => typeIRToString(t, { classTypeParams }))
+      .join(", ");
     name += `[${joined}]`;
   }
   return name;
@@ -230,13 +250,17 @@ export function baseIRToString({ name, typeArgs }: BaseIR): string {
 
 export function propertyIRToString(
   property: PropertyIR,
-  numberType?: string,
+  {
+    numberType,
+    classTypeParams,
+  }: { numberType?: string; classTypeParams?: string[] } = {},
 ): string {
   let { isOptional, name, type: typeIR, isReadonly, isStatic } = property;
   let typeString = typeIRToString(typeIR, {
     isOptional,
     topLevelName: name,
     numberType,
+    classTypeParams,
   });
   if (isIllegal(name)) {
     return "";
@@ -265,8 +289,11 @@ export function propertyIRToString(
 
 export function callableIRToString(
   { name, signatures: sigs, isStatic }: CallableIR,
-  isMethod: boolean,
-  numberType?: string,
+  {
+    isMethod,
+    numberType,
+    classTypeParams,
+  }: { isMethod: boolean; numberType?: string; classTypeParams?: string[] },
 ): string[] {
   const decorators = isStatic ? ["classmethod"] : [];
   return sigIRListToString(sigs, {
@@ -274,6 +301,7 @@ export function callableIRToString(
     numberType,
     isMethod,
     decorators,
+    classTypeParams,
   });
 }
 
@@ -285,6 +313,7 @@ function sigIRListToString(
     numberType?: string;
     isMethod?: boolean;
     decorators?: string[];
+    classTypeParams: string[];
   },
 ): string[] {
   irSigs = uniqBy(irSigs, (sig) => {
@@ -308,9 +337,11 @@ function irSigToPySig(
   {
     variance = Variance.covar,
     numberType,
+    classTypeParams,
   }: {
     variance?: Variance;
     numberType?: string;
+    classTypeParams: string[];
   },
 ): PySig {
   const paramVariance = reverseVariance(variance);
@@ -319,6 +350,7 @@ function irSigToPySig(
       isOptional,
       variance: paramVariance,
       numberType,
+      classTypeParams,
     });
     return { name, isOptional, pyType };
   };
@@ -333,7 +365,11 @@ function irSigToPySig(
   const spreadParam = origSpreadParam
     ? irParamToPyParam(origSpreadParam)
     : undefined;
-  const returns = typeIRToString(origReturns, { variance, numberType });
+  const returns = typeIRToString(origReturns, {
+    variance,
+    numberType,
+    classTypeParams,
+  });
   return { params, spreadParam, kwparams, returns };
 }
 
@@ -345,15 +381,17 @@ function irSigToString(
     topLevelName,
     decorators = [],
     isMethod,
+    classTypeParams,
   }: {
     variance?: Variance;
     topLevelName?: string;
     numberType?: string;
     decorators?: string[];
     isMethod?: boolean;
+    classTypeParams: string[];
   },
 ): string {
-  const pySig = irSigToPySig(irSig, { variance, numberType });
+  const pySig = irSigToPySig(irSig, { variance, numberType, classTypeParams });
   if (topLevelName) {
     return pySigToDeclarationString(topLevelName, pySig, decorators, isMethod);
   }
@@ -367,6 +405,7 @@ type RenderTypeSettings = {
   variance?: Variance;
   topLevelName?: string;
   numberType?: string;
+  classTypeParams?: string[];
 };
 
 export function typeIRToString(
@@ -375,6 +414,7 @@ export function typeIRToString(
 ): string {
   settings = Object.assign({}, settings);
   settings.variance ??= Variance.covar;
+  settings.classTypeParams ??= [];
   let { isOptional } = settings;
   if (isOptional) {
     settings.topLevelName = undefined;
@@ -399,7 +439,7 @@ function typeIRToStringHelper(
   ir: TypeIR,
   settings: RenderTypeSettings,
 ): string {
-  const { variance, numberType, topLevelName } = settings;
+  const { variance, numberType, topLevelName, classTypeParams } = settings;
   settings.topLevelName = undefined;
   if (ir.kind === "simple") {
     return ir.text;
@@ -434,22 +474,33 @@ function typeIRToStringHelper(
       variance,
       topLevelName,
       numberType,
+      classTypeParams,
     }).join("\n");
   }
   if (ir.kind === "other") {
     return "Any";
   }
   if (ir.kind === "parameterReference") {
-    return ir.name;
+    if (ir.type === "function") {
+      return ir.name;
+    }
+    return settings.classTypeParams[ir.idx];
   }
   if (ir.kind === "reference") {
-    let { name: name, typeArgs } = ir;
-    const res = typeReferenceSubsitutions(name, typeArgs, variance);
+    let { name, typeArgs } = ir;
+    const res = typeReferenceSubsitutions(name, typeArgs, {
+      variance,
+      classTypeParams,
+    });
     if (res) {
       return res;
     }
     const args = typeArgs.map((ty) =>
-      typeIRToString(ty, { variance: Variance.none, numberType }),
+      typeIRToString(ty, {
+        variance: Variance.invar,
+        numberType,
+        classTypeParams,
+      }),
     );
     let fmtArgs = "";
     if (args.length) {
