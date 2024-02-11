@@ -288,7 +288,10 @@ function getInterfaceDeclToDestructure(
   return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
 }
 
-function typeReferenceNameToIR(name: string, classTypeParams: string[]): ParameterReferenceTypeIR {
+function typeReferenceNameToIR(
+  name: string,
+  classTypeParams: string[],
+): ParameterReferenceTypeIR {
   const idx = classTypeParams.indexOf(name);
   if (idx === -1) {
     return { kind: "parameterReference", type: "function", name };
