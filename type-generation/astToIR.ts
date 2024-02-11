@@ -60,6 +60,11 @@ export type TypeOperatorTypeIR = {
 };
 export type OtherTypeIR = { kind: "other"; nodeKind: string; location: string };
 
+// We distinguish between ClassParameterReference and FunctionParameterReference
+// because we want to determine the variance for ClassParameterReferences
+// whereas FunctionParameterReferences don't have variance. The idx in
+// ClassParameterReference is an index into the list of type parameters for the
+// enclosing class.
 export type ClassParameterReferenceIR = {
   kind: "parameterReference";
   type: "class";
@@ -288,6 +293,10 @@ function getInterfaceDeclToDestructure(
   return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
 }
 
+/**
+ * If the parameter appears in classTypeParams then it's a class parameter, else
+ * a function parameter.
+ */
 function typeReferenceNameToIR(name: string, classTypeParams: string[]): ParameterReferenceTypeIR {
   const idx = classTypeParams.indexOf(name);
   if (idx === -1) {
@@ -319,6 +328,11 @@ const operatorToName = {
 };
 
 export class Converter {
+  /**
+   * We record all funcTypeParams to make TypeVars for them. Class type params
+   * will potentially be renamed by appending a co or a contra so we have to
+   * wait to collect them until after we calculate variances.
+   */
   funcTypeParams: Set<string>;
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
