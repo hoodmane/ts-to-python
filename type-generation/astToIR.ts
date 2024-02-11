@@ -288,6 +288,14 @@ function getInterfaceDeclToDestructure(
   return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
 }
 
+function typeReferenceNameToIR(name: string, classTypeParams: string[]): ParameterReferenceTypeIR {
+  const idx = classTypeParams.indexOf(name);
+  if (idx === -1) {
+    return { kind: "parameterReference", type: "function", name };
+  }
+  return { kind: "parameterReference", type: "class", idx };
+}
+
 /**
  * Helper for getting the bases in membersDeclarationToIR
  */
@@ -302,13 +310,7 @@ function getInterfaceTypeArgs(
       .flatMap((def) => def.getTypeParameters())
       .map((param) => param.getName()),
     (param) => param,
-  ).map((name): TypeIR => {
-    const idx = classTypeParams.indexOf(name);
-    if (idx === -1) {
-      return { kind: "parameterReference", type: "function", name };
-    }
-    return { kind: "parameterReference", type: "class", idx };
-  });
+  ).map((name) => typeReferenceNameToIR(name, classTypeParams));
 }
 
 const operatorToName = {
@@ -423,13 +425,11 @@ export class Converter {
     const ident = typeNode.getTypeName();
     if (typeNode.getType().isTypeParameter()) {
       const name = ident.getText();
-      const idx = clsTypeParams.indexOf(name);
-      if (idx === -1) {
+      const ref = typeReferenceNameToIR(name, clsTypeParams);
+      if (ref.type === "function") {
         this.funcTypeParams.add(name);
-        return { kind: "parameterReference", type: "function", name };
-      } else {
-        return { kind: "parameterReference", type: "class", idx };
       }
+      return ref;
     }
     const typeArgs = getExpressionTypeArgs(ident, typeNode).map((ty) =>
       this.typeToIR(ty, false, clsTypeParams),
