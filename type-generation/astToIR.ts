@@ -292,12 +292,14 @@ function getInterfaceDeclToDestructure(
   }
   return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
 }
-
 /**
  * If the parameter appears in classTypeParams then it's a class parameter, else
  * a function parameter.
  */
-function typeReferenceNameToIR(name: string, classTypeParams: string[]): ParameterReferenceTypeIR {
+function typeReferenceNameToIR(
+  name: string,
+  classTypeParams: string[],
+): ParameterReferenceTypeIR {
   const idx = classTypeParams.indexOf(name);
   if (idx === -1) {
     return { kind: "parameterReference", type: "function", name };
