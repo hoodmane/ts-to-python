@@ -19,12 +19,11 @@ import {
   typeAliasIRToString,
 } from "./irToString.ts";
 
-
-import {mkdirSync, writeFileSync} from "fs";
-import {dirname} from "path";
+import { mkdirSync, writeFileSync } from "fs";
+import { dirname } from "path";
 
 function writeFileSyncHelper(filePath: string, content: string) {
-  mkdirSync(dirname(filePath), {recursive: true});
+  mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, content, "utf-8");
 }
 
@@ -87,7 +86,10 @@ function fixupClassBases(nameToCls: Map<string, InterfaceIR>): void {
 
 export function emitFiles(files: SourceFile[]): string[] {
   const result = convertFiles(files);
-  writeFileSyncHelper("../generated/js/ConversionResult.json", JSON.stringify(result, null, 2));
+  writeFileSyncHelper(
+    "../generated/js/ConversionResult.json",
+    JSON.stringify(result, null, 2),
+  );
   return emitIR(result);
 }
 
