@@ -202,6 +202,71 @@ describe("typeToIR", () => {
       });
     });
   });
+  describe("function declarations", () => {
+    it("simple function", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `declare function f(x: string): void;`,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const funcDecl = file.getFirstDescendantByKind(
+        SyntaxKind.FunctionDeclaration,
+      )!;
+      const converter = new Converter();
+      const ir = converter.funcDeclsToIR("f", [funcDecl]);
+
+      assert.deepStrictEqual(ir, {
+        kind: "callable",
+        name: "f",
+        signatures: [
+          {
+            params: [
+              {
+                name: "x",
+                type: { kind: "simple", text: "str" },
+                isOptional: false,
+              },
+            ],
+            spreadParam: undefined,
+            returns: { kind: "simple", text: "None" },
+          },
+        ],
+        isStatic: false,
+      });
+    });
+
+    it("generic function", () => {
+      const project = makeProject();
+      project.createSourceFile("/test.ts", `declare function f<T>(x: T): T;`);
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const funcDecl = file.getFirstDescendantByKind(
+        SyntaxKind.FunctionDeclaration,
+      )!;
+      const converter = new Converter();
+      const ir = converter.funcDeclsToIR("f", [funcDecl]);
+
+      assert.deepStrictEqual(ir, {
+        kind: "callable",
+        name: "f",
+        signatures: [
+          {
+            params: [
+              {
+                name: "x",
+                type: { kind: "parameterReference", name: "T" },
+                isOptional: false,
+              },
+            ],
+            spreadParam: undefined,
+            returns: { kind: "parameterReference", name: "T" },
+          },
+        ],
+        isStatic: false,
+        typeParams: ["T"],
+      });
+    });
+  });
   describe("type aliases", () => {
     it("simple type alias", () => {
       const project = makeProject();

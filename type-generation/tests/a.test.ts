@@ -856,6 +856,17 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("Function type param", () => {
+    const res = emitFile(`\
+      declare function f<T>(x: T): T;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res[1]),
+      dedent(`
+        def f[T](x: T, /) -> T: ...
+      `).trim(),
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));

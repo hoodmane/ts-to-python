@@ -17,6 +17,7 @@ import {
   TypeLiteralNode,
   TypeNode,
   TypeOperatorTypeNode,
+  TypeParameteredNode,
   TypeReferenceNode,
   UnionTypeNode,
   VariableDeclaration,
@@ -100,6 +101,7 @@ export type CallableIR = {
   name?: string;
   signatures: SigIR[];
   isStatic?: boolean;
+  typeParams?: string[];
 };
 
 export type PropertyIR = {
@@ -259,7 +261,7 @@ export class Converter {
     this.neededSet.add({ type: "interface", ident });
   }
 
-  setIfaceTypeConstraints(ifaces: InterfaceDeclaration[]) {
+  setIfaceTypeConstraints<T extends TypeParameteredNode>(ifaces: T[]) {
     // Set type parameter constraints for interface type parameters
     for (const iface of ifaces) {
       for (const param of iface.getTypeParameters()) {
@@ -470,16 +472,7 @@ export class Converter {
   sigToIR(sig: Signature): SigIR {
     const decl = sig.getDeclaration() as CallSignatureDeclaration;
     try {
-      // Collect type parameter constraints
-      for (const param of decl.getTypeParameters()) {
-        const constraint = param.getConstraint();
-        if (constraint) {
-          this.funcTypeParamConstraints.set(
-            param.getName(),
-            constraint.getText(),
-          );
-        }
-      }
+      this.setIfaceTypeConstraints([decl]);
 
       const pyParams: ParamIR[] = [];
       let spreadParam: ParamIR;
@@ -556,9 +549,25 @@ export class Converter {
     return { kind: "callable", name, signatures: sigs, isStatic };
   }
 
+  getTypeParamsFromDecls<T extends TypeParameteredNode>(decls: T[]): string[] {
+    return decls
+      .flatMap((decl) => decl.getTypeParameters())
+      .filter((p) => {
+        const constraint = p.getConstraint();
+        // Filter out type parameters that extend string since they get replaced with str
+        return !(constraint && constraint.getText() === "string");
+      })
+      .map((p) => p.getName());
+  }
+
   funcDeclsToIR(name: string, decls: FunctionDeclaration[]): CallableIR {
     const astSigs = decls.map((x) => x.getSignature());
-    return this.callableToIR(name, astSigs, false);
+    const typeParams = this.getTypeParamsFromDecls(decls);
+    const result = this.callableToIR(name, astSigs, false);
+    if (typeParams.length > 0) {
+      result.typeParams = [...new Set(typeParams)]; // deduplicate
+    }
+    return result;
   }
 
   propertySignatureToIR(
@@ -815,14 +824,7 @@ export class Converter {
     if (classified.kind === "varDecl" || classified.kind === "interfaces") {
       const { ifaces } = classified;
       this.setIfaceTypeConstraints(ifaces);
-      const typeParams = ifaces
-        .flatMap((i) => i.getTypeParameters())
-        .filter((p) => {
-          const constraint = p.getConstraint();
-          // Filter out type parameters that extend string since they get replaced with str
-          return !(constraint && constraint.getText() === "string");
-        })
-        .map((p) => p.getName());
+      const typeParams = this.getTypeParamsFromDecls(ifaces);
       const result = this.membersDeclarationToIR(
         name,
         {
@@ -975,14 +977,7 @@ export function convertDecls(
         const baseNames = converter
           .getBasesOfDecls(defs)
           .filter((base) => base.name !== name);
-        const typeParams = defs
-          .flatMap((i) => i.getTypeParameters())
-          .filter((p) => {
-            const constraint = p.getConstraint();
-            // Filter out type parameters that extend string since they get replaced with str
-            return !(constraint && constraint.getText() === "string");
-          })
-          .map((p) => p.getName());
+        const typeParams = converter.getTypeParamsFromDecls(defs);
         const res = converter.interfaceToIR(
           name,
           baseNames,
