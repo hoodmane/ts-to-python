@@ -907,6 +907,32 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("Unpacking and type params", () => {
+    const res = emitFile(`\
+      interface XLike<T> {
+        length: number;
+        t: T;
+      }
+
+      interface XConstructor {
+        from<T>(x: XLike<T>): T[];
+      }
+
+      declare var X: XConstructor;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res[1]),
+      dedent(`
+        class X(_JsObject):
+            @classmethod
+            @overload
+            def from_[T](self, x: XLike_iface[T], /) -> JsArray[T]: ...
+            @classmethod
+            @overload
+            def from_[T](self, /, *, length: int | float, t: T) -> JsArray[T]: ...
+      `).trim(),
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));

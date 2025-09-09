@@ -91,10 +91,11 @@ function depth2CopySig({
   spreadParam,
   kwparams,
   returns,
+  typeParams,
 }: SigIR): SigIR {
   params = Array.from(params);
   kwparams = kwparams && Array.from(kwparams);
-  return { params, spreadParam, kwparams, returns };
+  return { params, spreadParam, kwparams, returns, typeParams };
 }
 
 export type CallableIR = {
@@ -210,7 +211,7 @@ function getInterfaceDeclToDestructure(
     ?.getTypeName()
     ?.asKind(SyntaxKind.Identifier)
     ?.getDefinitionNodes();
-  if (defs?.length !== 1) {
+  if (!defs?.length) {
     return undefined;
   }
   return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
