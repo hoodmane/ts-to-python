@@ -197,14 +197,15 @@ export function interfaceIRToString({
   numberType,
 }: InterfaceIR): string {
   const bases = irBases.map((b) => baseIRToString(b));
-  if (typeParams.length > 0) {
-    const joined = typeParams.join(", ");
-    bases.push(`Generic[${joined}]`);
-  }
   bases.push(...extraBases);
   let basesString = "";
   if (bases.length > 0) {
     basesString = `(${bases.join(", ")})`;
+  }
+
+  let typeParamsString = "";
+  if (typeParams.length > 0) {
+    typeParamsString = `[${typeParams.join(", ")}]`;
   }
 
   const entries = ([] as string[]).concat(
@@ -217,7 +218,7 @@ export function interfaceIRToString({
   }
   body = indent(body, " ".repeat(4));
 
-  return `class ${name}${basesString}:${CLASS_TYPE_IGNORES}\n${body}`;
+  return `class ${name}${typeParamsString}${basesString}:${CLASS_TYPE_IGNORES}\n${body}`;
 }
 
 export function baseIRToString({ name, typeArgs }: BaseIR): string {
