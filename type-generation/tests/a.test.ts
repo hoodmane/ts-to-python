@@ -817,7 +817,7 @@ describe("emit", () => {
       declare interface X<K extends string> {
         f(k: K): void;
       }
-        declare var x: X;
+      declare var x: X;
     `);
     assert.strictEqual(
       removeTypeIgnores(res.at(-1)),
@@ -825,6 +825,21 @@ describe("emit", () => {
         class x(_JsObject):
             @classmethod
             def f(self, k: str, /) -> None: ...
+      `).trim(),
+    );
+  });
+  it("extends string ==> str in interface 2", () => {
+    const res = emitFile(`\
+      declare interface X<K extends string> {
+        f(k: K): void;
+      }
+      declare function g(x: X<string>): void;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-3)),
+      dedent(`
+        @overload
+        def g(x: X_iface, /) -> None: ...
       `).trim(),
     );
   });
@@ -845,8 +860,3 @@ describe("emit", () => {
     });
   });
 });
-
-interface I<T> {
-  f<T>(x: T): void;
-  g(x: T): void;
-}
