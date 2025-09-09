@@ -9,7 +9,7 @@ import {
   TypeNode,
   VariableDeclaration,
 } from "ts-morph";
-import { emitFiles, emitIR } from "../extract.ts";
+import { emitFiles, emitIR } from "../src/extract.ts";
 import {
   propertyIRToString,
   baseIRToString,
@@ -18,8 +18,8 @@ import {
   declarationIRToString,
   interfaceIRToString,
   typeAliasIRToString,
-} from "../irToString.ts";
-import { Variance } from "../types.ts";
+} from "../src/irToString.ts";
+import { Variance } from "../src/types.ts";
 import {
   dedent,
   getTypeNode,
@@ -31,7 +31,7 @@ import {
   Converter as AstConverter,
   ConversionResult,
   convertDecls,
-} from "../astToIR";
+} from "../src/astToIR";
 
 function propertySignatureToIR(
   member: PropertySignature,
