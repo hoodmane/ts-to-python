@@ -1,3 +1,5 @@
+import { describe, it } from "node:test";
+import assert from "node:assert";
 import { getTypeNode, typeToIR } from "./helpers";
 
 function typeToIRHelper(tsType: string) {
@@ -11,17 +13,17 @@ describe("typeToIR", () => {
   describe("basic", () => {
     it("convert string", () => {
       const typeIR = typeToIRHelper("string");
-      expect(typeIR).toEqual({ kind: "simple", text: "str" });
+      assert.deepStrictEqual(typeIR, { kind: "simple", text: "str" });
     });
     it("convert number", () => {
       const typeIR = typeToIRHelper("number");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "number",
       });
     });
     it("convert union", () => {
       const typeIR = typeToIRHelper("string | boolean");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "union",
         types: [
           { kind: "simple", text: "str" },
@@ -31,14 +33,14 @@ describe("typeToIR", () => {
     });
     it("convert array", () => {
       const typeIR = typeToIRHelper("string[]");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "array",
         type: { kind: "simple", text: "str" },
       });
     });
     it("convert readonly array", () => {
       const typeIR = typeToIRHelper("readonly string[]");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "operator",
         operatorName: "readonly",
         type: { kind: "array", type: { kind: "simple", text: "str" } },
@@ -48,7 +50,7 @@ describe("typeToIR", () => {
   describe("typeReferenceSubsitutions", () => {
     it("convert Function", () => {
       const typeIR = typeToIRHelper("Function");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "reference",
         name: "Function",
         typeArgs: [],
@@ -56,7 +58,7 @@ describe("typeToIR", () => {
     });
     it("default type param", () => {
       const typeIR = typeToIRHelper("ReadableStream");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "reference",
         name: "ReadableStream",
         typeArgs: [{ kind: "simple", text: "Any" }],
@@ -64,7 +66,7 @@ describe("typeToIR", () => {
     });
     it("convert Promise", () => {
       const typeIR = typeToIRHelper("Promise<string | symbol>");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "reference",
         name: "Promise",
         typeArgs: [
@@ -81,7 +83,7 @@ describe("typeToIR", () => {
     it("convert Iterator", () => {
       let typeIR;
       typeIR = typeToIRHelper("Iterator<boolean>");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "reference",
         name: "Iterator_iface",
         typeArgs: [
@@ -91,7 +93,7 @@ describe("typeToIR", () => {
         ],
       });
       typeIR = typeToIRHelper("Iterator<boolean, string, symbol>");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "reference",
         name: "Iterator_iface",
         typeArgs: [
@@ -105,7 +107,7 @@ describe("typeToIR", () => {
   describe("callable types", () => {
     it("basic", () => {
       const typeIR = typeToIRHelper("() => void");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "callable",
         signatures: [
           {
@@ -118,7 +120,7 @@ describe("typeToIR", () => {
     });
     it("optional args", () => {
       const typeIR = typeToIRHelper("(a?: string) => void");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "callable",
         signatures: [
           {
@@ -137,7 +139,7 @@ describe("typeToIR", () => {
     });
     it("optional or null", () => {
       const typeIR = typeToIRHelper("(a?: string | null) => void;");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "callable",
         signatures: [
           {
@@ -162,7 +164,7 @@ describe("typeToIR", () => {
     });
     it("type predicate", () => {
       const typeIR = typeToIRHelper("(a: any) => a is string;");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "callable",
         signatures: [
           {
@@ -181,7 +183,7 @@ describe("typeToIR", () => {
     });
     it("spread arg", () => {
       const typeIR = typeToIRHelper("(...a: string[][]) => void;");
-      expect(typeIR).toEqual({
+      assert.deepStrictEqual(typeIR, {
         kind: "callable",
         signatures: [
           {

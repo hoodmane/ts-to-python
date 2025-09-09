@@ -1,3 +1,5 @@
+import { describe, it } from "node:test";
+import assert from "node:assert";
 import {
   ClassDeclaration,
   FunctionDeclaration,
@@ -47,7 +49,7 @@ function checkTypeToPython(
 ) {
   const typeNode = getTypeNode(tsType);
   const conversion = typeAstToString(typeNode, false, variance);
-  expect(conversion).toBe(pyType);
+  assert.strictEqual(conversion, pyType);
 }
 
 function typeAstToString(
@@ -140,7 +142,7 @@ describe("typeToPython", () => {
   it("default type param", () => {
     const typeNode = getTypeNode("ReadableStream");
     const conversion = typeAstToString(typeNode, false, Variance.covar);
-    expect(conversion).toBe("ReadableStream[Any]");
+    assert.strictEqual(conversion, "ReadableStream[Any]");
   });
   describe("variance", () => {
     it("variance 1", () => {
@@ -150,7 +152,8 @@ describe("typeToPython", () => {
       const conversion = removeTypeIgnores(
         typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
-      expect(conversion).toBe(
+      assert.strictEqual(
+        conversion,
         "def myFunc(self, a: PyIterable[str], /) -> JsIterable[bool]: ...",
       );
     });
@@ -161,7 +164,8 @@ describe("typeToPython", () => {
       const conversion = removeTypeIgnores(
         typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
-      expect(conversion).toBe(
+      assert.strictEqual(
+        conversion,
         "def myFunc(self, a: PyIterable[PyIterator[bool]], /) -> None: ...",
       );
     });
@@ -172,7 +176,8 @@ describe("typeToPython", () => {
       const conversion = removeTypeIgnores(
         typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
-      expect(conversion).toBe(
+      assert.strictEqual(
+        conversion,
         "def myFunc(self, a: Callable[[JsIterable[str]], PyIterable[bool]], /) -> None: ...",
       );
     });
@@ -181,21 +186,22 @@ describe("typeToPython", () => {
     it("basic", () => {
       const typeNode = getTypeNode("() => void");
       const conversion = typeAstToString(typeNode, false, Variance.covar);
-      expect(conversion).toBe("Callable[[], None]");
+      assert.strictEqual(conversion, "Callable[[], None]");
     });
     it("toplevel", () => {
       const typeNode = getTypeNode("() => void");
       const conversion = removeTypeIgnores(
         typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
-      expect(conversion).toBe("def myFunc(self, /) -> None: ...");
+      assert.strictEqual(conversion, "def myFunc(self, /) -> None: ...");
     });
     it("optional args", () => {
       const typeNode = getTypeNode("(a?: string) => void");
       const conversion = removeTypeIgnores(
         typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
-      expect(conversion).toBe(
+      assert.strictEqual(
+        conversion,
         "def myFunc(self, a: str | None = None, /) -> None: ...",
       );
     });
@@ -204,7 +210,8 @@ describe("typeToPython", () => {
       const conversion = removeTypeIgnores(
         typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
-      expect(conversion).toBe(
+      assert.strictEqual(
+        conversion,
         "def myFunc(self, a: str | None = None, /) -> None: ...",
       );
     });
@@ -213,14 +220,18 @@ describe("typeToPython", () => {
       const conversion = removeTypeIgnores(
         typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
-      expect(conversion).toBe("def myFunc(self, a: Any, /) -> bool: ...");
+      assert.strictEqual(
+        conversion,
+        "def myFunc(self, a: Any, /) -> bool: ...",
+      );
     });
     it("dotdotdot arg", () => {
       const typeNode = getTypeNode("(...a: string[][]) => void;");
       const conversion = removeTypeIgnores(
         typeAstToString(typeNode, false, Variance.covar, "myFunc"),
       );
-      expect(conversion).toBe(
+      assert.strictEqual(
+        conversion,
         "def myFunc(self, /, *a: PyMutableSequence[str]) -> None: ...",
       );
     });
@@ -235,7 +246,7 @@ describe("property signature", () => {
     const file = project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
     const res = removeTypeIgnores(propertySignatureAstToString(propsig));
-    expect(res).toBe("def f(self, /) -> None: ...");
+    assert.strictEqual(res, "def f(self, /) -> None: ...");
   });
   it("optional function", () => {
     const fname = "/a.ts";
@@ -244,7 +255,7 @@ describe("property signature", () => {
     const file = project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
     const res = removeTypeIgnores(propertySignatureAstToString(propsig));
-    expect(res).toBe("f: Callable[[], None] | None = ...");
+    assert.strictEqual(res, "f: Callable[[], None] | None = ...");
   });
   it("alternatives function", () => {
     const fname = "/a.ts";
@@ -256,7 +267,7 @@ describe("property signature", () => {
     const file = project.getSourceFileOrThrow(fname);
     const [propsig] = file.getDescendantsOfKind(SyntaxKind.PropertySignature);
     const res = removeTypeIgnores(propertySignatureAstToString(propsig));
-    expect(res).toBe("f: (Callable[[], None]) | str = ...");
+    assert.strictEqual(res, "f: (Callable[[], None]) | str = ...");
   });
   it("optional interface function", () => {
     const res = emitFile(`
@@ -265,7 +276,8 @@ describe("property signature", () => {
       }
       declare var Test: X[];
     `);
-    expect(removeTypeIgnores(res.slice(2).join("\n\n"))).toBe(
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(2).join("\n\n")),
       dedent(`\
         Test: JsArray[X_iface] = ...
 
@@ -281,7 +293,8 @@ describe("property signature", () => {
       }
       declare var Test: X[];
     `);
-    expect(removeTypeIgnores(res.slice(2).join("\n\n"))).toBe(
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(2).join("\n\n")),
       dedent(`\
         Test: JsArray[X_iface] = ...
 
@@ -323,7 +336,7 @@ describe("sanitizeReservedWords", () => {
     const file = project.getSourceFileOrThrow("/a.ts");
     const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
     const res = removeTypeIgnores(convertVarDecl(decl));
-    expect(res).toBe("global_: str = ...");
+    assert.strictEqual(res, "global_: str = ...");
   });
 });
 
@@ -346,7 +359,7 @@ it("Constructor reference", () => {
   const file = project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
   const res = removeTypeIgnores(convertVarDecl(decl));
-  expect(res).toBe(expected);
+  assert.strictEqual(res, expected);
 });
 
 it("No args function", () => {
@@ -363,7 +376,7 @@ it("No args function", () => {
   const result = removeTypeIgnores(
     convertFuncDeclGroup(decl.getName(), [decl]),
   );
-  expect(result).toBe(expected);
+  assert.strictEqual(result, expected);
 });
 
 function getBaseNames(
@@ -387,7 +400,7 @@ describe("getBaseNames", () => {
     const decls = file
       .getDescendantsOfKind(SyntaxKind.InterfaceDeclaration)
       .slice(1);
-    expect(getBaseNames(decls)).toStrictEqual(["X_iface"]);
+    assert.deepStrictEqual(getBaseNames(decls), ["X_iface"]);
   });
 
   it("type argument defaults", () => {
@@ -403,9 +416,12 @@ describe("getBaseNames", () => {
     project.createSourceFile("/a.ts", text);
     const file = project.getSourceFileOrThrow("/a.ts");
     const decls = file.getDescendantsOfKind(SyntaxKind.InterfaceDeclaration);
-    expect(getBaseNames([decls[2]])[0]).toBe("X_iface[int | float, str]");
-    expect(getBaseNames([decls[3]])[0]).toBe("X_iface[bool, str]");
-    expect(getBaseNames([decls[4]])[0]).toBe("X_iface[bool, Symbol]");
+    assert.strictEqual(
+      getBaseNames([decls[2]])[0],
+      "X_iface[int | float, str]",
+    );
+    assert.strictEqual(getBaseNames([decls[3]])[0], "X_iface[bool, str]");
+    assert.strictEqual(getBaseNames([decls[4]])[0], "X_iface[bool, Symbol]");
   });
 });
 
@@ -428,7 +444,7 @@ it("Type variable", () => {
   const file = project.getSourceFileOrThrow("/a.ts");
   const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
   const res = removeTypeIgnores(convertVarDecl(decl));
-  expect(res).toBe(expected);
+  assert.strictEqual(res, expected);
 });
 
 function emitFile(text) {
@@ -441,15 +457,15 @@ describe("emit", () => {
   describe("Basic conversions", () => {
     it("string type", () => {
       const res = emitFile("declare var a : string;");
-      expect(removeTypeIgnores(res.at(-1))).toBe("a: str = ...");
+      assert.strictEqual(removeTypeIgnores(res.at(-1)), "a: str = ...");
     });
     it("number type", () => {
       const res = emitFile("declare var a : number;");
-      expect(removeTypeIgnores(res.at(-1))).toBe("a: int | float = ...");
+      assert.strictEqual(removeTypeIgnores(res.at(-1)), "a: int | float = ...");
     });
     it("boolean type", () => {
       const res = emitFile("declare var a : boolean;");
-      expect(removeTypeIgnores(res.at(-1))).toBe("a: bool = ...");
+      assert.strictEqual(removeTypeIgnores(res.at(-1)), "a: bool = ...");
     });
     it("extends", () => {
       const res = emitFile(`
@@ -465,14 +481,13 @@ describe("emit", () => {
             a: A;
         };
       `);
-      expect(
+      assert.strictEqual(
         removeTypeIgnores(
           res
             .slice(1)
             .filter((x) => x.trim())
             .join("\n\n"),
         ),
-      ).toEqual(
         dedent(`
           class x(_JsObject):
               a: ClassVar[A_iface] = ...
@@ -508,14 +523,13 @@ describe("emit", () => {
         }
         declare var SubExample: SubExampleConstructor;
       `);
-      expect(
+      assert.strictEqual(
         removeTypeIgnores(
           res
             .slice(1)
             .filter((x) => x.trim())
             .join("\n\n"),
         ),
-      ).toEqual(
         dedent(`
           class Example(Example_iface, _JsObject):
               @classmethod
@@ -554,14 +568,15 @@ describe("emit", () => {
       class Test_iface(Generic[T], Protocol):
           pass
     `).trim();
-    expect(
+    assert.strictEqual(
       removeTypeIgnores(
         res
           .slice(1)
           .filter((x) => x.trim())
           .join("\n\n"),
       ),
-    ).toEqual(expected);
+      expected,
+    );
   });
   it("options param", () => {
     const res = emitFile(`
@@ -594,14 +609,15 @@ describe("emit", () => {
           cause: str | None = ...
 
     `).trim();
-    expect(
+    assert.strictEqual(
       removeTypeIgnores(
         res
           .slice(1)
           .filter((x) => x.trim())
           .join("\n\n"),
       ),
-    ).toEqual(expected);
+      expected,
+    );
   });
   it("MRO", () => {
     const res = emitFile(`
@@ -623,14 +639,15 @@ describe("emit", () => {
       class B_iface(A_iface, Protocol):
           pass
     `).trim();
-    expect(
+    assert.strictEqual(
       removeTypeIgnores(
         res
           .slice(1)
           .filter((x) => x.trim())
           .join("\n\n"),
       ),
-    ).toEqual(expected);
+      expected,
+    );
   });
   it("concrete classes", () => {
     const res = emitFile(`
@@ -658,14 +675,15 @@ describe("emit", () => {
           stack: str | None = ...
           cause: Any | None = ...
     `).trim();
-    expect(
+    assert.strictEqual(
       removeTypeIgnores(
         res
           .slice(1)
           .filter((x) => x.trim())
           .join("\n\n"),
       ),
-    ).toEqual(expected);
+      expected,
+    );
   });
   it("Iterable", () => {
     const res = emitFile(`\
@@ -674,7 +692,8 @@ describe("emit", () => {
       }
       declare var x: X[];
     `);
-    expect(removeTypeIgnores(res.at(-1))).toBe(
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-1)),
       dedent(`
         class X_iface(Protocol):
             def __iter__(self, /) -> PyIterator[str]: ...
@@ -692,14 +711,16 @@ describe("emit", () => {
       declare var x: X[];
       declare var y: Y[];
     `);
-    expect(removeTypeIgnores(res.at(-2))).toBe(
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-2)),
       dedent(`
         class X_iface(Protocol):
             length: int | float = ...
             def __len__(self, /) -> int: ...
       `).trim(),
     );
-    expect(removeTypeIgnores(res.at(-1))).toBe(
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-1)),
       dedent(`
         class Y_iface(Protocol):
             size: int | float = ...
@@ -718,14 +739,16 @@ describe("emit", () => {
       declare var x: X[];
       declare var y: Y[];
     `);
-    expect(removeTypeIgnores(res.at(-2))).toBe(
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-2)),
       dedent(`
         class X_iface(Protocol):
             def includes(self, v: int | float, /) -> bool: ...
             def __contains__(self, v: int | float, /) -> bool: ...
       `).trim(),
     );
-    expect(removeTypeIgnores(res.at(-1))).toBe(
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-1)),
       dedent(`
         class Y_iface(Protocol):
             def has(self, v: str, /) -> bool: ...
@@ -743,7 +766,8 @@ describe("emit", () => {
       }
       declare var x: X[];
     `);
-    expect(removeTypeIgnores(res.at(-1))).toBe(
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-1)),
       dedent(`
         class X_iface(Protocol):
             def get(self, x: int | float, /) -> str: ...
@@ -761,7 +785,8 @@ describe("emit", () => {
     const res = emitFile(`\
       declare var x: VoidFunction[];
     `);
-    expect(removeTypeIgnores(res.at(-1))).toBe(
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-1)),
       dedent(`
         class VoidFunction_iface(Protocol):
             def __call__(self, /) -> None: ...
@@ -773,18 +798,23 @@ describe("emit", () => {
       declare function f(x: string): void;
       declare function f(y: string): void;
     `);
-    expect(removeTypeIgnores(res.at(-1))).toBe("def f(x: str, /) -> None: ...");
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-1)),
+      "def f(x: str, /) -> None: ...",
+    );
   });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
-      expect(res.at(-1)).toBe(
+      assert.strictEqual(
+        res.at(-1),
         "def setTimeout(handler: TimerHandler, timeout: int | float | None = None, /, *arguments: Any) -> int | JsProxy: ...",
       );
     });
     it("clearTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("clearTimeout"));
-      expect(res.at(-1)).toBe(
+      assert.strictEqual(
+        res.at(-1),
         "def clearTimeout(id: int | JsProxy, /) -> None: ...",
       );
     });
