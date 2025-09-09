@@ -537,13 +537,51 @@ export class Converter {
     }
     const sigIRDestructured = depth2CopySig(sigIR);
     sigIRDestructured.params.pop();
-    const kwargs: ParamIR[] = [];
-    for (const prop of toDestructure.getProperties()) {
+
+    // Get the resolved property types from the actual parameter type instead of the interface definition
+    const decl = sig.getDeclaration() as SignaturedDeclaration;
+    const lastParam = decl.getParameters().at(-1);
+    const paramType = lastParam?.getType();
+
+    const getPropType = (prop: PropertySignature): TypeIR => {
       const name = prop.getName();
       const optional = !!prop.getQuestionTokenNode();
-      const type = this.typeToIR(prop.getTypeNode()!, optional);
-      kwargs.push({ name, type, isOptional: optional });
-    }
+      // Try to get resolved type from the parameter type, fallback to interface definition
+      let type: TypeIR = this.typeToIR(prop.getTypeNode()!, optional);
+      const propSymbol = paramType?.getProperty(name);
+      if (!propSymbol) {
+        return type;
+      }
+      const propType = propSymbol.getTypeAtLocation(lastParam!);
+      // Convert the resolved type by getting a dummy type node
+      // This is a bit hacky. Would be nice to create a synthetic node more
+      // directly.
+      const tempType = propType.getText();
+      if (tempType === prop.getTypeNode()?.getText()) {
+        return type;
+      }
+
+      if (propType.isTypeParameter()) {
+        return { kind: "parameterReference", name: tempType };
+      }
+      // Create a dummy type node from the resolved type text
+      const project = lastParam!.getProject();
+      const tempFile = project.createSourceFile(
+        `__temp__.ts`,
+        `type Temp = ${tempType};`,
+      );
+      const typeAliasDecl = tempFile.getTypeAliases()[0];
+      const dummyTypeNode = typeAliasDecl.getTypeNode()!;
+      const res = this.typeToIR(dummyTypeNode, optional);
+      project.removeSourceFile(tempFile);
+      return res;
+    };
+    const kwargs: ParamIR[] = toDestructure.getProperties().map((prop) => {
+      const name = prop.getName();
+      const isOptional = !!prop.getQuestionTokenNode();
+      const type = getPropType(prop);
+      return { name, type, isOptional };
+    });
     sigIRDestructured.kwparams = kwargs;
     return [sigIR, sigIRDestructured];
   }
