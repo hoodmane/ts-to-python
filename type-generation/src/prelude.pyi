@@ -106,5 +106,5 @@ class _JsObject(metaclass=_JsMeta):
       ...
 
 
-class Record(JsProxy, Generic[S, T]):
+class Record[S, T](JsProxy):
   pass

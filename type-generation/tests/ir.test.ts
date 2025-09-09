@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { getTypeNode, typeToIR } from "./helpers";
+import { getTypeNode, typeToIR, makeProject } from "./helpers";
+import { typeAliasIRToString } from "../src/irToString.ts";
+import { Converter } from "../src/astToIR.ts";
+import { SyntaxKind } from "ts-morph";
 
 function typeToIRHelper(tsType: string) {
   const typeNode = getTypeNode(tsType);
@@ -196,6 +199,67 @@ describe("typeToIR", () => {
             returns: { kind: "simple", text: "None" },
           },
         ],
+      });
+    });
+  });
+  describe("type aliases", () => {
+    it("simple type alias", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        type MyString = string;
+        declare var x: MyString;
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const varDecl = file.getFirstDescendantByKind(
+        SyntaxKind.VariableDeclaration,
+      )!;
+      const typeRef = varDecl.getTypeNode()!;
+      const ident = typeRef.getFirstDescendantByKind(SyntaxKind.Identifier)!;
+
+      const converter = new Converter();
+      const ir = converter.identToIR(ident);
+
+      assert.deepStrictEqual(ir, {
+        kind: "typeAlias",
+        name: "MyString",
+        type: { kind: "simple", text: "str" },
+        typeParams: [],
+      });
+    });
+
+    it("generic type alias", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        type MyType<T> = T | string;
+        declare var x: MyType<number>;
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const varDecl = file.getFirstDescendantByKind(
+        SyntaxKind.VariableDeclaration,
+      )!;
+      const typeRef = varDecl.getTypeNode()!;
+      const ident = typeRef.getFirstDescendantByKind(SyntaxKind.Identifier)!;
+
+      const converter = new Converter();
+      const ir = converter.identToIR(ident);
+
+      assert.deepStrictEqual(ir, {
+        kind: "typeAlias",
+        name: "MyType",
+        type: {
+          kind: "union",
+          types: [
+            { kind: "parameterReference", name: "T" },
+            { kind: "simple", text: "str" },
+          ],
+        },
+        typeParams: ["T"],
       });
     });
   });

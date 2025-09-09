@@ -435,7 +435,7 @@ it("Type variable", () => {
     declare var Test: TestConstructor;
     `;
   const expected = dedent(`
-    class Test[T](Test_iface):
+    class Test[T](Test_iface[T]):
         @classmethod
         def new(self, /) -> Test[T]: ...
   `).trim();
@@ -838,6 +838,21 @@ describe("emit", () => {
       dedent(`
         @overload
         def g(x: X_iface, /) -> None: ...
+      `).trim(),
+    );
+  });
+  it("Type alias param", () => {
+    const res = emitFile(`\
+      interface I<T> {
+        t : T;
+      }
+      type F<T> = I<T> | number;
+      declare function f(): F<string>;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res[1]),
+      dedent(`
+        type F[T] = I_iface[T] | int | float
       `).trim(),
     );
   });

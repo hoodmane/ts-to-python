@@ -142,6 +142,7 @@ export type TypeAliasIR = {
   kind: "typeAlias";
   name: string;
   type: TypeIR;
+  typeParams: string[];
 };
 
 export type TopLevelIR = DeclarationIR | InterfaceIR | TypeAliasIR | CallableIR;
@@ -712,6 +713,9 @@ export class Converter {
         m.isKind(SyntaxKind.PropertySignature) && m.getName() === "prototype",
     );
     let members: TypeElementTypes[] = [];
+
+    // Collect type parameters from interfaces referenced in prototypes
+    let inheritedTypeParams: string[] = [];
     for (const proto of prototypes) {
       const typeNode = proto.getTypeNode();
       if (!Node.isTypeReference(typeNode)) {
@@ -726,6 +730,22 @@ export class Converter {
       const typeArgs = getInterfaceTypeArgs(ident);
       this.addNeededInterface(ident);
       bases.push({ name, typeArgs });
+
+      // Extract type parameters from the referenced interface
+      const interfaceDefs = ident
+        .getDefinitionNodes()
+        .filter(Node.isInterfaceDeclaration);
+      for (const interfaceDef of interfaceDefs) {
+        const interfaceTypeParams = interfaceDef
+          .getTypeParameters()
+          .map((p) => p.getName());
+        inheritedTypeParams.push(...interfaceTypeParams);
+      }
+    }
+
+    // Use inherited type parameters if none were explicitly provided
+    if (typeParams.length === 0) {
+      typeParams = [...new Set(inheritedTypeParams)];
     }
     return this.interfaceToIR(
       name,
@@ -859,7 +879,10 @@ export class Converter {
         throw new Error("Unhandled");
       case "typeAlias":
         const type = this.typeToIR(classified.decl.getTypeNode()!);
-        return { kind: "typeAlias", name, type };
+        const aliasTypeParams = classified.decl
+          .getTypeParameters()
+          .map((p) => p.getName());
+        return { kind: "typeAlias", name, type, typeParams: aliasTypeParams };
       case "varDecl":
         console.warn("Skipping varDecl", ident.getText());
     }
