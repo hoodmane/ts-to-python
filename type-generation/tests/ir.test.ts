@@ -701,5 +701,65 @@ describe("typeToIR", () => {
         text: "str",
       });
     });
+
+    it("complex destructured interface with multiple type parameters", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        interface Xiface<R> {
+          r: R;
+        }
+
+        interface Size<T = any> {
+          (chunk: T): number;
+        }
+
+        interface S<T> {
+          t: T;
+          s: Size<T>
+        }
+
+        declare var X: {
+          new<R = any>(source: R, strategy?: S<R>): Xiface<R>;
+        };
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const varDecl = file.getFirstDescendantByKind(
+        SyntaxKind.VariableDeclaration,
+      )!;
+      const typeLiteral = varDecl
+        .getTypeNode()!
+        .asKind(SyntaxKind.TypeLiteral)!;
+      const constructSignatures = typeLiteral.getConstructSignatures();
+      const signatures = constructSignatures.map((cs) => cs.getSignature());
+
+      const converter = new Converter();
+      const ir = converter.callableToIR("new", signatures, true);
+
+      // Should have 2 signatures: 1 original + 1 destructured
+      assert.strictEqual(ir.signatures.length, 2);
+
+      // All signatures should have type parameters
+      assert.deepStrictEqual(ir.signatures[0].typeParams, ["R"]);
+      assert.deepStrictEqual(ir.signatures[1].typeParams, ["R"]);
+
+      // Second and fourth signatures should have destructured kwparams with resolved types
+      assert.strictEqual(ir.signatures[1].kwparams?.length, 2);
+      assert.strictEqual(ir.signatures[1].kwparams?.[0].name, "t");
+      assert.strictEqual(ir.signatures[1].kwparams?.[1].name, "s");
+
+      // The destructured properties should resolve T -> R
+      assert.deepStrictEqual(ir.signatures[1].kwparams?.[0].type, {
+        kind: "parameterReference",
+        name: "R",
+      });
+      assert.deepStrictEqual(ir.signatures[1].kwparams?.[1].type, {
+        kind: "reference",
+        name: "Size_iface",
+        typeArgs: [{ kind: "parameterReference", name: "R" }],
+      });
+    });
   });
 });
