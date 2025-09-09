@@ -454,4 +454,252 @@ describe("typeToIR", () => {
       });
     });
   });
+  describe("per-signature type parameters", () => {
+    it("mixed constructor overloads with different type params", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        interface XIface<T> {
+          x: T;
+        }
+        interface XConstructor {
+          new (x?: number): XIface<any>;
+          new <T>(x: number): XIface<T>;
+        }
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const interfaces = file.getDescendantsOfKind(
+        SyntaxKind.InterfaceDeclaration,
+      );
+      const constructorInterface = interfaces.find(
+        (decl) => decl.getName() === "XConstructor",
+      )!;
+      const constructors = constructorInterface
+        .getConstructSignatures()
+        .map((decl) => decl.getSignature());
+
+      const converter = new Converter();
+      const ir = converter.callableToIR("new", constructors, true);
+
+      assert.deepStrictEqual(ir, {
+        kind: "callable",
+        name: "new",
+        signatures: [
+          {
+            params: [
+              {
+                name: "x",
+                type: { kind: "number" },
+                isOptional: true,
+              },
+            ],
+            spreadParam: undefined,
+            returns: {
+              kind: "reference",
+              name: "XIface_iface",
+              typeArgs: [{ kind: "simple", text: "Any" }],
+            },
+          },
+          {
+            params: [
+              {
+                name: "x",
+                type: { kind: "number" },
+                isOptional: false,
+              },
+            ],
+            spreadParam: undefined,
+            returns: {
+              kind: "reference",
+              name: "XIface_iface",
+              typeArgs: [{ kind: "parameterReference", name: "T" }],
+            },
+            typeParams: ["T"],
+          },
+        ],
+        isStatic: true,
+      });
+    });
+
+    it("interface method with destructured parameters preserves type params", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        interface Options<T> {
+          value: T;
+        }
+        interface Test {
+          method<T>(x: T, options?: Options<T>): T[];
+        }
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const interfaces = file.getDescendantsOfKind(
+        SyntaxKind.InterfaceDeclaration,
+      );
+      const testInterface = interfaces.find(
+        (decl) => decl.getName() === "Test",
+      )!;
+      const method = testInterface.getFirstDescendantByKind(
+        SyntaxKind.MethodSignature,
+      )!;
+      const signature = method.getSignature();
+
+      const converter = new Converter();
+      const ir = converter.callableToIR("method", [signature], false);
+
+      // Should have 2 signatures: original and destructured
+      assert.strictEqual(ir.signatures.length, 2);
+
+      // Both signatures should have type parameters
+      assert.deepStrictEqual(ir.signatures[0].typeParams, ["T"]);
+      assert.deepStrictEqual(ir.signatures[1].typeParams, ["T"]);
+
+      // Second signature should have destructured kwparams
+      assert.strictEqual(ir.signatures[1].kwparams?.length, 1);
+      assert.strictEqual(ir.signatures[1].kwparams?.[0].name, "value");
+      assert.deepStrictEqual(ir.signatures[1].kwparams?.[0].type, {
+        kind: "parameterReference",
+        name: "T",
+      });
+    });
+
+    it("function with multiple overloads each with different type params", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        declare function process<T>(input: T): T;
+        declare function process<U, V>(first: U, second: V): U | V;
+        `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const funcDecls = file.getDescendantsOfKind(
+        SyntaxKind.FunctionDeclaration,
+      );
+
+      const converter = new Converter();
+      const ir = converter.funcDeclsToIR("process", funcDecls);
+
+      assert.strictEqual(ir.signatures.length, 2);
+
+      // First signature should have typeParams: ["T"]
+      assert.deepStrictEqual(ir.signatures[0].typeParams, ["T"]);
+      assert.deepStrictEqual(ir.signatures[0].returns, {
+        kind: "parameterReference",
+        name: "T",
+      });
+
+      // Second signature should have typeParams: ["U", "V"]
+      assert.deepStrictEqual(ir.signatures[1].typeParams, ["U", "V"]);
+      assert.deepStrictEqual(ir.signatures[1].returns, {
+        kind: "union",
+        types: [
+          { kind: "parameterReference", name: "U" },
+          { kind: "parameterReference", name: "V" },
+        ],
+      });
+    });
+
+    it("destructured type parameter resolution", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        interface X<R> {
+          r: R;
+        }
+
+        interface S<T> {
+          t: T;
+        }
+
+        declare var X: {
+          new<R = any>(source: R, strategy?: S<R>): X<R>;
+        };
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const varDecl = file.getFirstDescendantByKind(
+        SyntaxKind.VariableDeclaration,
+      )!;
+      const typeLiteral = varDecl
+        .getTypeNode()!
+        .asKind(SyntaxKind.TypeLiteral)!;
+      const constructSignature = typeLiteral.getConstructSignatures()[0];
+      const signature = constructSignature.getSignature();
+
+      const converter = new Converter();
+      const ir = converter.callableToIR("new", [signature], true);
+
+      // Should have 2 signatures: original and destructured
+      assert.strictEqual(ir.signatures.length, 2);
+
+      // Both signatures should have type parameters
+      assert.deepStrictEqual(ir.signatures[0].typeParams, ["R"]);
+      assert.deepStrictEqual(ir.signatures[1].typeParams, ["R"]);
+
+      // Second signature should have destructured kwparams with resolved type
+      assert.strictEqual(ir.signatures[1].kwparams?.length, 1);
+      assert.strictEqual(ir.signatures[1].kwparams?.[0].name, "t");
+
+      // The destructured property should resolve T -> R
+      assert.deepStrictEqual(ir.signatures[1].kwparams?.[0].type, {
+        kind: "parameterReference",
+        name: "R",
+      });
+    });
+
+    it("destructured type parameter resolution with concrete type", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        interface X<R> {
+          r: R;
+        }
+
+        interface S<T> {
+          t: T;
+        }
+
+        declare var X: {
+          new<R = any>(source: R, strategy?: S<string>): X<R>;
+        };
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const varDecl = file.getFirstDescendantByKind(
+        SyntaxKind.VariableDeclaration,
+      )!;
+      const typeLiteral = varDecl
+        .getTypeNode()!
+        .asKind(SyntaxKind.TypeLiteral)!;
+      const constructSignature = typeLiteral.getConstructSignatures()[0];
+      const signature = constructSignature.getSignature();
+
+      const converter = new Converter();
+      const ir = converter.callableToIR("new", [signature], true);
+
+      // Should have 2 signatures: original and destructured
+      assert.strictEqual(ir.signatures.length, 2);
+
+      // Both signatures should have type parameters
+      assert.deepStrictEqual(ir.signatures[0].typeParams, ["R"]);
+      assert.deepStrictEqual(ir.signatures[1].typeParams, ["R"]);
+
+      // Second signature should have destructured kwparams with resolved type
+      assert.strictEqual(ir.signatures[1].kwparams?.length, 1);
+      assert.strictEqual(ir.signatures[1].kwparams?.[0].name, "t");
+
+      // The destructured property should resolve T -> string
+      assert.deepStrictEqual(ir.signatures[1].kwparams?.[0].type, {
+        kind: "simple",
+        text: "str",
+      });
+    });
+  });
 });

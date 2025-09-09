@@ -933,6 +933,60 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("Unpacking and type params 2", () => {
+    const res = emitFile(`\
+      interface X<R> {
+        r: R;
+      }
+
+      interface S<T> {
+        t: T;
+      }
+
+      declare var X: {
+        new<R = any>(source: R, strategy?: S<R>): X<R>;
+      };
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res[1]),
+      dedent(`
+        class X(_JsObject):
+            @classmethod
+            @overload
+            def new[R](self, source: R, strategy: S_iface[R] | None = None, /) -> X[R]: ...
+            @classmethod
+            @overload
+            def new[R](self, source: R, /, *, t: R) -> X[R]: ...
+      `).trim(),
+    );
+  });
+  it("Unpacking and type params 3", () => {
+    const res = emitFile(`\
+      interface X<R> {
+        r: R;
+      }
+
+      interface S<T> {
+        t: T;
+      }
+
+      declare var X: {
+        new<R = any>(source: R, strategy?: S<string>): X<R>;
+      };
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res[1]),
+      dedent(`
+        class X(_JsObject):
+            @classmethod
+            @overload
+            def new[R](self, source: R, strategy: S_iface[str] | None = None, /) -> X[R]: ...
+            @classmethod
+            @overload
+            def new[R](self, source: R, /, *, t: str) -> X[R]: ...
+      `).trim(),
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
