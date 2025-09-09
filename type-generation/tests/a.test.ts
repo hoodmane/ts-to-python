@@ -803,6 +803,31 @@ describe("emit", () => {
       "def f(x: str, /) -> None: ...",
     );
   });
+  it("extends string ==> str in function type param", () => {
+    const res = emitFile(`\
+      declare function f<T extends string>(x: T): void;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-1)),
+      "def f(x: str, /) -> None: ...",
+    );
+  });
+  it("extends string ==> str in interface", () => {
+    const res = emitFile(`\
+      declare interface X<K extends string> {
+        f(k: K): void;
+      }
+        declare var x: X;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-1)),
+      dedent(`
+        class x(_JsObject):
+            @classmethod
+            def f(self, k: str, /) -> None: ...
+      `).trim(),
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
@@ -820,3 +845,8 @@ describe("emit", () => {
     });
   });
 });
+
+interface I<T> {
+  f<T>(x: T): void;
+  g(x: T): void;
+}

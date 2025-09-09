@@ -234,11 +234,15 @@ const operatorToName = {
 
 export class Converter {
   funcTypeParams: Set<string>;
+  funcTypeParamConstraints: Map<string, string>;
+  ifaceTypeParamConstraints: Map<string, string>;
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
 
   constructor() {
     this.funcTypeParams = new Set();
+    this.funcTypeParamConstraints = new Map();
+    this.ifaceTypeParamConstraints = new Map();
     this.neededSet = new Set();
     this.convertedSet = new Set(BUILTIN_NAMES);
   }
@@ -252,6 +256,21 @@ export class Converter {
 
   addNeededInterface(ident: Identifier): void {
     this.neededSet.add({ type: "interface", ident });
+  }
+
+  setIfaceTypeConstraints(ifaces: InterfaceDeclaration[]) {
+    // Set type parameter constraints for interface type parameters
+    for (const iface of ifaces) {
+      for (const param of iface.getTypeParameters()) {
+        const constraint = param.getConstraint();
+        if (constraint) {
+          this.ifaceTypeParamConstraints.set(
+            param.getName(),
+            constraint.getText(),
+          );
+        }
+      }
+    }
   }
 
   typeOperatorToIR(typeNode: TypeOperatorTypeNode): TypeOperatorTypeIR {
@@ -329,6 +348,16 @@ export class Converter {
     const ident = typeNode.getTypeName();
     if (typeNode.getType().isTypeParameter()) {
       const name = ident.getText();
+
+      // If type parameter extends string, translate to str directly
+      // This doesn't work correctly if a function type param shadows an interface type param.
+      // We can fix that if we have to.
+      const funcConstraint = this.funcTypeParamConstraints.get(name);
+      const interfaceConstraint = this.ifaceTypeParamConstraints.get(name);
+      if (funcConstraint === "string" || interfaceConstraint === "string") {
+        return simpleType("str");
+      }
+
       this.funcTypeParams.add(name);
       return { kind: "parameterReference", name };
     }
@@ -418,8 +447,19 @@ export class Converter {
   }
 
   sigToIR(sig: Signature): SigIR {
-    const decl = sig.getDeclaration() as SignaturedDeclaration;
+    const decl = sig.getDeclaration() as CallSignatureDeclaration;
     try {
+      // Collect type parameter constraints
+      for (const param of decl.getTypeParameters()) {
+        const constraint = param.getConstraint();
+        if (constraint) {
+          this.funcTypeParamConstraints.set(
+            param.getName(),
+            constraint.getText(),
+          );
+        }
+      }
+
       const pyParams: ParamIR[] = [];
       let spreadParam: ParamIR;
       for (const param of decl.getParameters()) {
@@ -452,6 +492,9 @@ export class Converter {
       console.warn("failed to convert", sig.getDeclaration().getText());
       console.warn(getNodeLocation(sig.getDeclaration()));
       throw e;
+    } finally {
+      // Clear type parameter constraints after processing signature
+      this.funcTypeParamConstraints.clear();
     }
   }
 
@@ -731,10 +774,16 @@ export class Converter {
     }
     if (classified.kind === "varDecl" || classified.kind === "interfaces") {
       const { ifaces } = classified;
+      this.setIfaceTypeConstraints(ifaces);
       const typeParams = ifaces
         .flatMap((i) => i.getTypeParameters())
+        .filter((p) => {
+          const constraint = p.getConstraint();
+          // Filter out type parameters that extend string since they get replaced with str
+          return !(constraint && constraint.getText() === "string");
+        })
         .map((p) => p.getName());
-      return this.membersDeclarationToIR(
+      const result = this.membersDeclarationToIR(
         name,
         {
           getMembers: () => ifaces.flatMap((iface) => iface.getMembers()),
@@ -742,6 +791,10 @@ export class Converter {
         [],
         typeParams,
       );
+
+      this.ifaceTypeParamConstraints.clear();
+
+      return result;
     }
     if (classified.kind === "class") {
       return declarationIR(name, simpleType(classified.decl.getName()));
@@ -874,11 +927,18 @@ export function convertDecls(
         .getDefinitionNodes()
         .filter(Node.isInterfaceDeclaration);
       if (defs.length) {
+        // Set type parameter constraints for interface type parameters
+        converter.setIfaceTypeConstraints(defs);
         const baseNames = converter
           .getBasesOfDecls(defs)
           .filter((base) => base.name !== name);
         const typeParams = defs
           .flatMap((i) => i.getTypeParameters())
+          .filter((p) => {
+            const constraint = p.getConstraint();
+            // Filter out type parameters that extend string since they get replaced with str
+            return !(constraint && constraint.getText() === "string");
+          })
           .map((p) => p.getName());
         const res = converter.interfaceToIR(
           name,
@@ -889,6 +949,9 @@ export function convertDecls(
           typeParams,
         );
         pushTopLevel(res);
+
+        // Clear interface type parameter constraints after processing interface
+        converter.ifaceTypeParamConstraints.clear();
         continue;
       }
       // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
