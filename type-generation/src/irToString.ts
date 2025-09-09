@@ -281,7 +281,7 @@ export function propertyIRToString(
 }
 
 export function callableIRToString(
-  { name, signatures: sigs, isStatic, typeParams }: CallableIR,
+  { name, signatures: sigs, isStatic }: CallableIR,
   isMethod: boolean,
   numberType?: string,
 ): string[] {
@@ -291,7 +291,6 @@ export function callableIRToString(
     numberType,
     isMethod,
     decorators,
-    typeParams,
   });
 }
 
@@ -303,7 +302,6 @@ function sigIRListToString(
     numberType?: string;
     isMethod?: boolean;
     decorators?: string[];
-    typeParams?: string[];
   },
 ): string[] {
   irSigs = uniqBy(irSigs, (sig) => {
@@ -364,14 +362,12 @@ function irSigToString(
     topLevelName,
     decorators = [],
     isMethod,
-    typeParams,
   }: {
     variance?: Variance;
     topLevelName?: string;
     numberType?: string;
     decorators?: string[];
     isMethod?: boolean;
-    typeParams?: string[];
   },
 ): string {
   const pySig = irSigToPySig(irSig, { variance, numberType });
@@ -381,7 +377,7 @@ function irSigToString(
       pySig,
       decorators,
       isMethod,
-      typeParams,
+      irSig.typeParams,
     );
   }
   // TODO: consider warning here if interesting values are provided for the

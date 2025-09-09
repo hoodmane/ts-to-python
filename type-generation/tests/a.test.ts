@@ -437,7 +437,7 @@ it("Type variable", () => {
   const expected = dedent(`
     class Test[T](Test_iface[T]):
         @classmethod
-        def new(self, /) -> Test[T]: ...
+        def new[T](self, /) -> Test[T]: ...
   `).trim();
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
@@ -561,7 +561,7 @@ describe("emit", () => {
     const expected = dedent(`
       class Test[T](Test_iface[T], _JsObject):
           @classmethod
-          def new(self, /) -> Test[T]: ...
+          def new[T](self, /) -> Test[T]: ...
 
       class Test_iface[T](Protocol):
           pass
@@ -864,6 +864,46 @@ describe("emit", () => {
       removeTypeIgnores(res[1]),
       dedent(`
         def f[T](x: T, /) -> T: ...
+      `).trim(),
+    );
+  });
+  it("Interface method type param", () => {
+    const res = emitFile(`\
+      interface I {
+        f<T>(x: T): T;
+      }
+      declare var x: I;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res[1]),
+      dedent(`
+        class x(_JsObject):
+            @classmethod
+            def f[T](self, x: T, /) -> T: ...
+      `).trim(),
+    );
+  });
+  it("some constructors have type params, others do not", () => {
+    const res = emitFile(`\
+      interface XIface<T> {
+        x : T;
+      }
+      interface XConstructor {
+          new (x?: number): XIface<any>;
+          new <T>(x: number): XIface<T>;
+      }
+      declare var X: XConstructor;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res[1]),
+      dedent(`
+        class X(_JsObject):
+            @classmethod
+            @overload
+            def new(self, x: int | float | None = None, /) -> XIface_iface[Any]: ...
+            @classmethod
+            @overload
+            def new[T](self, x: int | float, /) -> XIface_iface[T]: ...
       `).trim(),
     );
   });
