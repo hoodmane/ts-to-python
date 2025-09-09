@@ -361,13 +361,33 @@ export class Converter {
       this.funcTypeParams.add(name);
       return { kind: "parameterReference", name };
     }
-    const typeArgs = getExpressionTypeArgs(ident, typeNode).map((ty) =>
+    let typeArgs = getExpressionTypeArgs(ident, typeNode).map((ty) =>
       this.typeToIR(ty),
     );
     if (Node.isQualifiedName(ident)) {
       return ANY_IR;
     }
     const { name, kind } = classifyIdentifier(ident);
+
+    // Filter out type arguments that correspond to type parameters that extend string
+    if (kind === "interfaces") {
+      const interfaceDefs = (ident as Identifier)
+        .getDefinitionNodes()
+        .filter(Node.isInterfaceDeclaration);
+      if (interfaceDefs.length > 0) {
+        const typeParams = interfaceDefs[0].getTypeParameters();
+        typeArgs = typeArgs.filter((_, index) => {
+          if (index < typeParams.length) {
+            const param = typeParams[index];
+            const constraint = param.getConstraint();
+            // Filter out if this type parameter extends string
+            return !(constraint && constraint.getText() === "string");
+          }
+          return true;
+        });
+      }
+    }
+
     if (!this.convertedSet.has(name)) {
       if (kind === "interfaces") {
         this.addNeededInterface(ident);
