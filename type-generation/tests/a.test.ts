@@ -987,6 +987,39 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("Unpacking and type params 4", () => {
+    const res = emitFile(`\
+      interface Xiface<R> {
+        r: R;
+      }
+
+      interface Size<T = any> {
+        (chunk: T): number;
+      }
+
+      interface S<T> {
+        t: T;
+        s: Size<T>
+      }
+
+      declare var X: {
+        new<R = any>(source: R, strategy?: S<R>): Xiface<R>;
+      };
+    `);
+    console.log(removeTypeIgnores(res[1]));
+    assert.strictEqual(
+      removeTypeIgnores(res[1]),
+      dedent(`
+        class X(_JsObject):
+            @classmethod
+            @overload
+            def new[R](self, source: R, strategy: S_iface[R] | None = None, /) -> Xiface_iface[R]: ...
+            @classmethod
+            @overload
+            def new[R](self, source: R, /, *, t: R, s: Size_iface[R]) -> Xiface_iface[R]: ...
+      `).trim(),
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));

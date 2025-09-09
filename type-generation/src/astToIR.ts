@@ -566,14 +566,26 @@ export class Converter {
       }
       // Create a dummy type node from the resolved type text
       const project = lastParam!.getProject();
+
+      // Include type parameters in the temporary type definition
+      const sigTypeParams = sigIR.typeParams || [];
+      const typeParamsString =
+        sigTypeParams.length > 0 ? `<${sigTypeParams.join(", ")}>` : "";
+
       const tempFile = project.createSourceFile(
-        `__temp__.ts`,
-        `type Temp = ${tempType};`,
+        `__temp__${Math.random()}.ts`,
+        `type Temp${typeParamsString} = ${tempType};`,
       );
       const typeAliasDecl = tempFile.getTypeAliases()[0];
       const dummyTypeNode = typeAliasDecl.getTypeNode()!;
+
+      // Make sure signature's type parameters are available during processing
+      for (const param of sigTypeParams) {
+        this.funcTypeParams.add(param);
+      }
+
       const res = this.typeToIR(dummyTypeNode, optional);
-      project.removeSourceFile(tempFile);
+      // Don't remove the temp file, it causes crashes. TODO: Fix this?
       return res;
     };
     const kwargs: ParamIR[] = toDestructure.getProperties().map((prop) => {
