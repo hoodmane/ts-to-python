@@ -1,5 +1,5 @@
 import { Project, SyntaxKind } from "ts-morph";
-import { Converter as AstConverter } from "../astToIR";
+import { Converter as AstConverter } from "../src/astToIR";
 import { TypeNode } from "ts-morph";
 
 export function typeToIR(t: TypeNode) {
