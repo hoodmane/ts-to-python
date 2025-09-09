@@ -6,7 +6,7 @@ jobs:
   js-unit:
     executor:
       name: node/default
-      tag: 20.10.0
+      tag: "24.7"
     steps:
       - checkout
       - node/install-packages:
@@ -18,7 +18,7 @@ jobs:
   generate:
     executor:
       name: node/default
-      tag: 20.10.0
+      tag: "24.7"
     steps:
       - checkout
       - node/install-packages:
