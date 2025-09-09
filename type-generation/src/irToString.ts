@@ -182,9 +182,18 @@ export function declarationIRToString({ name, type }: DeclarationIR): string {
   return simpleDeclaration(name, typeStr);
 }
 
-export function typeAliasIRToString({ name, type }: TypeAliasIR): string {
+export function typeAliasIRToString({
+  name,
+  type,
+  typeParams,
+}: TypeAliasIR): string {
   const typeStr = typeIRToString(type);
-  return `${name} = ${typeStr}`;
+  let typeParamsString = "";
+  if (typeParams.length > 0) {
+    typeParamsString = `[${typeParams.join(", ")}]`;
+  }
+
+  return `type ${name}${typeParamsString} = ${typeStr}`;
 }
 
 export function interfaceIRToString({
