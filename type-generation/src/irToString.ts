@@ -141,11 +141,18 @@ function pySigToDeclarationString(
   sig: PySig,
   decorators: string[] = [],
   isMethod: boolean = true,
+  typeParams?: string[],
 ): string {
   if (isIllegal(name)) {
     return "";
   }
   name = sanitizeReservedWords(name);
+
+  let typeParamsString = "";
+  if (typeParams && typeParams.length > 0) {
+    typeParamsString = `[${typeParams.join(", ")}]`;
+  }
+
   const formattedParams = sig.params.map(pyParamToString);
   if (isMethod) {
     formattedParams.unshift("self");
@@ -164,7 +171,7 @@ function pySigToDeclarationString(
   const joinedParams = formattedParams.join(", ");
   const decs = decorators.map((x) => "@" + x + "\n").join("");
   return (
-    `${decs}def ${name}(${joinedParams}) -> ${sig.returns}: ...` +
+    `${decs}def ${name}${typeParamsString}(${joinedParams}) -> ${sig.returns}: ...` +
     METHOD_TYPE_IGNORES
   );
 }
@@ -274,7 +281,7 @@ export function propertyIRToString(
 }
 
 export function callableIRToString(
-  { name, signatures: sigs, isStatic }: CallableIR,
+  { name, signatures: sigs, isStatic, typeParams }: CallableIR,
   isMethod: boolean,
   numberType?: string,
 ): string[] {
@@ -284,6 +291,7 @@ export function callableIRToString(
     numberType,
     isMethod,
     decorators,
+    typeParams,
   });
 }
 
@@ -295,6 +303,7 @@ function sigIRListToString(
     numberType?: string;
     isMethod?: boolean;
     decorators?: string[];
+    typeParams?: string[];
   },
 ): string[] {
   irSigs = uniqBy(irSigs, (sig) => {
@@ -355,17 +364,25 @@ function irSigToString(
     topLevelName,
     decorators = [],
     isMethod,
+    typeParams,
   }: {
     variance?: Variance;
     topLevelName?: string;
     numberType?: string;
     decorators?: string[];
     isMethod?: boolean;
+    typeParams?: string[];
   },
 ): string {
   const pySig = irSigToPySig(irSig, { variance, numberType });
   if (topLevelName) {
-    return pySigToDeclarationString(topLevelName, pySig, decorators, isMethod);
+    return pySigToDeclarationString(
+      topLevelName,
+      pySig,
+      decorators,
+      isMethod,
+      typeParams,
+    );
   }
   // TODO: consider warning here if interesting values are provided for the
   // stuff we're ignoring...
