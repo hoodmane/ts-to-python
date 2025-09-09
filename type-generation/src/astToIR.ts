@@ -77,6 +77,7 @@ export type SigIR = {
   spreadParam?: ParamIR;
   kwparams?: ParamIR[];
   returns: TypeIR;
+  typeParams?: string[];
 };
 
 /**
@@ -101,7 +102,6 @@ export type CallableIR = {
   name?: string;
   signatures: SigIR[];
   isStatic?: boolean;
-  typeParams?: string[];
 };
 
 export type PropertyIR = {
@@ -501,7 +501,14 @@ export class Converter {
       }
       const retNode = decl.getReturnTypeNode()!;
       const returns = this.typeToIR(retNode);
-      return { params: pyParams, spreadParam, returns };
+
+      // Extract type parameters for this specific signature
+      const typeParams = this.getTypeParamsFromDecl(decl);
+      const result: SigIR = { params: pyParams, spreadParam, returns };
+      if (typeParams.length > 0) {
+        result.typeParams = typeParams;
+      }
+      return result;
     } catch (e) {
       console.warn("failed to convert", sig.getDeclaration().getText());
       console.warn(getNodeLocation(sig.getDeclaration()));
@@ -546,12 +553,20 @@ export class Converter {
     isStatic?: boolean,
   ): CallableIR {
     const sigs = signatures.flatMap((sig) => this.sigToIRDestructure(sig));
-    return { kind: "callable", name, signatures: sigs, isStatic };
+
+    const result: CallableIR = {
+      kind: "callable",
+      name,
+      signatures: sigs,
+      isStatic,
+    };
+
+    return result;
   }
 
-  getTypeParamsFromDecls<T extends TypeParameteredNode>(decls: T[]): string[] {
-    return decls
-      .flatMap((decl) => decl.getTypeParameters())
+  getTypeParamsFromDecl<T extends TypeParameteredNode>(decl: T): string[] {
+    return decl
+      .getTypeParameters()
       .filter((p) => {
         const constraint = p.getConstraint();
         // Filter out type parameters that extend string since they get replaced with str
@@ -560,13 +575,13 @@ export class Converter {
       .map((p) => p.getName());
   }
 
+  getTypeParamsFromDecls<T extends TypeParameteredNode>(decls: T[]): string[] {
+    return decls.flatMap((decl) => this.getTypeParamsFromDecl(decl));
+  }
+
   funcDeclsToIR(name: string, decls: FunctionDeclaration[]): CallableIR {
     const astSigs = decls.map((x) => x.getSignature());
-    const typeParams = this.getTypeParamsFromDecls(decls);
     const result = this.callableToIR(name, astSigs, false);
-    if (typeParams.length > 0) {
-      result.typeParams = [...new Set(typeParams)]; // deduplicate
-    }
     return result;
   }
 

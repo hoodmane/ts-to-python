@@ -260,10 +260,136 @@ describe("typeToIR", () => {
             ],
             spreadParam: undefined,
             returns: { kind: "parameterReference", name: "T" },
+            typeParams: ["T"],
           },
         ],
         isStatic: false,
-        typeParams: ["T"],
+      });
+    });
+  });
+  describe("interface method type params", () => {
+    it("simple interface method", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        interface Test {
+          method(x: string): void;
+        }
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const iface = file.getFirstDescendantByKind(
+        SyntaxKind.InterfaceDeclaration,
+      )!;
+      const method = iface.getFirstDescendantByKind(
+        SyntaxKind.MethodSignature,
+      )!;
+      const signature = method.getSignature();
+
+      const converter = new Converter();
+      const ir = converter.callableToIR("method", [signature], false);
+
+      assert.deepStrictEqual(ir, {
+        kind: "callable",
+        name: "method",
+        signatures: [
+          {
+            params: [
+              {
+                name: "x",
+                type: { kind: "simple", text: "str" },
+                isOptional: false,
+              },
+            ],
+            spreadParam: undefined,
+            returns: { kind: "simple", text: "None" },
+          },
+        ],
+        isStatic: false,
+      });
+    });
+
+    it("generic interface method", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        interface Test {
+          method<T>(x: T): T;
+        }
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const iface = file.getFirstDescendantByKind(
+        SyntaxKind.InterfaceDeclaration,
+      )!;
+      const method = iface.getFirstDescendantByKind(
+        SyntaxKind.MethodSignature,
+      )!;
+      const signature = method.getSignature();
+
+      const converter = new Converter();
+      const ir = converter.callableToIR("method", [signature], false);
+
+      assert.deepStrictEqual(ir, {
+        kind: "callable",
+        name: "method",
+        signatures: [
+          {
+            params: [
+              {
+                name: "x",
+                type: { kind: "parameterReference", name: "T" },
+                isOptional: false,
+              },
+            ],
+            spreadParam: undefined,
+            returns: { kind: "parameterReference", name: "T" },
+            typeParams: ["T"],
+          },
+        ],
+        isStatic: false,
+      });
+    });
+
+    it("constructor method (should not have type params)", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        interface TestConstructor {
+          new<T>(): Test<T>;
+        }
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const iface = file.getFirstDescendantByKind(
+        SyntaxKind.InterfaceDeclaration,
+      )!;
+      const constructors = iface
+        .getConstructSignatures()
+        .map((decl) => decl.getSignature());
+
+      const converter = new Converter();
+      const ir = converter.callableToIR("new", constructors, true);
+
+      assert.deepStrictEqual(ir, {
+        kind: "callable",
+        name: "new",
+        signatures: [
+          {
+            params: [],
+            spreadParam: undefined,
+            returns: {
+              kind: "reference",
+              name: "Test_iface",
+              typeArgs: [{ kind: "parameterReference", name: "T" }],
+            },
+            typeParams: ["T"],
+          },
+        ],
+        isStatic: true,
       });
     });
   });
