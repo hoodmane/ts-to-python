@@ -353,7 +353,7 @@ describe("typeToIR", () => {
       });
     });
 
-    it("constructor method (should not have type params)", () => {
+    it("constructor method", () => {
       const project = makeProject();
       project.createSourceFile(
         "/test.ts",
