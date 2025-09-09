@@ -97,10 +97,6 @@ function adjustIR(topLevels: TopLevels): void {
 
 export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
   adjustIR(topLevels);
-  const typevarStrings = Array.from(
-    typeParams,
-    (x) => `${x} = TypeVar("${x}")`,
-  ).join("\n");
   const typeAliasStrings = topLevels.typeAliases.map(typeAliasIRToString);
   const declarationStrings = topLevels.decls.map(declarationIRToString);
   const callableStrings = topLevels.callables.flatMap((tl) =>
@@ -109,7 +105,6 @@ export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
   const interfaceStrings = topLevels.ifaces.flatMap(interfaceIRToString);
   return [
     PRELUDE,
-    typevarStrings,
     ...typeAliasStrings,
     ...declarationStrings,
     ...callableStrings,

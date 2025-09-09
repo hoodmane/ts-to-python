@@ -277,7 +277,7 @@ describe("property signature", () => {
       declare var Test: X[];
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.slice(2).join("\n\n")),
+      removeTypeIgnores(res.slice(1).join("\n\n")),
       dedent(`\
         Test: JsArray[X_iface] = ...
 
@@ -294,7 +294,7 @@ describe("property signature", () => {
       declare var Test: X[];
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.slice(2).join("\n\n")),
+      removeTypeIgnores(res.slice(1).join("\n\n")),
       dedent(`\
         Test: JsArray[X_iface] = ...
 
@@ -435,7 +435,7 @@ it("Type variable", () => {
     declare var Test: TestConstructor;
     `;
   const expected = dedent(`
-    class Test(Test_iface[T]):
+    class Test[T](Test_iface):
         @classmethod
         def new(self, /) -> Test[T]: ...
   `).trim();
@@ -559,13 +559,11 @@ describe("emit", () => {
       declare var Test: TestConstructor;
     `);
     const expected = dedent(`
-      T = TypeVar("T")
-
-      class Test(Test_iface[T], _JsObject):
+      class Test[T](Test_iface[T], _JsObject):
           @classmethod
           def new(self, /) -> Test[T]: ...
 
-      class Test_iface(Generic[T], Protocol):
+      class Test_iface[T](Protocol):
           pass
     `).trim();
     assert.strictEqual(
