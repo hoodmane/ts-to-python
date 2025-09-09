@@ -803,6 +803,15 @@ describe("emit", () => {
       "def f(x: str, /) -> None: ...",
     );
   });
+  it("extends string ==> str in function type param", () => {
+    const res = emitFile(`\
+      declare function f<T extends string>(x: T): void;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.at(-1)),
+      "def f(x: str, /) -> None: ...",
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));

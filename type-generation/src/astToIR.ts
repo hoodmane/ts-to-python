@@ -234,11 +234,13 @@ const operatorToName = {
 
 export class Converter {
   funcTypeParams: Set<string>;
+  typeParamConstraints: Map<string, string>;
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
 
   constructor() {
     this.funcTypeParams = new Set();
+    this.typeParamConstraints = new Map();
     this.neededSet = new Set();
     this.convertedSet = new Set(BUILTIN_NAMES);
   }
@@ -329,6 +331,13 @@ export class Converter {
     const ident = typeNode.getTypeName();
     if (typeNode.getType().isTypeParameter()) {
       const name = ident.getText();
+      const constraint = this.typeParamConstraints.get(name);
+
+      // If type parameter extends string, translate to str directly
+      if (constraint === "string") {
+        return simpleType("str");
+      }
+
       this.funcTypeParams.add(name);
       return { kind: "parameterReference", name };
     }
@@ -418,8 +427,19 @@ export class Converter {
   }
 
   sigToIR(sig: Signature): SigIR {
-    const decl = sig.getDeclaration() as SignaturedDeclaration;
+    const decl = sig.getDeclaration() as CallSignatureDeclaration;
     try {
+      // Collect type parameter constraints
+      for (const param of decl.getTypeParameters()) {
+        const constraint = param.getConstraint();
+        if (constraint) {
+          this.typeParamConstraints.set(
+            param.getName(),
+            constraint.getText(),
+          );
+        }
+      }
+
       const pyParams: ParamIR[] = [];
       let spreadParam: ParamIR;
       for (const param of decl.getParameters()) {
@@ -452,6 +472,9 @@ export class Converter {
       console.warn("failed to convert", sig.getDeclaration().getText());
       console.warn(getNodeLocation(sig.getDeclaration()));
       throw e;
+    } finally {
+      // Clear type parameter constraints after processing signature
+      this.typeParamConstraints.clear();
     }
   }
 
