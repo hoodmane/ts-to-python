@@ -34,7 +34,7 @@ jobs:
   test:
     executor:
       name: python/default
-      tag: "3.11"
+      tag: "3.12"
     steps:
       - checkout
       - attach_workspace:
