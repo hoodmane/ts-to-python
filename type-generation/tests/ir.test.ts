@@ -762,4 +762,43 @@ describe("typeToIR", () => {
       });
     });
   });
+  describe("class type parameter handling", () => {
+    it("avoids duplicated class and method type params", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        interface Test<T> {
+          method<T>(x: T): T;
+          method2(y: T): T;
+        }
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const iface = file.getFirstDescendantByKind(
+        SyntaxKind.InterfaceDeclaration,
+      )!;
+
+      const converter = new Converter();
+      const ir = converter.interfaceToIR(
+        "Test",
+        [],
+        iface.getMembers(),
+        [],
+        [],
+        ["T"],
+      );
+
+      // Method with same-named type param should not duplicate it
+      const method1 = ir.methods.find((m) => m.name === "method")!;
+      assert.strictEqual(method1.signatures[0].typeParams, undefined);
+
+      // Method using class type param should work correctly
+      const method2 = ir.methods.find((m) => m.name === "method2")!;
+      assert.deepStrictEqual(method2.signatures[0].returns, {
+        kind: "parameterReference",
+        name: "T",
+      });
+    });
+  });
 });

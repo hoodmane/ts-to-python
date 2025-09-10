@@ -437,7 +437,7 @@ it("Type variable", () => {
   const expected = dedent(`
     class Test[T](Test_iface[T]):
         @classmethod
-        def new[T](self, /) -> Test[T]: ...
+        def new(self, /) -> Test[T]: ...
   `).trim();
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
@@ -561,7 +561,7 @@ describe("emit", () => {
     const expected = dedent(`
       class Test[T](Test_iface[T], _JsObject):
           @classmethod
-          def new[T](self, /) -> Test[T]: ...
+          def new(self, /) -> Test[T]: ...
 
       class Test_iface[T](Protocol):
           pass
