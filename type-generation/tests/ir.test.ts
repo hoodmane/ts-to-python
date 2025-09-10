@@ -12,6 +12,12 @@ function typeToIRHelper(tsType: string) {
   return ir;
 }
 
+function makeTestSourceFile(body: string) {
+  const project = makeProject();
+  project.createSourceFile("/test.ts", body);
+  return project.getSourceFileOrThrow("/test.ts");
+}
+
 describe("typeToIR", () => {
   describe("basic", () => {
     it("convert string", () => {
@@ -204,12 +210,7 @@ describe("typeToIR", () => {
   });
   describe("function declarations", () => {
     it("simple function", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `declare function f(x: string): void;`,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      const file = makeTestSourceFile(`declare function f(x: string): void;`);
       const funcDecl = file.getFirstDescendantByKind(
         SyntaxKind.FunctionDeclaration,
       )!;
@@ -237,9 +238,7 @@ describe("typeToIR", () => {
     });
 
     it("generic function", () => {
-      const project = makeProject();
-      project.createSourceFile("/test.ts", `declare function f<T>(x: T): T;`);
-      const file = project.getSourceFileOrThrow("/test.ts");
+      const file = makeTestSourceFile(`declare function f<T>(x: T): T;`);
       const funcDecl = file.getFirstDescendantByKind(
         SyntaxKind.FunctionDeclaration,
       )!;
@@ -269,16 +268,11 @@ describe("typeToIR", () => {
   });
   describe("interface method type params", () => {
     it("simple interface method", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         interface Test {
           method(x: string): void;
         }
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const iface = file.getFirstDescendantByKind(
         SyntaxKind.InterfaceDeclaration,
       )!;
@@ -311,16 +305,11 @@ describe("typeToIR", () => {
     });
 
     it("generic interface method", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         interface Test {
           method<T>(x: T): T;
         }
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const iface = file.getFirstDescendantByKind(
         SyntaxKind.InterfaceDeclaration,
       )!;
@@ -354,16 +343,11 @@ describe("typeToIR", () => {
     });
 
     it("constructor method", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         interface TestConstructor {
           new<T>(): Test<T>;
         }
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const iface = file.getFirstDescendantByKind(
         SyntaxKind.InterfaceDeclaration,
       )!;
@@ -395,15 +379,10 @@ describe("typeToIR", () => {
   });
   describe("type aliases", () => {
     it("simple type alias", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         type MyString = string;
         declare var x: MyString;
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const varDecl = file.getFirstDescendantByKind(
         SyntaxKind.VariableDeclaration,
       )!;
@@ -422,15 +401,10 @@ describe("typeToIR", () => {
     });
 
     it("generic type alias", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         type MyType<T> = T | string;
         declare var x: MyType<number>;
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const varDecl = file.getFirstDescendantByKind(
         SyntaxKind.VariableDeclaration,
       )!;
@@ -456,10 +430,7 @@ describe("typeToIR", () => {
   });
   describe("per-signature type parameters", () => {
     it("mixed constructor overloads with different type params", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         interface XIface<T> {
           x: T;
         }
@@ -467,9 +438,7 @@ describe("typeToIR", () => {
           new (x?: number): XIface<any>;
           new <T>(x: number): XIface<T>;
         }
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const interfaces = file.getDescendantsOfKind(
         SyntaxKind.InterfaceDeclaration,
       );
@@ -524,19 +493,14 @@ describe("typeToIR", () => {
     });
 
     it("interface method with destructured parameters preserves type params", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         interface Options<T> {
           value: T;
         }
         interface Test {
           method<T>(x: T, options?: Options<T>): T[];
         }
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const interfaces = file.getDescendantsOfKind(
         SyntaxKind.InterfaceDeclaration,
       );
@@ -568,15 +532,10 @@ describe("typeToIR", () => {
     });
 
     it("function with multiple overloads each with different type params", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         declare function process<T>(input: T): T;
         declare function process<U, V>(first: U, second: V): U | V;
-        `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+        `);
       const funcDecls = file.getDescendantsOfKind(
         SyntaxKind.FunctionDeclaration,
       );
@@ -605,10 +564,7 @@ describe("typeToIR", () => {
     });
 
     it("destructured type parameter resolution", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         interface X<R> {
           r: R;
         }
@@ -620,9 +576,7 @@ describe("typeToIR", () => {
         declare var X: {
           new<R = any>(source: R, strategy?: S<R>): X<R>;
         };
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const varDecl = file.getFirstDescendantByKind(
         SyntaxKind.VariableDeclaration,
       )!;
@@ -654,10 +608,7 @@ describe("typeToIR", () => {
     });
 
     it("destructured type parameter resolution with concrete type", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         interface X<R> {
           r: R;
         }
@@ -669,9 +620,7 @@ describe("typeToIR", () => {
         declare var X: {
           new<R = any>(source: R, strategy?: S<string>): X<R>;
         };
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const varDecl = file.getFirstDescendantByKind(
         SyntaxKind.VariableDeclaration,
       )!;
@@ -703,10 +652,7 @@ describe("typeToIR", () => {
     });
 
     it("complex destructured interface with multiple type parameters", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         interface Xiface<R> {
           r: R;
         }
@@ -723,9 +669,7 @@ describe("typeToIR", () => {
         declare var X: {
           new<R = any>(source: R, strategy?: S<R>): Xiface<R>;
         };
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const varDecl = file.getFirstDescendantByKind(
         SyntaxKind.VariableDeclaration,
       )!;
@@ -764,17 +708,12 @@ describe("typeToIR", () => {
   });
   describe("class type parameter handling", () => {
     it("avoids duplicated class and method type params", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         interface Test<T> {
           method<T>(x: T): T;
           method2(y: T): T;
         }
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const iface = file.getFirstDescendantByKind(
         SyntaxKind.InterfaceDeclaration,
       )!;
@@ -801,10 +740,7 @@ describe("typeToIR", () => {
       });
     });
     it("includes class type params in destructured type parameter resolution", () => {
-      const project = makeProject();
-      project.createSourceFile(
-        "/test.ts",
-        `
+      const file = makeTestSourceFile(`
         interface Strategy<S> {
           s: S;
         }
@@ -817,9 +753,7 @@ describe("typeToIR", () => {
           r: R;
           method<U>(other: U, strategy?: Options<R>): R | U;
         }
-      `,
-      );
-      const file = project.getSourceFileOrThrow("/test.ts");
+      `);
       const interfaces = file.getDescendantsOfKind(
         SyntaxKind.InterfaceDeclaration,
       );
