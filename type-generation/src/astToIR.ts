@@ -240,6 +240,7 @@ export class Converter {
   funcTypeParams: Set<string>;
   funcTypeParamConstraints: Map<string, string>;
   ifaceTypeParamConstraints: Map<string, string>;
+  classTypeParams: Set<string>;
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
 
@@ -247,6 +248,7 @@ export class Converter {
     this.funcTypeParams = new Set();
     this.funcTypeParamConstraints = new Map();
     this.ifaceTypeParamConstraints = new Map();
+    this.classTypeParams = new Set();
     this.neededSet = new Set();
     this.convertedSet = new Set(BUILTIN_NAMES);
   }
@@ -621,7 +623,11 @@ export class Converter {
       .filter((p) => {
         const constraint = p.getConstraint();
         // Filter out type parameters that extend string since they get replaced with str
-        return !(constraint && constraint.getText() === "string");
+        if (constraint?.getText() === "string") {
+          return false;
+        }
+        // Filter out type parameters that are already declared at class level
+        return !this.classTypeParams.has(p.getName());
       })
       .map((p) => p.getName());
   }
@@ -655,104 +661,118 @@ export class Converter {
     callSignatures: CallSignatureDeclaration[],
     typeParams: string[],
   ): InterfaceIR {
-    const { methods: astMethods, properties: astProperties } =
-      groupMembers(members);
-    const {
-      methods: staticAstMethods,
-      properties: staticAstProperties,
-      constructors,
-    } = groupMembers(staticMembers);
-    const propMap = new Map(
-      astProperties.map((prop) => [prop.getName(), prop]),
-    );
-    for (const key of Object.keys(staticAstMethods)) {
-      delete astMethods[key];
+    // Set class-level type parameters before processing methods
+    for (const param of typeParams) {
+      this.classTypeParams.add(param);
     }
-    typeParams = Array.from(new Set(typeParams));
-    const extraMethods: CallableIR[] = [];
-    if ("[Symbol.iterator]" in astMethods) {
-      const x = astMethods["[Symbol.iterator]"];
-      delete astMethods["[Symbol.iterator]"];
-      const typeNode = x[0]
-        .getDeclaration()
-        .getReturnTypeNode()
-        .asKindOrThrow(SyntaxKind.TypeReference);
+
+    try {
+      const { methods: astMethods, properties: astProperties } =
+        groupMembers(members);
+      const {
+        methods: staticAstMethods,
+        properties: staticAstProperties,
+        constructors,
+      } = groupMembers(staticMembers);
+      const propMap = new Map(
+        astProperties.map((prop) => [prop.getName(), prop]),
+      );
+      for (const key of Object.keys(staticAstMethods)) {
+        delete astMethods[key];
+      }
+      typeParams = Array.from(new Set(typeParams));
+      const extraMethods: CallableIR[] = [];
+      if ("[Symbol.iterator]" in astMethods) {
+        const x = astMethods["[Symbol.iterator]"];
+        delete astMethods["[Symbol.iterator]"];
+        const typeNode = x[0]
+          .getDeclaration()
+          .getReturnTypeNode()
+          .asKindOrThrow(SyntaxKind.TypeReference);
+        if (
+          !["IterableIterator", "Iterator"].includes(
+            typeNode.getTypeName().getText(),
+          )
+        ) {
+          console.log(typeNode.getText());
+          console.log(getNodeLocation(typeNode));
+          throw new Error("Surprise!");
+        }
+        const returns = this.typeToIR(typeNode);
+        if (returns.kind === "parameterReference") {
+          throw new Error("Cannot happen!");
+        }
+        returns.name = "PyIterator";
+        returns.typeArgs = [returns.typeArgs[0]];
+        extraMethods.push({
+          kind: "callable",
+          name: "__iter__",
+          signatures: [{ params: [], returns }],
+        });
+      }
       if (
-        !["IterableIterator", "Iterator"].includes(
-          typeNode.getTypeName().getText(),
-        )
+        name !== "Function_iface" &&
+        (propMap.get("size")?.getTypeNode().getText() === "number" ||
+          propMap.get("length")?.getTypeNode().getText() === "number")
       ) {
-        console.log(typeNode.getText());
-        console.log(getNodeLocation(typeNode));
-        throw new Error("Surprise!");
+        extraMethods.push({
+          kind: "callable",
+          name: "__len__",
+          signatures: [{ params: [], returns: simpleType("int") }],
+        });
       }
-      const returns = this.typeToIR(typeNode);
-      if (returns.kind === "parameterReference") {
-        throw new Error("Cannot happen!");
+      const redirectMethod = (origName: string, newName: string): void => {
+        if (!(origName in astMethods)) {
+          return;
+        }
+        extraMethods.push(this.callableToIR(newName, astMethods[origName]));
+      };
+      redirectMethod("has", "__contains__");
+      redirectMethod("includes", "__contains__");
+      redirectMethod("get", "__getitem__");
+      redirectMethod("set", "__setitem__");
+      redirectMethod("delete", "__delitem__");
+      if (constructors) {
+        staticAstMethods["new"] = constructors.map((decl) =>
+          decl.getSignature(),
+        );
       }
-      returns.name = "PyIterator";
-      returns.typeArgs = [returns.typeArgs[0]];
-      extraMethods.push({
+      const irMethods = ([] as CallableIR[]).concat(
+        Object.entries(astMethods).map(([name, sigs]) =>
+          this.callableToIR(name, sigs, false),
+        ),
+        Object.entries(staticAstMethods).map(([name, sigs]) =>
+          this.callableToIR(name, sigs, true),
+        ),
+        extraMethods,
+      );
+      irMethods.push({
         kind: "callable",
-        name: "__iter__",
-        signatures: [{ params: [], returns }],
+        name: "__call__",
+        signatures: callSignatures.flatMap((sig) =>
+          this.sigToIRDestructure(sig.getSignature()),
+        ),
+        isStatic: false,
       });
+      const irProps = ([] as PropertyIR[]).concat(
+        astProperties.map((prop) => this.propertySignatureToIR(prop, false)),
+        staticAstProperties.map((prop) =>
+          this.propertySignatureToIR(prop, true),
+        ),
+      );
+      const props = uniqBy(irProps, ({ name }) => name);
+      return {
+        kind: "interface",
+        methods: irMethods,
+        properties: props,
+        name,
+        typeParams,
+        bases,
+      };
+    } finally {
+      // Restore previous class type parameters
+      this.classTypeParams.clear();
     }
-    if (
-      name !== "Function_iface" &&
-      (propMap.get("size")?.getTypeNode().getText() === "number" ||
-        propMap.get("length")?.getTypeNode().getText() === "number")
-    ) {
-      extraMethods.push({
-        kind: "callable",
-        name: "__len__",
-        signatures: [{ params: [], returns: simpleType("int") }],
-      });
-    }
-    const redirectMethod = (origName: string, newName: string): void => {
-      if (!(origName in astMethods)) {
-        return;
-      }
-      extraMethods.push(this.callableToIR(newName, astMethods[origName]));
-    };
-    redirectMethod("has", "__contains__");
-    redirectMethod("includes", "__contains__");
-    redirectMethod("get", "__getitem__");
-    redirectMethod("set", "__setitem__");
-    redirectMethod("delete", "__delitem__");
-    if (constructors) {
-      staticAstMethods["new"] = constructors.map((decl) => decl.getSignature());
-    }
-    const irMethods = ([] as CallableIR[]).concat(
-      Object.entries(astMethods).map(([name, sigs]) =>
-        this.callableToIR(name, sigs, false),
-      ),
-      Object.entries(staticAstMethods).map(([name, sigs]) =>
-        this.callableToIR(name, sigs, true),
-      ),
-      extraMethods,
-    );
-    irMethods.push({
-      kind: "callable",
-      name: "__call__",
-      signatures: callSignatures.flatMap((sig) =>
-        this.sigToIRDestructure(sig.getSignature()),
-      ),
-      isStatic: false,
-    });
-    const irProps = ([] as PropertyIR[]).concat(
-      astProperties.map((prop) => this.propertySignatureToIR(prop, false)),
-      staticAstProperties.map((prop) => this.propertySignatureToIR(prop, true)),
-    );
-    const props = uniqBy(irProps, ({ name }) => name);
-    return {
-      kind: "interface",
-      methods: irMethods,
-      properties: props,
-      name,
-      typeParams,
-      bases,
-    };
   }
 
   getBasesOfDecls(
