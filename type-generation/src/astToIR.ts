@@ -670,7 +670,6 @@ export class Converter {
     for (const param of typeParams) {
       this.classTypeParams.add(param);
     }
-
     try {
       const { methods: astMethods, properties: astProperties } =
         groupMembers(members);
@@ -687,6 +686,24 @@ export class Converter {
       }
       typeParams = Array.from(new Set(typeParams));
       const extraMethods: CallableIR[] = [];
+
+      // If we extend record, add a __getattr__ impl as appropriate.
+      let record: BaseIR;
+      [[record = undefined], bases] = split(bases, (x) => x.name === "Record");
+      if (record) {
+        extraMethods.push({
+          kind: "callable",
+          name: "__getattr__",
+          signatures: [
+            {
+              params: [
+                { name: "key", type: simpleType("str"), isOptional: false },
+              ],
+              returns: record.typeArgs[1],
+            },
+          ],
+        });
+      }
       if ("[Symbol.iterator]" in astMethods) {
         const x = astMethods["[Symbol.iterator]"];
         delete astMethods["[Symbol.iterator]"];
@@ -792,9 +809,12 @@ export class Converter {
       }
       let name = extend.getExpression().getText();
       const astArgs = getExpressionTypeArgs(ident, extend);
-      // Unfortunately typescript doesn't expose getVariances on the type
-      // checker, so we probably can't figure out what to put here.
       const typeArgs = astArgs.map((node) => this.typeToIR(node, false));
+      // Record is a special case. We don't want to addNeededInterface it, we'll
+      // convert it to a __getattr__ impl.
+      if (name === "Record") {
+        return { name, typeArgs };
+      }
       name += "_iface";
       this.addNeededInterface(ident as Identifier);
       return { name, typeArgs };
