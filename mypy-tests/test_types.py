@@ -139,7 +139,7 @@ def type_buffer() -> None:
 @pytest.mark.mypy_testing
 def type_json() -> None:
     from js import JSON, Array
-    from pyodide.ffi import to_js
+    from pyodide.ffi import to_js, JsProxy
     import json
 
     class Pair:
@@ -153,11 +153,11 @@ def type_json() -> None:
     p2 = Pair(1, 2)
     p2.first = p2
 
-    def default_converter(value: Any, convert: Any, cacheConversion: Any) -> Any:
+    def default_converter(value: Any, converter: Callable[[Any], JsProxy], cache: Callable[[Any, JsProxy], None]) -> Any:
         result = Array.new()
-        cacheConversion(value, result)
-        result.push(convert(value.first))
-        result.push(convert(value.second))
+        cache(value, result)
+        result.push(converter(value.first))
+        result.push(converter(value.second))
         return result
 
     p1js = to_js(p1, default_converter=default_converter)
