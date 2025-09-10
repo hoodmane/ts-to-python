@@ -571,9 +571,13 @@ export class Converter {
 
       // Include type parameters in the temporary type definition
       const sigTypeParams = sigIR.typeParams || [];
+      // Also include class-level type parameters
+      const allTypeParams = [
+        ...sigTypeParams,
+        ...Array.from(this.classTypeParams),
+      ];
       const typeParamsString =
-        sigTypeParams.length > 0 ? `<${sigTypeParams.join(", ")}>` : "";
-
+        allTypeParams.length > 0 ? `<${allTypeParams.join(", ")}>` : "";
       const tempFile = project.createSourceFile(
         `__temp__${Math.random()}.ts`,
         `type Temp${typeParamsString} = ${tempType};`,

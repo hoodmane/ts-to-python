@@ -1020,6 +1020,39 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("Unpacking and type params 5", () => {
+    const res = emitFile(`\
+      interface Strategy<S> {
+        s: S;
+      }
+
+      interface Options<T> {
+        s: Strategy<T>
+      }
+
+      interface Xyz<R = any> {
+        r: R;
+      }
+
+      declare var Xyz: {
+        prototype: Xyz;
+        new<R = any>(strategy?: Options<R>): Xyz<R>;
+      };
+    `);
+    console.log(removeTypeIgnores(res[1]));
+    assert.strictEqual(
+      removeTypeIgnores(res[1]),
+      dedent(`
+        class Xyz[R](Xyz_iface[R], _JsObject):
+            @classmethod
+            @overload
+            def new(self, strategy: Options_iface[R] | None = None, /) -> Xyz[R]: ...
+            @classmethod
+            @overload
+            def new(self, /, *, s: Strategy_iface[R]) -> Xyz[R]: ...
+      `).trim(),
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
