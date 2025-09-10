@@ -800,5 +800,57 @@ describe("typeToIR", () => {
         name: "T",
       });
     });
+    it("includes class type params in destructured type parameter resolution", () => {
+      const project = makeProject();
+      project.createSourceFile(
+        "/test.ts",
+        `
+        interface Strategy<S> {
+          s: S;
+        }
+
+        interface Options<T> {
+          s: Strategy<T>
+        }
+
+        interface Xyz<R> {
+          r: R;
+          method<U>(other: U, strategy?: Options<R>): R | U;
+        }
+      `,
+      );
+      const file = project.getSourceFileOrThrow("/test.ts");
+      const interfaces = file.getDescendantsOfKind(
+        SyntaxKind.InterfaceDeclaration,
+      );
+      const xyzInterface = interfaces.find((decl) => decl.getName() === "Xyz")!;
+      const method = xyzInterface.getFirstDescendantByKind(
+        SyntaxKind.MethodSignature,
+      )!;
+      const signature = method.getSignature();
+
+      const converter = new Converter();
+      // Set class type params to simulate being inside a class
+      converter.classTypeParams.add("R");
+      const ir = converter.callableToIR("method", [signature], false);
+
+      // Should have 2 signatures: original and destructured
+      assert.strictEqual(ir.signatures.length, 2);
+
+      // Both signatures should have only method-level type parameters
+      assert.deepStrictEqual(ir.signatures[0].typeParams, ["U"]);
+      assert.deepStrictEqual(ir.signatures[1].typeParams, ["U"]);
+
+      // Second signature should have destructured kwparams with class type param resolved
+      assert.strictEqual(ir.signatures[1].kwparams?.length, 1);
+      assert.strictEqual(ir.signatures[1].kwparams?.[0].name, "s");
+
+      // The destructured property should resolve to Strategy<R> where R is class type param
+      assert.deepStrictEqual(ir.signatures[1].kwparams?.[0].type, {
+        kind: "reference",
+        name: "Strategy_iface",
+        typeArgs: [{ kind: "parameterReference", name: "R" }],
+      });
+    });
   });
 });
