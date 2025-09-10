@@ -22,7 +22,7 @@ def test_type_errors(tmp_path: Path) -> None:
         unexpected = []
         assert stderr == ""
         warnings_by_code: dict[str, list[tuple[str, str]]] = {
-            k: [] for k in ["assignment", "misc", "overload-overlap", "override"]
+            k: [] for k in ["assignment", "misc", "overload-overlap", "overload-cannot-match", "override"]
         }
         for origline in stdout.splitlines():
             if "error:" not in origline:
