@@ -45,8 +45,6 @@ jobs:
       - run:
           name: Test
           command: |
-            python -c 'from pathlib import Path; import pyodide as m; (Path(m.__path__[0]) / "py.typed").write_text("")'
-            python -c 'from pathlib import Path; import _pyodide as m; (Path(m.__path__[0]) / "py.typed").write_text("")'
             mkdir test-results
             pytest mypy-tests --junitxml=test-results/junit.xml --verbose --color=yes
       - store_test_results:
