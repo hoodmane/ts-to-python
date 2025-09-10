@@ -11,8 +11,10 @@ function main() {
     libFolderPath:
       "../type-generation-input-project/node_modules/typescript/lib",
   });
-  project.addSourceFilesAtPaths("../type-generation-input-project/a.ts");
+  const sourceFile = "../type-generation-input-project/a.ts";
+  project.addSourceFilesAtPaths(sourceFile);
   files = project.resolveSourceFileDependencies();
+  files.push(project.getSourceFile(sourceFile));
   const result = emitFiles(files)
     .map((x) => x + "\n\n")
     .join("");
