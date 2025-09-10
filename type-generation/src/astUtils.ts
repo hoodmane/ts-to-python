@@ -145,7 +145,11 @@ export function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
         ifaces,
       };
     }
-    throw new Error("Oops!");
+    console.log("Failed to classify", name, "locations:");
+    for (const decl of rest) {
+      console.log(getNodeLocation(decl));
+    }
+    throw new Error(`Unclear how to classify identifier ${name}`);
   }
   const decl = rest[0];
   if (Node.isClassDeclaration(decl)) {

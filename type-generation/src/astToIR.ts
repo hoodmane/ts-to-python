@@ -283,7 +283,7 @@ export class Converter {
     const operator = typeNode.getOperator();
     const operatorName = operatorToName[operator];
     if (!operatorName) {
-      throw new Error("Unknown type operator " + operator);
+      throw new Error("Unknown type operator " + SyntaxKind[operator]);
     }
     const type = this.typeToIR(typeNode.getTypeNode());
     return { kind: "operator", operatorName, type };
@@ -467,7 +467,8 @@ export class Converter {
     }
     const signatures = typeNode.getType().getCallSignatures();
     if (signatures.length > 0) {
-      throw new Error("oops");
+      const location = getNodeLocation(typeNode);
+      throw new Error("oops: " + location);
     }
     return this.otherTypeToIR(typeNode);
   }
