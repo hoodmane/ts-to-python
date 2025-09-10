@@ -1,17 +1,20 @@
 import {
+  ConstructorDeclaration,
   ConstructSignatureDeclaration,
   EntityName,
   FunctionTypeNode,
   Identifier,
+  ImplementedKindToNodeMappings,
   InterfaceDeclaration,
+  MethodDeclaration,
   MethodSignature,
   Node,
+  PropertyDeclaration,
   PropertySignature,
   Signature,
   SyntaxKind,
   TypeAliasDeclaration,
   TypeArgumentedNode,
-  TypeElementTypes,
   TypeNode,
   TypeParameterDeclaration,
 } from "ts-morph";
@@ -42,14 +45,29 @@ export function groupBySyntaxKindGen(): WrappedGen<Node, GroupedBySyntaxKind> {
   });
 }
 
-export function groupMembers(members: TypeElementTypes[]): {
+function getGroupedTypes<
+  T1 extends keyof ImplementedKindToNodeMappings,
+  T2 extends keyof ImplementedKindToNodeMappings,
+>(
+  grouped: GroupedBySyntaxKind,
+  k1: T1,
+  k2: T2,
+): (ImplementedKindToNodeMappings[T1] | ImplementedKindToNodeMappings[T2])[] {
+  return [...(grouped[k1] ?? []), ...(grouped[k2] ?? [])];
+}
+
+export function groupMembers(members: Iterable<Node>): {
   methods: Record<string, Signature[]>;
-  properties: PropertySignature[];
-  constructors: ConstructSignatureDeclaration[];
+  properties: (PropertySignature | PropertyDeclaration)[];
+  constructors: (ConstructSignatureDeclaration | ConstructorDeclaration)[];
 } {
   const grouped = groupBySyntaxKind(members);
-  const allProperties = grouped[SyntaxKind.PropertySignature] || [];
-  function isMethod(prop: PropertySignature) {
+  const allProperties = getGroupedTypes(
+    grouped,
+    SyntaxKind.PropertySignature,
+    SyntaxKind.PropertyDeclaration,
+  );
+  function isMethod(prop: PropertySignature | PropertyDeclaration) {
     if (prop.hasQuestionToken()) {
       // We have to treat all optional methods as properties instead:
       // f : () => void   translates to   def f(self) -> None: ...
@@ -62,8 +80,15 @@ export function groupMembers(members: TypeElementTypes[]): {
   const { functions = [], properties = [] } = groupBy(allProperties, (prop) =>
     isMethod(prop) ? "functions" : "properties",
   );
-  const methodSigs = grouped[SyntaxKind.MethodSignature] || [];
-  const empty: [string, FunctionTypeNode | MethodSignature][] = [];
+  const methodSigs = getGroupedTypes(
+    grouped,
+    SyntaxKind.MethodSignature,
+    SyntaxKind.MethodDeclaration,
+  );
+  const empty: [
+    string,
+    FunctionTypeNode | MethodSignature | MethodDeclaration,
+  ][] = [];
   const methodOrFuncProps = empty.concat(
     methodSigs.map((meth) => [meth.getName(), meth]),
     functions.map((func) => [
@@ -78,7 +103,11 @@ export function groupMembers(members: TypeElementTypes[]): {
       v.map(([_, prop]) => prop.getSignature()),
     ]),
   );
-  const constructors = grouped[SyntaxKind.ConstructSignature] || [];
+  const constructors = getGroupedTypes(
+    grouped,
+    SyntaxKind.ConstructSignature,
+    SyntaxKind.Constructor,
+  );
   return { methods, properties, constructors };
 }
 
