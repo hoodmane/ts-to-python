@@ -787,4 +787,52 @@ describe("typeToIR", () => {
       });
     });
   });
+  describe("interface inheritance", () => {
+    it("extends Record creates interface with __getattr__", () => {
+      const file = makeTestSourceFile(`
+        interface I extends Record<string, number> {
+          x: string;
+        }
+      `);
+      const iface = file.getFirstDescendantByKind(
+        SyntaxKind.InterfaceDeclaration,
+      )!;
+
+      const converter = new Converter();
+      const bases = converter.getBasesOfDecls([iface]);
+      const ir = converter.interfaceToIR(
+        "I",
+        bases,
+        iface.getMembers(),
+        [],
+        [],
+        [],
+      );
+
+      // Should have no bases since Record is filtered out
+      assert.deepStrictEqual(ir.bases, []);
+
+      // Should have the regular property
+      assert.strictEqual(ir.properties.length, 1);
+      assert.strictEqual(ir.properties[0].name, "x");
+      assert.deepStrictEqual(ir.properties[0].type, {
+        kind: "simple",
+        text: "str",
+      });
+
+      // Should have the __getattr__ method for Record functionality
+      const getattrMethod = ir.methods.find((m) => m.name === "__getattr__");
+      assert.ok(getattrMethod, "Should have __getattr__ method");
+      assert.strictEqual(getattrMethod.signatures.length, 1);
+      assert.strictEqual(getattrMethod.signatures[0].params.length, 1);
+      assert.strictEqual(getattrMethod.signatures[0].params[0].name, "key");
+      assert.deepStrictEqual(getattrMethod.signatures[0].params[0].type, {
+        kind: "simple",
+        text: "str",
+      });
+      assert.deepStrictEqual(getattrMethod.signatures[0].returns, {
+        kind: "number",
+      });
+    });
+  });
 });

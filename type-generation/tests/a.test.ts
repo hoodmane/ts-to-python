@@ -1006,7 +1006,6 @@ describe("emit", () => {
         new<R = any>(source: R, strategy?: S<R>): Xiface<R>;
       };
     `);
-    console.log(removeTypeIgnores(res[1]));
     assert.strictEqual(
       removeTypeIgnores(res[1]),
       dedent(`
@@ -1039,7 +1038,6 @@ describe("emit", () => {
         new<R = any>(strategy?: Options<R>): Xyz<R>;
       };
     `);
-    console.log(removeTypeIgnores(res[1]));
     assert.strictEqual(
       removeTypeIgnores(res[1]),
       dedent(`
@@ -1050,6 +1048,28 @@ describe("emit", () => {
             @classmethod
             @overload
             def new(self, /, *, s: Strategy_iface[R]) -> Xyz[R]: ...
+      `).trim(),
+    );
+  });
+  it("extends record", () => {
+    const res = emitFile(`
+      interface I extends Record<string, number> {
+        x: string;
+      }
+      declare function f(i: I): void;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`
+        @overload
+        def f(i: I_iface, /) -> None: ...
+
+        @overload
+        def f(*, x: str) -> None: ...
+
+        class I_iface(Protocol):
+            x: str = ...
+            def __getattr__(self, key: str, /) -> int | float: ...
       `).trim(),
     );
   });
