@@ -191,4 +191,7 @@ export function typeReferenceSubsitutions(
       return "JsIterator" + fmtArgs();
     }
   }
+  if (name === "Array") {
+    return "ArrayLike_iface" + fmtArgs();
+  }
 }
