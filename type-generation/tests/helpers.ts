@@ -9,8 +9,7 @@ export function typeToIR(t: TypeNode) {
 export function makeProject(): Project {
   return new Project({
     tsConfigFilePath: "../input-projects/browser-dom/tsconfig.json",
-    libFolderPath:
-      "../input-projects/browser-dom/node_modules/typescript/lib",
+    libFolderPath: "../input-projects/browser-dom/node_modules/typescript/lib",
   });
 }
 
