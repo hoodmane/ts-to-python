@@ -203,12 +203,21 @@ function typeLiteralToIR(typeNode: LiteralTypeNode): TypeIR {
  */
 function getInterfaceDeclToDestructure(
   sig: Signature,
-): InterfaceDeclaration | undefined {
+): InterfaceDeclaration | TypeLiteralNode | undefined {
   const decl = sig.getDeclaration() as SignaturedDeclaration;
-  const defs = decl
-    .getParameters()
-    .at(-1)
-    ?.getTypeNode()!
+  const typeNode = decl.getParameters().at(-1)?.getTypeNode();
+  if (!typeNode) {
+    return undefined;
+  }
+
+  // Handle inline object types (TypeLiteral)
+  const typeLiteral = typeNode.asKind(SyntaxKind.TypeLiteral);
+  if (typeLiteral) {
+    return typeLiteral;
+  }
+
+  // Handle named interface types (TypeReference)
+  const defs = typeNode
     .asKind(SyntaxKind.TypeReference)
     ?.getTypeName()
     ?.asKind(SyntaxKind.Identifier)
@@ -628,6 +637,9 @@ export class Converter {
       return { name, type, isOptional };
     });
     sigIRDestructured.kwparams = kwargs;
+    if (toDestructure.isKind(SyntaxKind.TypeLiteral)) {
+      return [sigIRDestructured];
+    }
     return [sigIR, sigIRDestructured];
   }
 

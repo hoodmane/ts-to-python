@@ -1234,6 +1234,21 @@ describe("emit", () => {
       });
     });
   });
+  it("Destrucure object literal argument", () => {
+    const res = emitFile(`
+      declare function f({
+          type,
+          payload,
+        }: {
+          type: string;
+          payload: number;
+        }): void;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      "def f(*, type: str, payload: int | float) -> None: ...",
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
