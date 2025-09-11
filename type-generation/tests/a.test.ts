@@ -1096,7 +1096,7 @@ describe("emit", () => {
       removeTypeIgnores(res.slice(1).join("\n\n")),
       "def f(x: ArrayLike_iface[str], /) -> None: ...",
     );
-  })
+  });
   it("extends record", () => {
     const res = emitFile(`
       interface I extends Record<string, number> {

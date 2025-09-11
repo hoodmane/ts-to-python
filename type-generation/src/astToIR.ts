@@ -574,7 +574,10 @@ export class Converter {
       return [sigIR];
     }
     // Don't destructure Array
-    if (toDestructure.asKind(SyntaxKind.InterfaceDeclaration)?.getName() === "Array") {
+    if (
+      toDestructure.asKind(SyntaxKind.InterfaceDeclaration)?.getName() ===
+      "Array"
+    ) {
       return [sigIR];
     }
     const sigIRDestructured = depth2CopySig(sigIR);
