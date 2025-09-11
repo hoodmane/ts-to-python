@@ -119,28 +119,29 @@ export function getExpressionTypeArgs(
     ident = ident.getRight();
   }
   const typeArgNodes = expression.getTypeArguments();
-  const numTypeArgs = expression.getType().getTypeArguments().length;
-  if (typeArgNodes.length < numTypeArgs) {
-    const seenNames: string[] = [];
-    const paramDecls: TypeParameterDeclaration[] = [];
-    const defs = ident
-      .getDefinitionNodes()
-      .filter(
-        (node): node is InterfaceDeclaration | TypeAliasDeclaration =>
-          Node.isInterfaceDeclaration(node) ||
-          Node.isTypeAliasDeclaration(node),
-      );
-    for (const def of defs) {
-      const params = def.getTypeParameters();
-      for (const param of params) {
-        const paramName = param.getName();
-        if (!seenNames.includes(paramName)) {
-          seenNames.push(paramName);
-          paramDecls.push(param);
-        }
+  // Get the declarations to find the expected number of type parameters
+  const seenNames: string[] = [];
+  const paramDecls: TypeParameterDeclaration[] = [];
+  const defs = ident
+    .getDefinitionNodes()
+    .filter(
+      (node): node is InterfaceDeclaration | TypeAliasDeclaration =>
+        Node.isInterfaceDeclaration(node) || Node.isTypeAliasDeclaration(node),
+    );
+  for (const def of defs) {
+    const params = def.getTypeParameters();
+    for (const param of params) {
+      const paramName = param.getName();
+      if (!seenNames.includes(paramName)) {
+        seenNames.push(paramName);
+        paramDecls.push(param);
       }
     }
-    const missingDecls = paramDecls.slice(-(numTypeArgs - typeArgNodes.length));
+  }
+
+  // If we have fewer explicit type arguments than parameters, fill in defaults
+  if (typeArgNodes.length < paramDecls.length) {
+    const missingDecls = paramDecls.slice(typeArgNodes.length);
     for (const decl of missingDecls) {
       typeArgNodes.push(decl.getDefaultOrThrow());
     }
