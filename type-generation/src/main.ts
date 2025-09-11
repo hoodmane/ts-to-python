@@ -1,20 +1,23 @@
 import { Project, SourceFile } from "ts-morph";
 import { emitFiles } from "./extract.ts";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
+import { resolve } from "path";
 
 Error.stackTraceLimit = Infinity;
 
 function main() {
-  let files: SourceFile[];
+  const projPath = process.argv.at(-1)!;
+  const tsConfigFilePath = resolve(projPath, "tsconfig.json");
   const project = new Project({
-    tsConfigFilePath: "../type-generation-input-project/tsconfig.json",
-    libFolderPath:
-      "../type-generation-input-project/node_modules/typescript/lib",
+    tsConfigFilePath,
+    libFolderPath: resolve(projPath, "node_modules/typescript/lib"),
   });
-  const sourceFile = "../type-generation-input-project/a.ts";
-  project.addSourceFilesAtPaths(sourceFile);
-  files = project.resolveSourceFileDependencies();
-  files.push(project.getSourceFile(sourceFile)!);
+  const tsconfig = JSON.parse(
+    readFileSync(tsConfigFilePath, { encoding: "utf8" }),
+  ) as { include: string[] };
+  const globs = tsconfig["include"].map((x) => resolve(projPath, x));
+  const files = project.addSourceFilesAtPaths(globs);
+  files.push(...project.resolveSourceFileDependencies());
   const result = emitFiles(files)
     .map((x) => x + "\n\n")
     .join("");
