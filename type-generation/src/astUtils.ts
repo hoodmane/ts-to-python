@@ -111,6 +111,54 @@ export function groupMembers(members: Iterable<Node>): {
   return { methods, properties, constructors };
 }
 
+function resolveTypeParameterDefault(
+  decl: TypeParameterDeclaration,
+  paramDecls: TypeParameterDeclaration[],
+  resolvedTypeArgs: TypeNode[],
+): TypeNode {
+  const defaultType = decl.getDefaultOrThrow();
+
+  // Hacky: do text replacement on the type text.
+  // There must be a better way?
+  let typeText = defaultType.getText();
+  let hasSubstitution = false;
+
+  // Replace any type parameter names with their resolved types. Probably we
+  // should only apply substitutions up the position of the current type
+  // parameter. We'll see if it matters.
+  for (
+    let i = 0;
+    i < Math.min(paramDecls.length, resolvedTypeArgs.length);
+    i++
+  ) {
+    const paramName = paramDecls[i].getName();
+    const resolvedText = resolvedTypeArgs[i].getText();
+
+    const regex = new RegExp(String.raw`\b${paramName}\b`, "g");
+    const newTypeText = typeText.replace(regex, resolvedText);
+    if (newTypeText !== typeText) {
+      typeText = newTypeText;
+      hasSubstitution = true;
+    }
+  }
+
+  if (!hasSubstitution) {
+    return defaultType;
+  }
+
+  // Create a temporary type alias to parse the substituted type
+  const project = decl.getSourceFile().getProject();
+  const tempFileName = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}.ts`;
+  const tempSource = project.createSourceFile(
+    tempFileName,
+    `type Temp = ${typeText};`,
+  );
+  const tempAlias = tempSource.getTypeAliases()[0];
+  const substitutedType = tempAlias.getTypeNode()!;
+
+  return substitutedType;
+}
+
 export function getExpressionTypeArgs(
   ident: EntityName,
   expression: TypeArgumentedNode & Node,
@@ -143,7 +191,12 @@ export function getExpressionTypeArgs(
   if (typeArgNodes.length < paramDecls.length) {
     const missingDecls = paramDecls.slice(typeArgNodes.length);
     for (const decl of missingDecls) {
-      typeArgNodes.push(decl.getDefaultOrThrow());
+      const defaultType = resolveTypeParameterDefault(
+        decl,
+        paramDecls,
+        typeArgNodes,
+      );
+      typeArgNodes.push(defaultType);
     }
   }
   return typeArgNodes;

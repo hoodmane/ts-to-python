@@ -1058,7 +1058,7 @@ describe("emit", () => {
       `).trim(),
     );
   });
-  it("Type param with default value", () => {
+  it("Type alias type param with default value", () => {
     const res = emitFile(`\
       interface X<A, B> {
         a: A;
@@ -1073,6 +1073,21 @@ describe("emit", () => {
     assert.strictEqual(
       removeTypeIgnores(res[2]),
       "def f(x: Info[str, int | float], /) -> None: ...",
+    );
+  });
+  it("Type param default refers to other type param", () => {
+    const res = emitFile(`
+      interface X<T> {
+        t: T;
+      }
+      type Info<A = string, B = X<A>> =
+        | A
+        | B;
+      declare function f(x: Info): void;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res[2]),
+      "def f(x: Info[str, X_iface[str]], /) -> None: ...",
     );
   });
   it("extends record", () => {
