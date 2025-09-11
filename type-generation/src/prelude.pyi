@@ -29,10 +29,10 @@ from pyodide.ffi import (
 from pyodide.webloop import PyodideFuture
 from _pyodide._core_docs import _JsProxyMetaClass
 
-ConcatArray = JsArray
-ArrayLike = JsArray
-ArrayLike_iface = PyMutableSequence
-Iterable_iface = PyIterable
+type ConcatArray[T] = JsArray[T]
+type ArrayLike[T] = JsArray[T]
+type ArrayLike_iface[T] = PyMutableSequence[T]
+type Iterable_iface[T] = PyIterable[T]
 
 class Thenable[T](Protocol):
   def then[TResult1, TResult2](
@@ -49,9 +49,9 @@ class Thenable[T](Protocol):
 type PromiseLike_iface[T] = Awaitable[T] | Thenable[T]
 
 
-Dispatcher = Any
-URL_ = URL
-HeadersInit = PyIterable[tuple[str, str]] | Record[str, str] | Headers
+type Dispatcher = Any
+type URL_ = URL
+type HeadersInit = PyIterable[tuple[str, str]] | Record[str, str] | Headers
 
 # Shenanigans to convince skeptical type system to behave correctly:
 #
@@ -68,19 +68,19 @@ class Promise[T](PyodideFuture[T]):
       | Callable[[Callable[[T], None]], None]
       | Callable[[Callable[[T], None], Callable[[BaseException], None]], None],
   ) -> Promise[T]:
-      ...
+    ...
 
 
 class Map[KT, VT](JsMutableMap[KT, VT]):
   @classmethod
   @overload
   def new(cls) -> "JsMutableMap[KT, VT]":
-      ...
+    ...
 
   @classmethod
   @overload
   def new(cls, args: PySequence[tuple[KT, VT]]) -> "JsMutableMap[KT, VT]":
-      ...
+    ...
 
 
 class _JsMeta(_JsProxyMetaClass, JsProxy):
@@ -93,8 +93,9 @@ class DoNotCallThis:
 
 class _JsObject(metaclass=_JsMeta):
   def __new__(self, do_not_call: DoNotCallThis) -> _JsObject:
-      ...
+    ...
 
 
 class Record[S, T](JsProxy):
-  pass
+  def __getattr__(self, s: str) -> T:
+    ...
