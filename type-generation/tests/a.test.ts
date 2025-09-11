@@ -867,7 +867,7 @@ describe("emit", () => {
             pass
       `).trim(),
     );
-  })
+  });
   it("Type alias param", () => {
     const res = emitFile(`\
       interface I<T> {
