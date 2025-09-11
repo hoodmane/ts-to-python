@@ -75,7 +75,7 @@ function convertBuiltinFunction(funcName: string): ConversionResult {
   const x = project.getSourceFileOrThrow("/a.ts");
   const id = x.getStatements()[0].getChildren()[0] as Identifier;
   const funcDecl = id.getDefinitionNodes()[0] as FunctionDeclaration;
-  return convertDecls([], [funcDecl]);
+  return convertDecls([], [funcDecl], []);
 }
 
 function emitIRNoTypeIgnores(x: ConversionResult): string[] {
@@ -92,7 +92,7 @@ function convertBuiltinVariable(varName: string): string[] {
   const varDecl = id
     .getDefinitionNodes()
     .filter(Node.isVariableDeclaration)[0]!;
-  const ir = convertDecls([varDecl], []);
+  const ir = convertDecls([varDecl], [], []);
   return emitIR(ir).map(removeTypeIgnores);
 }
 
@@ -688,113 +688,115 @@ describe("emit", () => {
       expected,
     );
   });
-  it("Iterable", () => {
-    const res = emitFile(`\
-      interface X {
-        [Symbol.iterator](): IterableIterator<string>;
-      }
-      declare var x: X[];
-    `);
-    assert.strictEqual(
-      removeTypeIgnores(res.at(-1)!),
-      dedent(`
-        class X_iface(Protocol):
-            def __iter__(self, /) -> PyIterator[str]: ...
-      `).trim(),
-    );
-  });
-  it("Sized", () => {
-    const res = emitFile(`\
-      interface X {
-        length: number;
-      }
-      interface Y {
-        size: number;
-      }
-      declare var x: X[];
-      declare var y: Y[];
-    `);
-    assert.strictEqual(
-      removeTypeIgnores(res.at(-2)!),
-      dedent(`
-        class X_iface(Protocol):
-            length: int | float = ...
-            def __len__(self, /) -> int: ...
-      `).trim(),
-    );
-    assert.strictEqual(
-      removeTypeIgnores(res.at(-1)!),
-      dedent(`
-        class Y_iface(Protocol):
-            size: int | float = ...
-            def __len__(self, /) -> int: ...
-      `).trim(),
-    );
-  });
-  it("contains", () => {
-    const res = emitFile(`\
-      interface X {
-        includes(v: number): boolean;
-      }
-      interface Y {
-        has(v: string): boolean;
-      }
-      declare var x: X[];
-      declare var y: Y[];
-    `);
-    assert.strictEqual(
-      removeTypeIgnores(res.at(-2)!),
-      dedent(`
-        class X_iface(Protocol):
-            def includes(self, v: int | float, /) -> bool: ...
-            def __contains__(self, v: int | float, /) -> bool: ...
-      `).trim(),
-    );
-    assert.strictEqual(
-      removeTypeIgnores(res.at(-1)!),
-      dedent(`
-        class Y_iface(Protocol):
-            def has(self, v: str, /) -> bool: ...
-            def __contains__(self, v: str, /) -> bool: ...
-      `).trim(),
-    );
-  });
-  it("map", () => {
-    const res = emitFile(`\
-      interface X {
-        get(x: number): string;
-        set(x: number, y: string): void;
-        delete(x: number): boolean;
-        has(x: number): boolean
-      }
-      declare var x: X[];
-    `);
-    assert.strictEqual(
-      removeTypeIgnores(res.at(-1)!),
-      dedent(`
-        class X_iface(Protocol):
-            def get(self, x: int | float, /) -> str: ...
-            def set(self, x: int | float, y: str, /) -> None: ...
-            def delete(self, x: int | float, /) -> bool: ...
-            def has(self, x: int | float, /) -> bool: ...
-            def __contains__(self, x: int | float, /) -> bool: ...
-            def __getitem__(self, x: int | float, /) -> str: ...
-            def __setitem__(self, x: int | float, y: str, /) -> None: ...
-            def __delitem__(self, x: int | float, /) -> bool: ...
-      `).trim(),
-    );
-  });
-  it("callable interface", () => {
-    const res = emitFile(`\
-      declare var x: VoidFunction[];
-    `);
-    assert.strictEqual(
-      removeTypeIgnores(res.at(-1)!),
-      dedent(`
-        class VoidFunction_iface(Protocol):
-            def __call__(self, /) -> None: ...
-      `).trim(),
-    );
+  describe("Protocols", () => {
+    it("Iterable", () => {
+      const res = emitFile(`\
+        interface X {
+          [Symbol.iterator](): IterableIterator<string>;
+        }
+        declare var x: X[];
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-1)!),
+        dedent(`
+          class X_iface(Protocol):
+              def __iter__(self, /) -> PyIterator[str]: ...
+        `).trim(),
+      );
+    });
+    it("Sized", () => {
+      const res = emitFile(`\
+        interface X {
+          length: number;
+        }
+        interface Y {
+          size: number;
+        }
+        declare var x: X[];
+        declare var y: Y[];
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-2)!),
+        dedent(`
+          class X_iface(Protocol):
+              length: int | float = ...
+              def __len__(self, /) -> int: ...
+        `).trim(),
+      );
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-1)!),
+        dedent(`
+          class Y_iface(Protocol):
+              size: int | float = ...
+              def __len__(self, /) -> int: ...
+        `).trim(),
+      );
+    });
+    it("contains", () => {
+      const res = emitFile(`\
+        interface X {
+          includes(v: number): boolean;
+        }
+        interface Y {
+          has(v: string): boolean;
+        }
+        declare var x: X[];
+        declare var y: Y[];
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-2)!),
+        dedent(`
+          class X_iface(Protocol):
+              def includes(self, v: int | float, /) -> bool: ...
+              def __contains__(self, v: int | float, /) -> bool: ...
+        `).trim(),
+      );
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-1)!),
+        dedent(`
+          class Y_iface(Protocol):
+              def has(self, v: str, /) -> bool: ...
+              def __contains__(self, v: str, /) -> bool: ...
+        `).trim(),
+      );
+    });
+    it("map", () => {
+      const res = emitFile(`\
+        interface X {
+          get(x: number): string;
+          set(x: number, y: string): void;
+          delete(x: number): boolean;
+          has(x: number): boolean
+        }
+        declare var x: X[];
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-1)!),
+        dedent(`
+          class X_iface(Protocol):
+              def get(self, x: int | float, /) -> str: ...
+              def set(self, x: int | float, y: str, /) -> None: ...
+              def delete(self, x: int | float, /) -> bool: ...
+              def has(self, x: int | float, /) -> bool: ...
+              def __contains__(self, x: int | float, /) -> bool: ...
+              def __getitem__(self, x: int | float, /) -> str: ...
+              def __setitem__(self, x: int | float, y: str, /) -> None: ...
+              def __delitem__(self, x: int | float, /) -> bool: ...
+        `).trim(),
+      );
+    });
+    it("callable interface", () => {
+      const res = emitFile(`\
+        declare var x: VoidFunction[];
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-1)!),
+        dedent(`
+          class VoidFunction_iface(Protocol):
+              def __call__(self, /) -> None: ...
+        `).trim(),
+      );
+    });
   });
   it("duplicate signature", () => {
     const res = emitFile(`\
@@ -1077,6 +1079,143 @@ describe("emit", () => {
             def __getattr__(self, key: str, /) -> int | float: ...
       `).trim(),
     );
+  });
+  describe("typescript classes", () => {
+    it("simple class", () => {
+      const res = emitFile(`
+        declare class X {
+          x: string;
+          constructor(y: string);
+        }
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          class X_iface(Protocol):
+              x: str = ...
+
+          class X(X_iface, _JsObject):
+              @classmethod
+              def new(self, y: str, /) -> X_iface: ...
+        `).trim(),
+      );
+    });
+    it("class with methods", () => {
+      const res = emitFile(`
+        declare class X {
+          x: string;
+          constructor(y: string);
+          static f(x: string): number;
+          f(x: number): string;
+        }
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          class X_iface(Protocol):
+              x: str = ...
+              def f(self, x: int | float, /) -> str: ...
+
+          class X(X_iface, _JsObject):
+              @classmethod
+              def f(self, x: str, /) -> int | float: ...
+              @classmethod
+              def new(self, y: str, /) -> X_iface: ...
+        `).trim(),
+      );
+    });
+    it("class with type parameter", () => {
+      const res = emitFile(`
+        declare class X<T> {
+          x: T;
+          constructor(y: T);
+          static f<T>(x: T): X<T>;
+          f(x: number): T;
+        }
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          class X_iface[T](Protocol):
+              x: T = ...
+              def f(self, x: int | float, /) -> T: ...
+
+          class X[T](X_iface[T], _JsObject):
+              @classmethod
+              def f(self, x: T, /) -> X[T]: ...
+              @classmethod
+              def new(self, y: T, /) -> X_iface[T]: ...
+        `).trim(),
+      );
+    });
+    describe("Class protocols", () => {
+      it("Iterable", () => {
+        const res = emitFile(`\
+          class X {
+            [Symbol.iterator](): IterableIterator<string> {}
+          }
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.at(-2)!),
+          dedent(`
+            class X_iface(Protocol):
+                def __iter__(self, /) -> PyIterator[str]: ...
+          `).trim(),
+        );
+      });
+      it("Sized", () => {
+        const res = emitFile(`\
+          class X {
+            length: number;
+          }
+          class Y {
+            size: number;
+          }
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.at(-4)!),
+          dedent(`
+            class X_iface(Protocol):
+                length: int | float = ...
+                def __len__(self, /) -> int: ...
+          `).trim(),
+        );
+        assert.strictEqual(
+          removeTypeIgnores(res.at(-2)!),
+          dedent(`
+            class Y_iface(Protocol):
+                size: int | float = ...
+                def __len__(self, /) -> int: ...
+          `).trim(),
+        );
+      });
+      it("contains", () => {
+        const res = emitFile(`\
+          class X {
+            includes(v: number): boolean {};
+          }
+          class Y {
+            has(v: string): boolean {};
+          }
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.at(-4)!),
+          dedent(`
+            class X_iface(Protocol):
+                def includes(self, v: int | float, /) -> bool: ...
+                def __contains__(self, v: int | float, /) -> bool: ...
+          `).trim(),
+        );
+        assert.strictEqual(
+          removeTypeIgnores(res.at(-2)!),
+          dedent(`
+            class Y_iface(Protocol):
+                def has(self, v: str, /) -> bool: ...
+                def __contains__(self, v: str, /) -> bool: ...
+          `).trim(),
+        );
+      });
+    });
   });
   describe("adjustments", () => {
     it("setTimeout", () => {

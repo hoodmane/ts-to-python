@@ -1,7 +1,9 @@
 import {
   ClassDeclaration,
+  Constructor,
   ConstructSignatureDeclaration,
   Identifier,
+  ImplementedKindToNodeMappings,
   InterfaceDeclaration,
   MethodSignature,
   ModuleDeclaration,
@@ -12,19 +14,8 @@ import {
   VariableStatement,
 } from "ts-morph";
 
-export type SyntaxKindMap = {
-  [SyntaxKind.VariableStatement]: VariableStatement;
-  [SyntaxKind.VariableDeclaration]: VariableDeclaration;
-  [SyntaxKind.PropertySignature]: PropertySignature;
-  [SyntaxKind.MethodSignature]: MethodSignature;
-  [SyntaxKind.ConstructSignature]: ConstructSignatureDeclaration;
-  [SyntaxKind.InterfaceDeclaration]: InterfaceDeclaration;
-  [SyntaxKind.TypeAliasDeclaration]: TypeAliasDeclaration;
-  [SyntaxKind.ModuleDeclaration]: ModuleDeclaration;
-};
-
 export type GroupedBySyntaxKind = {
-  [K in keyof SyntaxKindMap]?: SyntaxKindMap[K][];
+  [K in keyof ImplementedKindToNodeMappings]?: ImplementedKindToNodeMappings[K][];
 };
 
 export type InterfacesIdentifier = {

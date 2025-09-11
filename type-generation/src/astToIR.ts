@@ -1,6 +1,7 @@
 import {
   CallSignatureDeclaration,
   ClassDeclaration,
+  ConstructSignatureDeclaration,
   EntityName,
   FunctionDeclaration,
   Identifier,
@@ -8,6 +9,7 @@ import {
   IntersectionTypeNode,
   LiteralTypeNode,
   Node,
+  PropertyDeclaration,
   PropertySignature,
   Signature,
   SignaturedDeclaration,
@@ -476,7 +478,15 @@ export class Converter {
   }
 
   sigToIR(sig: Signature): SigIR {
-    const decl = sig.getDeclaration() as CallSignatureDeclaration;
+    const decl1 = sig.getDeclaration();
+    const decl =
+      decl1.asKind(SyntaxKind.CallSignature) ??
+      decl1.asKind(SyntaxKind.ConstructSignature) ??
+      decl1.asKind(SyntaxKind.Constructor) ??
+      decl1.asKind(SyntaxKind.FunctionDeclaration) ??
+      decl1.asKind(SyntaxKind.FunctionType) ??
+      decl1.asKind(SyntaxKind.MethodDeclaration) ??
+      decl1.asKindOrThrow(SyntaxKind.MethodSignature);
     try {
       this.setIfaceTypeConstraints([decl]);
 
@@ -505,8 +515,22 @@ export class Converter {
         }
         pyParams.push(pyParam);
       }
-      const retNode = decl.getReturnTypeNode()!;
-      const returns = this.typeToIR(retNode);
+      const retNode = decl.getReturnTypeNode();
+      let returns: TypeIR;
+      if (retNode) {
+        returns = this.typeToIR(retNode);
+      } else {
+        // It was a constructor. The return type is determined by the parent
+        // node.
+        const classDecl = decl
+          .getParent()
+          .asKindOrThrow(SyntaxKind.ClassDeclaration);
+        const name = classDecl.getName() + "_iface";
+        const typeArgs: ParameterReferenceTypeIR[] = classDecl
+          .getTypeParameters()
+          .map((x) => ({ kind: "parameterReference", name: x.getName() }));
+        returns = { kind: "reference", name, typeArgs };
+      }
 
       // Extract type parameters for this specific signature
       const typeParams = this.getTypeParamsFromDecl(decl);
@@ -650,7 +674,7 @@ export class Converter {
   }
 
   propertySignatureToIR(
-    member: PropertySignature,
+    member: PropertySignature | PropertyDeclaration,
     isStatic: boolean = false,
   ): PropertyIR {
     const name = member.getName();
@@ -663,8 +687,8 @@ export class Converter {
   interfaceToIR(
     name: string,
     bases: BaseIR[],
-    members: TypeElementTypes[],
-    staticMembers: TypeElementTypes[],
+    members: Node[],
+    staticMembers: Node[],
     callSignatures: CallSignatureDeclaration[],
     typeParams: string[],
   ): InterfaceIR {
@@ -803,6 +827,42 @@ export class Converter {
     }
   }
 
+  classToIR(classDecl: ClassDeclaration): [InterfaceIR, InterfaceIR] {
+    const name = classDecl.getName() || "";
+    const ifaceName = name + "_iface";
+
+    // Extract properties and methods from class members
+    const allProperties = classDecl.getProperties();
+    const allMethods = classDecl.getMethods();
+    const typeParams = this.getTypeParamsFromDecl(classDecl);
+    const bases = this.getBasesOfDecls([classDecl]);
+    const [staticMethods, methods] = split2(allMethods, (x) => x.isStatic());
+    const [staticProperties, properties] = split2(allProperties, (x) =>
+      x.isStatic(),
+    );
+    const typeArgs = typeParams.map((param) => simpleType(param));
+    const concreteBases = [{ name: ifaceName, typeArgs }];
+    const constructors = classDecl.getConstructors();
+
+    return [
+      this.interfaceToIR(
+        ifaceName,
+        bases,
+        [...methods, ...properties],
+        [],
+        [],
+        typeParams,
+      ),
+      this.interfaceToIR(
+        name,
+        concreteBases,
+        [],
+        [...constructors, ...staticMethods, ...staticProperties],
+        [],
+        typeParams,
+      ),
+    ];
+  }
   getBasesOfDecls(
     decls: (InterfaceDeclaration | ClassDeclaration)[],
   ): BaseIR[] {
@@ -1024,12 +1084,14 @@ export type ConversionResult = {
 export function convertFiles(files: SourceFile[]): ConversionResult {
   const varDecls = files.flatMap((file) => file.getVariableDeclarations());
   const funcDecls = files.flatMap((file) => file.getFunctions());
-  return convertDecls(varDecls, funcDecls);
+  const classDecls = files.flatMap((file) => file.getClasses());
+  return convertDecls(varDecls, funcDecls, classDecls);
 }
 
 export function convertDecls(
   varDecls: VariableDeclaration[],
   funcDecls: FunctionDeclaration[],
+  classDecls: ClassDeclaration[],
 ): ConversionResult {
   const converter = new Converter();
   const topLevels: TopLevels = {
@@ -1070,6 +1132,15 @@ export function convertDecls(
   const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName()!);
   for (const [name, decls] of Object.entries(funcDeclsByName)) {
     pushTopLevel(converter.funcDeclsToIR(name, decls));
+  }
+  for (const classDecl of classDecls) {
+    const name = sanitizeReservedWords(classDecl.getName() || "");
+    if (converter.convertedSet.has(name + "_iface")) {
+      continue;
+    }
+    converter.convertedSet.add(name + "_iface");
+    converter.convertedSet.add(name);
+    converter.classToIR(classDecl).forEach(pushTopLevel);
   }
   let next: Needed | undefined;
   while ((next = popElt(converter.neededSet))) {
