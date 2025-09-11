@@ -30,14 +30,14 @@ It seems to work with node >= 18.
 First you must install the two subdirectories:
 
 ```sh
-npm install -C type-generation-input-project
+npm install -C input-projects/browser-dom
 npm install -C type-generation
 ```
 
 then to build the types, run:
 
 ```sh
-npm run -C type-generation build
+npm run -C type-generation build ../input-projects/browser-dom
 ```
 
 ### Running tests
@@ -53,7 +53,7 @@ first:
 
 ```sh
 cd mypy-tests
-python3.11 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```

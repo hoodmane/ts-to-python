@@ -20,7 +20,7 @@ jobs:
     steps:
       - checkout
       - node/install-packages:
-          app-dir: "type-generation-input-project"
+          app-dir: "input-projects/browser-dom"
       - node/install-packages:
           app-dir: "type-generation"
       - run: |
@@ -32,11 +32,11 @@ jobs:
     steps:
       - checkout
       - node/install-packages:
-          app-dir: "type-generation-input-project"
+          app-dir: "input-projects/browser-dom"
       - node/install-packages:
           app-dir: "type-generation"
       - run: |
-          npm run -C type-generation build
+          npm run -C type-generation build ../input-projects/browser-dom/
       - persist_to_workspace:
           root: .
           paths:
