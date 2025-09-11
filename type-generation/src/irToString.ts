@@ -40,7 +40,7 @@ export function indent(x: string, prefix: string): string {
     .join("\n");
 }
 
-function isIllegal(name) {
+function isIllegal(name: string): boolean {
   return (
     /["[$]/.test(name) ||
     /^[0-9]/.test(name) ||
@@ -59,7 +59,7 @@ const pythonReservedWords = new Set([
   "float",
 ]);
 
-export function sanitizeReservedWords(name) {
+export function sanitizeReservedWords(name: string): string {
   if (pythonReservedWords.has(name)) {
     name += "_";
   }
@@ -164,7 +164,7 @@ function pySigToDeclarationString(
     const { name, pyType } = sig.spreadParam;
     formattedParams.push(`*${name}: ${pyType}`);
   }
-  if (sig.kwparams?.length > 0) {
+  if (sig.kwparams?.length) {
     formattedParams.push("*");
     formattedParams.push(...sig.kwparams.map(pyParamToString));
   }
@@ -315,6 +315,7 @@ function sigIRListToString(
   });
   if (irSigs.length > 1) {
     settings = structuredClone(settings);
+    settings.decorators ??= [];
     settings.decorators.push("overload");
   }
   return irSigs.map((sig) => irSigToString(sig, settings));
@@ -467,7 +468,7 @@ function typeIRToStringHelper(
   }
   if (ir.kind === "reference") {
     let { name: name, typeArgs } = ir;
-    const res = typeReferenceSubsitutions(name, typeArgs, variance);
+    const res = typeReferenceSubsitutions(name, typeArgs, variance!);
     if (res) {
       return res;
     }

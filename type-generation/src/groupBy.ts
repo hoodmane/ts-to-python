@@ -9,7 +9,7 @@ export function groupBy<T, K extends keyof any>(
   return gen.done();
 }
 
-export type WrappedGen<T, R> = { next: (T) => void; done: () => R };
+export type WrappedGen<T, R> = { next: (t: T) => void; done: () => R };
 
 const doneToken = {};
 
@@ -45,10 +45,6 @@ function* groupByGenHelper<T, K extends keyof any>(getKey: (item: T) => K) {
   }
 }
 
-export function split<T>(
-  list: Iterable<T>,
-  cond: (t: T) => boolean,
-): [T[], T[]];
 export function split<T, S extends T>(
   list: Iterable<T>,
   cond: (t: T) => t is S,
@@ -63,6 +59,13 @@ export function split<T, S extends T>(
     }
   }
   return [ss, ts];
+}
+
+export function split2<T>(
+  list: Iterable<T>,
+  cond: (t: T) => boolean,
+): [T[], T[]] {
+  return split(list, cond as (t: T) => t is T);
 }
 
 export function popElt<T>(s: Set<T>): T | undefined {
