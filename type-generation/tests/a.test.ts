@@ -1249,6 +1249,18 @@ describe("emit", () => {
       "def f(*, type: str, payload: int | float) -> None: ...",
     );
   });
+  it("Destructure name collision", () => {
+    const res = emitFile(`
+      declare function f(type: string, options: {
+          type: string;
+          payload: number;
+        }): void;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      "def f(type_: str, /, *, type: str, payload: int | float) -> None: ...",
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));

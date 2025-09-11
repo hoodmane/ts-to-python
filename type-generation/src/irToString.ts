@@ -346,6 +346,14 @@ function irSigToPySig(
     kwparams: origKwparams,
     returns: origReturns,
   } = sig;
+  if (origKwparams) {
+    const kwparamsSet = new Set(origKwparams?.map((x) => x.name));
+    for (const param of origParams) {
+      if (kwparamsSet.has(param.name)) {
+        param.name += "_";
+      }
+    }
+  }
   const params = origParams.map(irParamToPyParam);
   const kwparams = origKwparams?.map(irParamToPyParam);
   const spreadParam = origSpreadParam
