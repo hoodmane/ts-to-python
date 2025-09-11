@@ -115,7 +115,7 @@ describe("typeToPython", () => {
       checkTypeToPython("Function", "Callable[..., Any]");
     });
     it("convert Exclude", () => {
-      checkTypeToPython("Exclude<string | symbol>", "str | Symbol");
+      checkTypeToPython("Exclude<string | symbol, string>", "str | Symbol");
     });
     it("convert Readonly", () => {
       checkTypeToPython("Readonly<string | symbol>", "str | Symbol");
@@ -1056,6 +1056,23 @@ describe("emit", () => {
             @overload
             def new(self, /, *, s: Strategy_iface[R]) -> Xyz[R]: ...
       `).trim(),
+    );
+  });
+  it("Type param with default value", () => {
+    const res = emitFile(`\
+      interface X<A, B> {
+        a: A;
+        b: B;
+      };
+      type Info<A = string, B = number> =
+        | X<A, B>
+        | string;
+
+      declare function f(x: Info): void;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res[2]),
+      "def f(x: Info[str, int | float], /) -> None: ...",
     );
   });
   it("extends record", () => {
