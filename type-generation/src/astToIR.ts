@@ -19,6 +19,7 @@ import {
   TypeLiteralNode,
   TypeNode,
   TypeOperatorTypeNode,
+  TypeParameterDeclaration,
   TypeParameteredNode,
   TypeReferenceNode,
   UnionTypeNode,
@@ -228,6 +229,14 @@ function getInterfaceDeclToDestructure(
   return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
 }
 
+function getFilteredTypeParams<T extends TypeParameteredNode>(
+  t: T,
+): TypeParameterDeclaration[] {
+  return t
+    .getTypeParameters()
+    .filter((p) => p.getConstraint()?.getText() !== "string");
+}
+
 /**
  * Helper for getting the bases in membersDeclarationToIR
  */
@@ -236,7 +245,7 @@ function getInterfaceTypeArgs(ident: EntityName): TypeIR[] {
     (ident as Identifier)
       .getDefinitionNodes()
       .filter(Node.isInterfaceDeclaration)
-      .flatMap((def) => def.getTypeParameters())
+      .flatMap(getFilteredTypeParams)
       .map((param) => param.getName()),
     (param) => param,
   ).map((name) => ({ kind: "parameterReference", name }));
@@ -668,17 +677,12 @@ export class Converter {
   }
 
   getTypeParamsFromDecl<T extends TypeParameteredNode>(decl: T): string[] {
-    return decl
-      .getTypeParameters()
-      .filter((p) => {
-        const constraint = p.getConstraint();
-        // Filter out type parameters that extend string since they get replaced with str
-        if (constraint?.getText() === "string") {
-          return false;
-        }
-        // Filter out type parameters that are already declared at class level
-        return !this.classTypeParams.has(p.getName());
-      })
+    return getFilteredTypeParams(decl)
+      .filter(
+        (p) =>
+          // Filter out type parameters that are already declared at class level
+          !this.classTypeParams.has(p.getName()),
+      )
       .map((p) => p.getName());
   }
 
@@ -941,9 +945,9 @@ export class Converter {
         .getDefinitionNodes()
         .filter(Node.isInterfaceDeclaration);
       for (const interfaceDef of interfaceDefs) {
-        const interfaceTypeParams = interfaceDef
-          .getTypeParameters()
-          .map((p) => p.getName());
+        const interfaceTypeParams = getFilteredTypeParams(interfaceDef).map(
+          (p) => p.getName(),
+        );
         inheritedTypeParams.push(...interfaceTypeParams);
       }
     }
