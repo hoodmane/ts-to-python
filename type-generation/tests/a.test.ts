@@ -1090,6 +1090,13 @@ describe("emit", () => {
       "def f(x: Info[str, X_iface[str]], /) -> None: ...",
     );
   });
+  it("Array converted to ArrayLike_iface", () => {
+    const res = emitFile(`declare function f(x: Array<string>): void`);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      "def f(x: ArrayLike_iface[str], /) -> None: ...",
+    );
+  });
   it("extends record", () => {
     const res = emitFile(`
       interface I extends Record<string, number> {
