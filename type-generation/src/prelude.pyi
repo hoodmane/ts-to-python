@@ -12,8 +12,6 @@ from typing import (
   Any,
   Literal,
   Self,
-  TypeVar,
-  Generic,
   ClassVar,
   Never,
   Protocol,
@@ -60,8 +58,6 @@ HeadersInit = PyIterable[tuple[str, str]] | Record[str, str] | Headers
 # These classes we are declaring are actually JavaScript objects, so the class
 # objects themselves need to be instances of JsProxy. So their type needs to
 # subclass JsProxy. We do this with a custom metaclass.
-
-
 
 
 class Promise[T](PyodideFuture[T]):
