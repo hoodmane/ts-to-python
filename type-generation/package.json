@@ -4,7 +4,7 @@
   "description": "",
   "scripts": {
     "test": "node --test --import=tsx 'tests/**/*.test.ts'",
-    "build": "tsx src/main.ts ../type-generation-input-project",
+    "build": "tsx src/main.ts",
     "check": "npx tsc"
   },
   "keywords": [],
