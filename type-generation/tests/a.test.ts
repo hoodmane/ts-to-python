@@ -848,6 +848,26 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("extends string class", () => {
+    const res = emitFile(`\
+      interface X<K extends string> {
+      }
+      interface XConstructor {
+        readonly prototype: X;
+      }
+      declare var X: XConstructor;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`
+        class X(X_iface, _JsObject):
+            pass
+
+        class X_iface(Protocol):
+            pass
+      `).trim(),
+    );
+  });
   it("Type alias param", () => {
     const res = emitFile(`\
       interface I<T> {
