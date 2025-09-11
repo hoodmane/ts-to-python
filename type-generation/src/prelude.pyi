@@ -36,14 +36,10 @@ ArrayLike = JsArray
 ArrayLike_iface = PyMutableSequence
 Iterable_iface = PyIterable
 
-__Tco = TypeVar("__Tco", covariant=True)
-TResult1 = TypeVar("TResult1", covariant=True)
-TResult2 = TypeVar("TResult2", covariant=True)
-
-class Thenable(Protocol, Generic[__Tco]):
-  def then(
+class Thenable[T](Protocol):
+  def then[TResult1, TResult2](
       self,
-      onfulfilled: (Callable[[__Tco], TResult1 | PromiseLike_iface[TResult1]])
+      onfulfilled: (Callable[[T], TResult1 | PromiseLike_iface[TResult1]])
       | None
       | None = None,
       onrejected: (Callable[[Any], TResult2 | PromiseLike_iface[TResult2]])
@@ -52,7 +48,7 @@ class Thenable(Protocol, Generic[__Tco]):
   ) -> PromiseLike_iface[TResult1 | TResult2]:
       ...
 
-PromiseLike_iface = Awaitable[__Tco] | Thenable[__Tco]
+type PromiseLike_iface[T] = Awaitable[T] | Thenable[T]
 
 
 Dispatcher = Any
@@ -65,31 +61,29 @@ HeadersInit = PyIterable[tuple[str, str]] | Record[str, str] | Headers
 # objects themselves need to be instances of JsProxy. So their type needs to
 # subclass JsProxy. We do this with a custom metaclass.
 
-__KT = TypeVar("__KT")  # Key type.
-__VT = TypeVar("__VT")  # Value type.
-__T = TypeVar("__T")
 
 
-class Promise(PyodideFuture[__T]):
+
+class Promise[T](PyodideFuture[T]):
   @classmethod
   def new(
       cls,
       executor: Callable[[], None]
-      | Callable[[Callable[[__T], None]], None]
-      | Callable[[Callable[[__T], None], Callable[[BaseException], None]], None],
-  ) -> Promise[__T]:
+      | Callable[[Callable[[T], None]], None]
+      | Callable[[Callable[[T], None], Callable[[BaseException], None]], None],
+  ) -> Promise[T]:
       ...
 
 
-class Map(JsMutableMap[__KT, __VT]):
+class Map[KT, VT](JsMutableMap[KT, VT]):
   @classmethod
   @overload
-  def new(cls) -> "JsMutableMap[__KT, __VT]":
+  def new(cls) -> "JsMutableMap[KT, VT]":
       ...
 
   @classmethod
   @overload
-  def new(cls, args: PySequence[tuple[__KT, __VT]]) -> "JsMutableMap[__KT, __VT]":
+  def new(cls, args: PySequence[tuple[KT, VT]]) -> "JsMutableMap[KT, VT]":
       ...
 
 
