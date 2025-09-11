@@ -1110,6 +1110,33 @@ describe("emit", () => {
       "def f(x: Info[str, X_iface[str]], /) -> None: ...",
     );
   });
+  it("type param default in class property", () => {
+    const res = emitFile(`
+      declare class T<M = string> {
+        m: M;
+      }
+      declare class E {
+        readonly t?: T;
+      }
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`\
+        class T_iface[M](Protocol):
+            m: M = ...
+
+        class T[M](T_iface[M], _JsObject):
+            pass
+
+        class E_iface(Protocol):
+            @property
+            def t(self, /) -> T[str] | None: ...
+
+        class E(E_iface, _JsObject):
+            pass
+      `).trim()
+    );
+  })
   it("Array converted to ArrayLike_iface", () => {
     const res = emitFile(`declare function f(x: Array<string>): void`);
     assert.strictEqual(
