@@ -174,8 +174,15 @@ export function getExpressionTypeArgs(
   const defs = ident
     .getDefinitionNodes()
     .filter(
-      (node): node is InterfaceDeclaration | TypeAliasDeclaration | ClassDeclaration =>
-        Node.isInterfaceDeclaration(node) || Node.isTypeAliasDeclaration(node) || Node.isClassDeclaration(node),
+      (
+        node,
+      ): node is
+        | InterfaceDeclaration
+        | TypeAliasDeclaration
+        | ClassDeclaration =>
+        Node.isInterfaceDeclaration(node) ||
+        Node.isTypeAliasDeclaration(node) ||
+        Node.isClassDeclaration(node),
     );
   for (const def of defs) {
     const params = def.getTypeParameters();
