@@ -23,7 +23,7 @@ import {
   VariableDeclaration,
 } from "ts-morph";
 import { BUILTIN_NAMES, TYPE_TEXT_MAP } from "./adjustments";
-import { groupBy, popElt, split } from "./groupBy";
+import { groupBy, popElt, split, split2 } from "./groupBy";
 import {
   assertUnreachable,
   classifyIdentifier,
@@ -206,7 +206,7 @@ function getInterfaceDeclToDestructure(
   const defs = decl
     .getParameters()
     .at(-1)
-    ?.getTypeNode()
+    ?.getTypeNode()!
     .asKind(SyntaxKind.TypeReference)
     ?.getTypeName()
     ?.asKind(SyntaxKind.Identifier)
@@ -231,7 +231,9 @@ function getInterfaceTypeArgs(ident: EntityName): TypeIR[] {
   ).map((name) => ({ kind: "parameterReference", name }));
 }
 
-const operatorToName = {
+const operatorToName: {
+  [K in SyntaxKind]?: string;
+} = {
   [SyntaxKind.ReadonlyKeyword]: "readonly",
   [SyntaxKind.UniqueKeyword]: "unique",
 };
@@ -479,7 +481,7 @@ export class Converter {
       this.setIfaceTypeConstraints([decl]);
 
       const pyParams: ParamIR[] = [];
-      let spreadParam: ParamIR;
+      let spreadParam: ParamIR | undefined;
       for (const param of decl.getParameters()) {
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
@@ -688,8 +690,12 @@ export class Converter {
       const extraMethods: CallableIR[] = [];
 
       // If we extend record, add a __getattr__ impl as appropriate.
-      let record: BaseIR;
-      [[record = undefined], bases] = split(bases, (x) => x.name === "Record");
+      let record1: BaseIR | undefined;
+      [[record1 = undefined], bases] = split2(
+        bases,
+        (x) => x.name === "Record",
+      );
+      const record = record1 as BaseIR | undefined;
       if (record) {
         extraMethods.push({
           kind: "callable",
@@ -709,7 +715,7 @@ export class Converter {
         delete astMethods["[Symbol.iterator]"];
         const typeNode = x[0]
           .getDeclaration()
-          .getReturnTypeNode()
+          .getReturnTypeNode()!
           .asKindOrThrow(SyntaxKind.TypeReference);
         if (
           !["IterableIterator", "Iterator"].includes(
@@ -734,8 +740,8 @@ export class Converter {
       }
       if (
         name !== "Function_iface" &&
-        (propMap.get("size")?.getTypeNode().getText() === "number" ||
-          propMap.get("length")?.getTypeNode().getText() === "number")
+        (propMap.get("size")?.getTypeNode()?.getText() === "number" ||
+          propMap.get("length")?.getTypeNode()?.getText() === "number")
       ) {
         extraMethods.push({
           kind: "callable",
@@ -950,10 +956,10 @@ export class Converter {
       return result;
     }
     if (classified.kind === "class") {
-      return declarationIR(name, simpleType(classified.decl.getName()));
+      return declarationIR(name, simpleType(classified.decl.getName()!));
     }
     if (classified.kind === "typeAlias") {
-      return this.typeNodeToDeclaration(name, classified.decl.getTypeNode());
+      return this.typeNodeToDeclaration(name, classified.decl.getTypeNode()!);
     }
     assertUnreachable(classified);
   }
@@ -1061,7 +1067,7 @@ export function convertDecls(
     converter.convertedSet.add(name);
     pushTopLevel(converter.varDeclToIR(varDecl));
   }
-  const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName());
+  const funcDeclsByName = groupBy(funcDecls, (decl) => decl.getName()!);
   for (const [name, decls] of Object.entries(funcDeclsByName)) {
     pushTopLevel(converter.funcDeclsToIR(name, decls));
   }

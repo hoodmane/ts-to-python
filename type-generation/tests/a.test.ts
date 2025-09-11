@@ -89,7 +89,9 @@ function convertBuiltinVariable(varName: string): string[] {
   const id = x.getStatements()[0].getChildren()[0] as Identifier;
   console.log(id.getDefinitionNodes().map((x) => x.getKindName()));
   // process.exit(1);
-  const varDecl = id.getDefinitionNodes().filter(Node.isVariableDeclaration)[0];
+  const varDecl = id
+    .getDefinitionNodes()
+    .filter(Node.isVariableDeclaration)[0]!;
   const ir = convertDecls([varDecl], []);
   return emitIR(ir).map(removeTypeIgnores);
 }
@@ -307,7 +309,7 @@ describe("property signature", () => {
 
 function convertVarDecl(astVarDecl: VariableDeclaration): string {
   const astConverter = new AstConverter();
-  const irVarDecl = astConverter.varDeclToIR(astVarDecl);
+  const irVarDecl = astConverter.varDeclToIR(astVarDecl)!;
   switch (irVarDecl.kind) {
     case "callable":
       return callableIRToString(irVarDecl, false).join("\n");
@@ -334,7 +336,7 @@ describe("sanitizeReservedWords", () => {
     const project = makeProject();
     project.createSourceFile("/a.ts", "declare var global : string;");
     const file = project.getSourceFileOrThrow("/a.ts");
-    const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
+    const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration)!;
     const res = removeTypeIgnores(convertVarDecl(decl));
     assert.strictEqual(res, "global_: str = ...");
   });
@@ -357,7 +359,7 @@ it("Constructor reference", () => {
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
   const file = project.getSourceFileOrThrow("/a.ts");
-  const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
+  const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration)!;
   const res = removeTypeIgnores(convertVarDecl(decl));
   assert.strictEqual(res, expected);
 });
@@ -372,9 +374,9 @@ it("No args function", () => {
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
   const file = project.getSourceFileOrThrow("/a.ts");
-  const decl = file.getFirstDescendantByKind(SyntaxKind.FunctionDeclaration);
+  const decl = file.getFirstDescendantByKind(SyntaxKind.FunctionDeclaration)!;
   const result = removeTypeIgnores(
-    convertFuncDeclGroup(decl.getName(), [decl]),
+    convertFuncDeclGroup(decl.getName()!, [decl]),
   );
   assert.strictEqual(result, expected);
 });
@@ -415,7 +417,7 @@ describe("getBaseNames", () => {
     const project = makeProject();
     project.createSourceFile("/a.ts", text);
     const file = project.getSourceFileOrThrow("/a.ts");
-    const decls = file.getDescendantsOfKind(SyntaxKind.InterfaceDeclaration);
+    const decls = file.getDescendantsOfKind(SyntaxKind.InterfaceDeclaration)!;
     assert.strictEqual(
       getBaseNames([decls[2]])[0],
       "X_iface[int | float, str]",
@@ -442,12 +444,12 @@ it("Type variable", () => {
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
   const file = project.getSourceFileOrThrow("/a.ts");
-  const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration);
+  const decl = file.getFirstDescendantByKind(SyntaxKind.VariableDeclaration)!;
   const res = removeTypeIgnores(convertVarDecl(decl));
   assert.strictEqual(res, expected);
 });
 
-function emitFile(text) {
+function emitFile(text: string): string[] {
   const project = makeProject();
   project.createSourceFile("/a.ts", text);
   return emitFiles([project.getSourceFileOrThrow("/a.ts")]);
@@ -457,15 +459,18 @@ describe("emit", () => {
   describe("Basic conversions", () => {
     it("string type", () => {
       const res = emitFile("declare var a : string;");
-      assert.strictEqual(removeTypeIgnores(res.at(-1)), "a: str = ...");
+      assert.strictEqual(removeTypeIgnores(res.at(-1)!), "a: str = ...");
     });
     it("number type", () => {
       const res = emitFile("declare var a : number;");
-      assert.strictEqual(removeTypeIgnores(res.at(-1)), "a: int | float = ...");
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-1)!),
+        "a: int | float = ...",
+      );
     });
     it("boolean type", () => {
       const res = emitFile("declare var a : boolean;");
-      assert.strictEqual(removeTypeIgnores(res.at(-1)), "a: bool = ...");
+      assert.strictEqual(removeTypeIgnores(res.at(-1)!), "a: bool = ...");
     });
     it("extends", () => {
       const res = emitFile(`
@@ -691,7 +696,7 @@ describe("emit", () => {
       declare var x: X[];
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.at(-1)),
+      removeTypeIgnores(res.at(-1)!),
       dedent(`
         class X_iface(Protocol):
             def __iter__(self, /) -> PyIterator[str]: ...
@@ -710,7 +715,7 @@ describe("emit", () => {
       declare var y: Y[];
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.at(-2)),
+      removeTypeIgnores(res.at(-2)!),
       dedent(`
         class X_iface(Protocol):
             length: int | float = ...
@@ -718,7 +723,7 @@ describe("emit", () => {
       `).trim(),
     );
     assert.strictEqual(
-      removeTypeIgnores(res.at(-1)),
+      removeTypeIgnores(res.at(-1)!),
       dedent(`
         class Y_iface(Protocol):
             size: int | float = ...
@@ -738,7 +743,7 @@ describe("emit", () => {
       declare var y: Y[];
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.at(-2)),
+      removeTypeIgnores(res.at(-2)!),
       dedent(`
         class X_iface(Protocol):
             def includes(self, v: int | float, /) -> bool: ...
@@ -746,7 +751,7 @@ describe("emit", () => {
       `).trim(),
     );
     assert.strictEqual(
-      removeTypeIgnores(res.at(-1)),
+      removeTypeIgnores(res.at(-1)!),
       dedent(`
         class Y_iface(Protocol):
             def has(self, v: str, /) -> bool: ...
@@ -765,7 +770,7 @@ describe("emit", () => {
       declare var x: X[];
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.at(-1)),
+      removeTypeIgnores(res.at(-1)!),
       dedent(`
         class X_iface(Protocol):
             def get(self, x: int | float, /) -> str: ...
@@ -784,7 +789,7 @@ describe("emit", () => {
       declare var x: VoidFunction[];
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.at(-1)),
+      removeTypeIgnores(res.at(-1)!),
       dedent(`
         class VoidFunction_iface(Protocol):
             def __call__(self, /) -> None: ...
@@ -797,7 +802,7 @@ describe("emit", () => {
       declare function f(y: string): void;
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.at(-1)),
+      removeTypeIgnores(res.at(-1)!),
       "def f(x: str, /) -> None: ...",
     );
   });
@@ -806,7 +811,7 @@ describe("emit", () => {
       declare function f<T extends string>(x: T): void;
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.at(-1)),
+      removeTypeIgnores(res.at(-1)!),
       "def f(x: str, /) -> None: ...",
     );
   });
@@ -818,7 +823,7 @@ describe("emit", () => {
       declare var x: X;
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.at(-1)),
+      removeTypeIgnores(res.at(-1)!),
       dedent(`
         class x(_JsObject):
             @classmethod
@@ -834,7 +839,7 @@ describe("emit", () => {
       declare function g(x: X<string>): void;
     `);
     assert.strictEqual(
-      removeTypeIgnores(res.at(-3)),
+      removeTypeIgnores(res.at(-3)!),
       dedent(`
         @overload
         def g(x: X_iface, /) -> None: ...

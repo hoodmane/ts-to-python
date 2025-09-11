@@ -14,7 +14,7 @@ function main() {
   const sourceFile = "../type-generation-input-project/a.ts";
   project.addSourceFilesAtPaths(sourceFile);
   files = project.resolveSourceFileDependencies();
-  files.push(project.getSourceFile(sourceFile));
+  files.push(project.getSourceFile(sourceFile)!);
   const result = emitFiles(files)
     .map((x) => x + "\n\n")
     .join("");

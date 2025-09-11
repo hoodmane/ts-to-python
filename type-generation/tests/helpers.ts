@@ -21,8 +21,8 @@ export function getTypeNode(type: string): TypeNode {
   const project = makeProject();
   project.createSourceFile(fname, `type A = ${type};`);
   const file = project.getSourceFileOrThrow(fname);
-  const alias = file.getFirstDescendantByKind(SyntaxKind.TypeAliasDeclaration);
-  return alias.getTypeNode();
+  const alias = file.getFirstDescendantByKind(SyntaxKind.TypeAliasDeclaration)!;
+  return alias.getTypeNode()!;
 }
 
 export function removeTypeIgnores(a: string): string {
@@ -36,7 +36,7 @@ export function dedent(s: string): string {
     if (/^\s*$/.test(line)) {
       continue;
     }
-    numSpaces = Math.min(numSpaces, /^\s*/.exec(line)[0].length);
+    numSpaces = Math.min(numSpaces, /^\s*/.exec(line)![0].length);
   }
   return lines
     .map((line) => {

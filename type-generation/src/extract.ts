@@ -58,7 +58,7 @@ function fixupClassBases(nameToCls: Map<string, InterfaceIR>): void {
     } else {
       for (const { name: sName } of cls.bases) {
         const s = nameToCls.get(sName);
-        if (s.concrete) {
+        if (s?.concrete) {
           cls.concrete = true;
           break;
         }
@@ -71,7 +71,7 @@ function fixupClassBases(nameToCls: Map<string, InterfaceIR>): void {
       cls.extraBases.push("_JsObject");
     }
     cls.bases.sort(({ name: a }, { name: b }) => {
-      return classNameToIndex.get(b) - classNameToIndex.get(a);
+      return classNameToIndex.get(b)! - classNameToIndex.get(a)!;
     });
   }
 }

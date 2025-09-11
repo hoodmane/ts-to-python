@@ -81,11 +81,15 @@ export function adjustInterfaceIR(cls: InterfaceIR): void {
     // happens is with `Response.json`. We can hack it by allowing all
     // signatures on instances and on the class. This adds the missing class
     // signature.
-    let meth: CallableIR;
-    for (meth of cls.methods) {
-      if (meth.name === "json") {
+    let meth: CallableIR | undefined;
+    for (const curMeth of cls.methods) {
+      if (curMeth.name === "json") {
+        meth = curMeth;
         break;
       }
+    }
+    if (!meth) {
+      throw new Error("Cannot find Response.json");
     }
     meth.signatures.push({
       params: [],
@@ -101,12 +105,12 @@ export function adjustInterfaceIR(cls: InterfaceIR): void {
 }
 
 export function adjustFunction({ name, signatures }: CallableIR): void {
-  if (["setTimeout", "setInterval"].includes(name)) {
+  if (["setTimeout", "setInterval"].includes(name!)) {
     for (const sig of signatures) {
       sig.returns = simpleType("int | JsProxy");
     }
   }
-  if (["clearTimeout", "clearInterval"].includes(name)) {
+  if (["clearTimeout", "clearInterval"].includes(name!)) {
     for (const sig of signatures) {
       sig.params[0].type = simpleType("int | JsProxy");
     }

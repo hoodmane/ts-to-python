@@ -3,6 +3,16 @@ orbs:
   node: circleci/node@5.1.0
   python: circleci/python@2.1.1
 jobs:
+  ts-check:
+    executor:
+      name: node/default
+      tag: "24.7"
+    steps:
+      - checkout
+      - node/install-packages:
+          app-dir: "type-generation"
+      - run: |
+          npm run -C type-generation check
   js-unit:
     executor:
       name: node/default
@@ -52,6 +62,7 @@ jobs:
 workflows:
   build_and_test:
     jobs:
+      - ts-check
       - js-unit
       - generate
       - test:
