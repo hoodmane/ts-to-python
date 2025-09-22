@@ -1,12 +1,13 @@
-import { Project, SourceFile } from "ts-morph";
+import { Project } from "ts-morph";
 import { emitFiles } from "./extract.ts";
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
+import { writeFileSync, readFileSync } from "fs";
 import { resolve } from "path";
 
 Error.stackTraceLimit = Infinity;
 
 function main() {
-  const projPath = process.argv.at(-1)!;
+  const projPath = process.argv.at(-2)!;
+  const outFile = process.argv.at(-1)!;
   const tsConfigFilePath = resolve(projPath, "tsconfig.json");
   const project = new Project({
     tsConfigFilePath,
@@ -21,10 +22,6 @@ function main() {
   const result = emitFiles(files)
     .map((x) => x + "\n\n")
     .join("");
-  const outDir = "../generated/js/";
-  if (!existsSync(outDir)) {
-    mkdirSync(outDir, { recursive: true });
-  }
-  writeFileSync(outDir + "__init__.pyi", result);
+  writeFileSync(outFile, result);
 }
 main();

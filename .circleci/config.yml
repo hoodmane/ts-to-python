@@ -36,7 +36,8 @@ jobs:
       - node/install-packages:
           app-dir: "type-generation"
       - run: |
-          npm run -C type-generation build ../input-projects/browser-dom/
+          mkdir -p generated/js/
+          npm run -C type-generation build ../input-projects/browser-dom/ ../generated/js/__init__.pyi
       - persist_to_workspace:
           root: .
           paths:
