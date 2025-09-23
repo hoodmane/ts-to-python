@@ -1382,7 +1382,7 @@ describe("emit", () => {
         type A = { a: number } | { b: string };
         declare function f(): A;
       `);
-        assert.strictEqual(
+      assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
           type A = A__Union0_iface | A__Union1_iface
