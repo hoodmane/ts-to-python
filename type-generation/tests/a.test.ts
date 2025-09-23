@@ -1353,28 +1353,71 @@ describe("emit", () => {
       );
     });
   });
-  it("Type literal", () => {
-    const res = emitFile(`
-      type A = {
-          a?: 1 | 2 | 3 | 4 | 5;
-          b?: number;
-          c?: 'a' | 'b' | 'c';
-      };
-      declare function f(): A;
-    `);
-    assert.strictEqual(
-      removeTypeIgnores(res.slice(1).join("\n\n")),
-      dedent(`
-        type A = A_iface
+  describe("Type literals", () => {
+    it("simple", () => {
+      const res = emitFile(`
+        type A = {
+            a?: 1 | 2 | 3 | 4 | 5;
+            b?: number;
+            c?: 'a' | 'b' | 'c';
+        };
+        declare function f(): A;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          type A = A_iface
 
-        def f() -> A: ...
+          def f() -> A: ...
 
-        class A_iface(Protocol):
-            a: Literal[1, 2, 3, 4, 5] | None = ...
-            b: int | float | None = ...
-            c: Literal['a', 'b', 'c'] | None = ...
-      `).trim(),
-    );
+          class A_iface(Protocol):
+              a: Literal[1, 2, 3, 4, 5] | None = ...
+              b: int | float | None = ...
+              c: Literal['a', 'b', 'c'] | None = ...
+        `).trim(),
+      );
+    });
+    it("union", () => {
+      const res = emitFile(`
+        type A = { a: number } | { b: string };
+        declare function f(): A;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          type A = A__Union0_iface | A__Union1_iface
+
+          def f() -> A: ...
+
+          class A__Union0_iface(Protocol):
+              a: int | float = ...
+
+          class A__Union1_iface(Protocol):
+              b: str = ...
+        `).trim(),
+      );
+    });
+    it("nested", () => {
+      const res = emitFile(`
+        type A = { a: number; b: { c: number; }; };
+        declare function f(): A;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          type A = A_iface
+
+          def f() -> A: ...
+
+          class A__b_iface(Protocol):
+              c: int | float = ...
+
+          class A_iface(Protocol):
+              a: int | float = ...
+              b: A__b_iface = ...
+        `).trim(),
+      );
+    });
   });
   describe("adjustments", () => {
     it("setTimeout", () => {
