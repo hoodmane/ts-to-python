@@ -258,16 +258,12 @@ const operatorToName: {
 };
 
 export class Converter {
-  funcTypeParams: Set<string>;
-  funcTypeParamConstraints: Map<string, string>;
   ifaceTypeParamConstraints: Map<string, string>;
   classTypeParams: Set<string>;
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
 
   constructor() {
-    this.funcTypeParams = new Set();
-    this.funcTypeParamConstraints = new Map();
     this.ifaceTypeParamConstraints = new Map();
     this.classTypeParams = new Set();
     this.neededSet = new Set();
@@ -379,13 +375,11 @@ export class Converter {
       // If type parameter extends string, translate to str directly
       // This doesn't work correctly if a function type param shadows an interface type param.
       // We can fix that if we have to.
-      const funcConstraint = this.funcTypeParamConstraints.get(name);
       const interfaceConstraint = this.ifaceTypeParamConstraints.get(name);
-      if (funcConstraint === "string" || interfaceConstraint === "string") {
+      if (interfaceConstraint === "string") {
         return simpleType("str");
       }
 
-      this.funcTypeParams.add(name);
       return { kind: "parameterReference", name };
     }
     let typeArgs = getExpressionTypeArgs(ident, typeNode).map((ty) =>
@@ -560,9 +554,6 @@ export class Converter {
       console.warn("failed to convert", sig.getDeclaration().getText());
       console.warn(getNodeLocation(sig.getDeclaration()));
       throw e;
-    } finally {
-      // Clear type parameter constraints after processing signature
-      this.funcTypeParamConstraints.clear();
     }
   }
 
@@ -635,12 +626,6 @@ export class Converter {
       );
       const typeAliasDecl = tempFile.getTypeAliases()[0];
       const dummyTypeNode = typeAliasDecl.getTypeNode()!;
-
-      // Make sure signature's type parameters are available during processing
-      for (const param of sigTypeParams) {
-        this.funcTypeParams.add(param);
-      }
-
       const res = this.typeToIR(dummyTypeNode, optional);
       // Don't remove the temp file, it causes crashes. TODO: Fix this?
       return res;
@@ -1091,7 +1076,6 @@ export type TopLevels = {
 
 export type ConversionResult = {
   topLevels: TopLevels;
-  typeParams: Set<string>;
 };
 
 export function convertFiles(files: SourceFile[]): ConversionResult {
@@ -1197,6 +1181,5 @@ export function convertDecls(
       console.warn("No interface declaration for " + name);
     }
   }
-  const typeParams = converter.funcTypeParams;
-  return { topLevels, typeParams };
+  return { topLevels };
 }
