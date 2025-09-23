@@ -263,7 +263,7 @@ export class Converter {
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
   extraTopLevels: TopLevelIR[];
-  nameContext: string | undefined;
+  nameContext: string[] | undefined;
 
   constructor() {
     this.ifaceTypeParamConstraints = new Map();
@@ -272,6 +272,18 @@ export class Converter {
     this.convertedSet = new Set(BUILTIN_NAMES);
     this.extraTopLevels = [];
     this.nameContext = undefined;
+  }
+
+  pushNameContext(ctx: string): void {
+    if (this.nameContext) {
+      this.nameContext.push(ctx);
+    }
+  }
+
+  popNameContext() {
+    if (this.nameContext) {
+      this.nameContext.pop();
+    }
   }
 
   addNeededIdentifier(ident: Identifier): void {
@@ -316,7 +328,14 @@ export class Converter {
       unionTypes,
       Node.isLiteralTypeNode,
     );
-    const types = rest.map((ty) => this.typeToIR(ty, false));
+    const nameContext = this.nameContext;
+    const types = rest.map((ty, idx) => {
+      this.pushNameContext(`Union${idx}`);
+      const res = this.typeToIR(ty, false);
+      this.popNameContext();
+      return res;
+    });
+    this.nameContext = nameContext;
     const lits = literals
       .map((lit) => lit.getText())
       .filter((txt) => {
@@ -426,7 +445,7 @@ export class Converter {
     if (this.nameContext === undefined) {
       return this.otherTypeToIR(node);
     }
-    const name = this.nameContext + "_iface";
+    const name = this.nameContext.join("__") + "_iface";
     this.extraTopLevels.push(
       this.interfaceToIR(name, [], node.getMembers(), [], [], []),
     );
@@ -703,7 +722,9 @@ export class Converter {
   ): PropertyIR {
     const name = member.getName();
     const isOptional = member.hasQuestionToken();
+    this.pushNameContext(name);
     const type = this.typeToIR(member.getTypeNode()!, isOptional);
+    this.popNameContext();
     const isReadonly = member.isReadonly();
     return { name, type, isOptional, isStatic, isReadonly };
   }
@@ -1072,7 +1093,7 @@ export class Converter {
       case "class":
         throw new Error("Unhandled");
       case "typeAlias":
-        this.nameContext = name;
+        this.nameContext = [name];
         const type = this.typeToIR(classified.decl.getTypeNode()!);
         const aliasTypeParams = classified.decl
           .getTypeParameters()
