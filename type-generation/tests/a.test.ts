@@ -1182,7 +1182,7 @@ describe("emit", () => {
             def __iter__(self, /) -> PyIterator[T]: ...
       `).trim(),
     );
-  })
+  });
   describe("typescript classes", () => {
     it("simple class", () => {
       const res = emitFile(`

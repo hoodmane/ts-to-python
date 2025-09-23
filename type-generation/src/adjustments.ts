@@ -126,10 +126,19 @@ export function adjustFunction({ name, signatures }: CallableIR): void {
 export function handleBuiltinBases(nameToCls: Map<string, InterfaceIR>): void {
   for (const val of nameToCls.values()) {
     let iteratorBase;
-    [[iteratorBase], val.bases] = split2(val.bases, (x) => x.name === "Iterator_iface");
+    [[iteratorBase], val.bases] = split2(
+      val.bases,
+      (x) => x.name === "Iterator_iface",
+    );
     if (iteratorBase) {
       val.extraBases ??= [];
-      val.extraBases.push(typeReferenceSubsitutions(iteratorBase.name, iteratorBase.typeArgs, Variance.none)!);
+      val.extraBases.push(
+        typeReferenceSubsitutions(
+          iteratorBase.name,
+          iteratorBase.typeArgs,
+          Variance.none,
+        )!,
+      );
     }
   }
 }
