@@ -4,6 +4,7 @@ import {
   adjustFunction,
   adjustInterfaceIR,
   getExtraBases,
+  handleBuiltinBases,
 } from "./adjustments.ts";
 
 import {
@@ -49,10 +50,12 @@ function topologicalSortClasses(
 }
 
 function fixupClassBases(nameToCls: Map<string, InterfaceIR>): void {
+  handleBuiltinBases(nameToCls);
   const classes = topologicalSortClasses(nameToCls);
   const classNameToIndex = new Map(classes.map((cls, idx) => [cls.name, idx]));
   for (const cls of classes) {
-    cls.extraBases = getExtraBases(cls.name);
+    cls.extraBases ??= [];
+    cls.extraBases.push(...getExtraBases(cls.name));
     if (cls.extraBases.length > 0) {
       cls.concrete = true;
     } else {

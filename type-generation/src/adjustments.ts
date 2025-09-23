@@ -4,6 +4,7 @@ import { typeIRToString } from "./irToString";
 import { readFileSync } from "fs";
 
 import { URL } from "url";
+import { split2 } from "./groupBy";
 
 const PRELUDE_FILE = new URL("./prelude.pyi", import.meta.url).pathname;
 export const PRELUDE = readFileSync(PRELUDE_FILE, { encoding: "utf-8" });
@@ -118,6 +119,17 @@ export function adjustFunction({ name, signatures }: CallableIR): void {
   if (name === "fromEntries") {
     for (const sig of signatures) {
       sig.returns = simpleType("JsProxy");
+    }
+  }
+}
+
+export function handleBuiltinBases(nameToCls: Map<string, InterfaceIR>): void {
+  for (const val of nameToCls.values()) {
+    let iteratorBase;
+    [[iteratorBase], val.bases] = split2(val.bases, (x) => x.name === "Iterator_iface");
+    if (iteratorBase) {
+      val.extraBases ??= [];
+      val.extraBases.push(typeReferenceSubsitutions(iteratorBase.name, iteratorBase.typeArgs, Variance.none)!);
     }
   }
 }

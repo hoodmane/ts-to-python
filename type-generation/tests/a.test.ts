@@ -1166,6 +1166,23 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("extends Iterator", () => {
+    const res = emitFile(`
+      interface IteratorObject<T, TReturn = unknown, TNext = unknown> extends Iterator<T, TReturn, TNext> {
+          [Symbol.iterator](): IteratorObject<T, TReturn, TNext>;
+      }
+      declare function f(): IteratorObject<string, undefined, undefined>'
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`
+        def f() -> IteratorObject_iface[str, None, None]: ...
+
+        class IteratorObject_iface[T, TReturn, TNext](JsGenerator[T, TNext, TReturn]):
+            def __iter__(self, /) -> PyIterator[T]: ...
+      `).trim(),
+    );
+  })
   describe("typescript classes", () => {
     it("simple class", () => {
       const res = emitFile(`
