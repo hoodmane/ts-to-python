@@ -136,7 +136,7 @@ export function handleBuiltinBases(nameToCls: Map<string, InterfaceIR>): void {
         typeReferenceSubsitutions(
           iteratorBase.name,
           iteratorBase.typeArgs,
-          Variance.none,
+          Variance.covar,
         )!,
       );
     }
