@@ -88,7 +88,16 @@ function adjustIR(topLevels: TopLevels): void {
   const classes = topLevels.ifaces;
   const nameToCls = new Map(classes.map((cls) => [cls.name, cls]));
   if (nameToCls.size < classes.length) {
-    throw new Error("Duplicate");
+    const once = new Set();
+    const twice = new Set();
+    for (const { name } of classes) {
+      if (once.has(name)) {
+        twice.add(name);
+      } else {
+        once.add(name);
+      }
+    }
+    throw new Error(`Duplicate names: ${Array.from(twice).join(", ")}`);
   }
   fixupClassBases(nameToCls);
   classes.forEach(adjustInterfaceIR);
