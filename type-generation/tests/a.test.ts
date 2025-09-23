@@ -808,48 +808,49 @@ describe("emit", () => {
       "def f(x: str, /) -> None: ...",
     );
   });
-  it("extends string ==> str in function type param", () => {
-    const res = emitFile(`\
+  describe("extends string", () => {
+    it("extends string ==> str in function type param", () => {
+      const res = emitFile(`\
       declare function f<T extends string>(x: T): void;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res.at(-1)!),
-      "def f(x: str, /) -> None: ...",
-    );
-  });
-  it("extends string ==> str in interface", () => {
-    const res = emitFile(`\
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-1)!),
+        "def f(x: str, /) -> None: ...",
+      );
+    });
+    it("extends string ==> str in interface", () => {
+      const res = emitFile(`\
       declare interface X<K extends string> {
         f(k: K): void;
       }
       declare var x: X;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res.at(-1)!),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-1)!),
+        dedent(`
         class x(_JsObject):
             @classmethod
             def f(self, k: str, /) -> None: ...
       `).trim(),
-    );
-  });
-  it("extends string ==> str in interface 2", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("extends string ==> str in interface 2", () => {
+      const res = emitFile(`\
       declare interface X<K extends string> {
         f(k: K): void;
       }
       declare function g(x: X<string>): void;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res.at(-3)!),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res.at(-3)!),
+        dedent(`
         @overload
         def g(x: X_iface, /) -> None: ...
       `).trim(),
-    );
-  });
-  it("extends string class", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("extends string class", () => {
+      const res = emitFile(`\
       interface X<K extends string> {
       }
       interface XConstructor {
@@ -857,61 +858,63 @@ describe("emit", () => {
       }
       declare var X: XConstructor;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res.slice(1).join("\n\n")),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
         class X(X_iface, _JsObject):
             pass
 
         class X_iface(Protocol):
             pass
       `).trim(),
-    );
+      );
+    });
   });
-  it("Type alias param", () => {
-    const res = emitFile(`\
+  describe("Type param", () => {
+    it("Type alias param", () => {
+      const res = emitFile(`\
       interface I<T> {
         t : T;
       }
       type F<T> = I<T> | number;
       declare function f(): F<string>;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[1]),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res[1]),
+        dedent(`
         type F[T] = I_iface[T] | int | float
       `).trim(),
-    );
-  });
-  it("Function type param", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("Function type param", () => {
+      const res = emitFile(`\
       declare function f<T>(x: T): T;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[1]),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res[1]),
+        dedent(`
         def f[T](x: T, /) -> T: ...
       `).trim(),
-    );
-  });
-  it("Interface method type param", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("Interface method type param", () => {
+      const res = emitFile(`\
       interface I {
         f<T>(x: T): T;
       }
       declare var x: I;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[1]),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res[1]),
+        dedent(`
         class x(_JsObject):
             @classmethod
             def f[T](self, x: T, /) -> T: ...
       `).trim(),
-    );
-  });
-  it("some constructors have type params, others do not", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("some constructors have type params, others do not", () => {
+      const res = emitFile(`\
       interface XIface<T> {
         x : T;
       }
@@ -921,9 +924,9 @@ describe("emit", () => {
       }
       declare var X: XConstructor;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[1]),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res[1]),
+        dedent(`
         class X(_JsObject):
             @classmethod
             @overload
@@ -932,10 +935,10 @@ describe("emit", () => {
             @overload
             def new[T](self, x: int | float, /) -> XIface_iface[T]: ...
       `).trim(),
-    );
-  });
-  it("Unpacking and type params", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("Unpacking and type params", () => {
+      const res = emitFile(`\
       interface XLike<T> {
         length: number;
         t: T;
@@ -947,9 +950,9 @@ describe("emit", () => {
 
       declare var X: XConstructor;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[1]),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res[1]),
+        dedent(`
         class X(_JsObject):
             @classmethod
             @overload
@@ -958,10 +961,10 @@ describe("emit", () => {
             @overload
             def from_[T](self, /, *, length: int | float, t: T) -> JsArray[T]: ...
       `).trim(),
-    );
-  });
-  it("Unpacking and type params 2", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("Unpacking and type params 2", () => {
+      const res = emitFile(`\
       interface X<R> {
         r: R;
       }
@@ -974,9 +977,9 @@ describe("emit", () => {
         new<R = any>(source: R, strategy?: S<R>): X<R>;
       };
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[1]),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res[1]),
+        dedent(`
         class X(_JsObject):
             @classmethod
             @overload
@@ -985,10 +988,10 @@ describe("emit", () => {
             @overload
             def new[R](self, source: R, /, *, t: R) -> X[R]: ...
       `).trim(),
-    );
-  });
-  it("Unpacking and type params 3", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("Unpacking and type params 3", () => {
+      const res = emitFile(`\
       interface X<R> {
         r: R;
       }
@@ -1001,9 +1004,9 @@ describe("emit", () => {
         new<R = any>(source: R, strategy?: S<string>): X<R>;
       };
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[1]),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res[1]),
+        dedent(`
         class X(_JsObject):
             @classmethod
             @overload
@@ -1012,10 +1015,10 @@ describe("emit", () => {
             @overload
             def new[R](self, source: R, /, *, t: str) -> X[R]: ...
       `).trim(),
-    );
-  });
-  it("Unpacking and type params 4", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("Unpacking and type params 4", () => {
+      const res = emitFile(`\
       interface Xiface<R> {
         r: R;
       }
@@ -1033,9 +1036,9 @@ describe("emit", () => {
         new<R = any>(source: R, strategy?: S<R>): Xiface<R>;
       };
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[1]),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res[1]),
+        dedent(`
         class X(_JsObject):
             @classmethod
             @overload
@@ -1044,10 +1047,10 @@ describe("emit", () => {
             @overload
             def new[R](self, source: R, /, *, t: R, s: Size_iface[R]) -> Xiface_iface[R]: ...
       `).trim(),
-    );
-  });
-  it("Unpacking and type params 5", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("Unpacking and type params 5", () => {
+      const res = emitFile(`\
       interface Strategy<S> {
         s: S;
       }
@@ -1065,9 +1068,9 @@ describe("emit", () => {
         new<R = any>(strategy?: Options<R>): Xyz<R>;
       };
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[1]),
-      dedent(`
+      assert.strictEqual(
+        removeTypeIgnores(res[1]),
+        dedent(`
         class Xyz[R](Xyz_iface[R], _JsObject):
             @classmethod
             @overload
@@ -1076,10 +1079,10 @@ describe("emit", () => {
             @overload
             def new(self, /, *, s: Strategy_iface[R]) -> Xyz[R]: ...
       `).trim(),
-    );
-  });
-  it("Type alias type param with default value", () => {
-    const res = emitFile(`\
+      );
+    });
+    it("Type alias type param with default value", () => {
+      const res = emitFile(`\
       interface X<A, B> {
         a: A;
         b: B;
@@ -1090,13 +1093,13 @@ describe("emit", () => {
 
       declare function f(x: Info): void;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[2]),
-      "def f(x: Info[str, int | float], /) -> None: ...",
-    );
-  });
-  it("Type param default refers to other type param", () => {
-    const res = emitFile(`
+      assert.strictEqual(
+        removeTypeIgnores(res[2]),
+        "def f(x: Info[str, int | float], /) -> None: ...",
+      );
+    });
+    it("Type param default refers to other type param", () => {
+      const res = emitFile(`
       interface X<T> {
         t: T;
       }
@@ -1105,13 +1108,13 @@ describe("emit", () => {
         | B;
       declare function f(x: Info): void;
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res[2]),
-      "def f(x: Info[str, X_iface[str]], /) -> None: ...",
-    );
-  });
-  it("type param default in class property", () => {
-    const res = emitFile(`
+      assert.strictEqual(
+        removeTypeIgnores(res[2]),
+        "def f(x: Info[str, X_iface[str]], /) -> None: ...",
+      );
+    });
+    it("type param default in class property", () => {
+      const res = emitFile(`
       declare class T<M = string> {
         m: M;
       }
@@ -1119,9 +1122,9 @@ describe("emit", () => {
         readonly t?: T;
       }
     `);
-    assert.strictEqual(
-      removeTypeIgnores(res.slice(1).join("\n\n")),
-      dedent(`\
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`\
         class T_iface[M](Protocol):
             m: M = ...
 
@@ -1135,7 +1138,8 @@ describe("emit", () => {
         class E(E_iface, _JsObject):
             pass
       `).trim(),
-    );
+      );
+    });
   });
   it("Array converted to ArrayLike_iface", () => {
     const res = emitFile(`declare function f(x: Array<string>): void`);
@@ -1320,32 +1324,34 @@ describe("emit", () => {
       });
     });
   });
-  it("Destrucure object literal argument", () => {
-    const res = emitFile(`
-      declare function f({
-          type,
-          payload,
-        }: {
-          type: string;
-          payload: number;
-        }): void;
-    `);
-    assert.strictEqual(
-      removeTypeIgnores(res.slice(1).join("\n\n")),
-      "def f(*, type: str, payload: int | float) -> None: ...",
-    );
-  });
-  it("Destructure name collision", () => {
-    const res = emitFile(`
-      declare function f(type: string, options: {
-          type: string;
-          payload: number;
-        }): void;
-    `);
-    assert.strictEqual(
-      removeTypeIgnores(res.slice(1).join("\n\n")),
-      "def f(type_: str, /, *, type: str, payload: int | float) -> None: ...",
-    );
+  describe("destructuring", () => {
+    it("Destrucure object literal argument", () => {
+      const res = emitFile(`
+        declare function f({
+            type,
+            payload,
+          }: {
+            type: string;
+            payload: number;
+          }): void;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        "def f(*, type: str, payload: int | float) -> None: ...",
+      );
+    });
+    it("Destructure name collision", () => {
+      const res = emitFile(`
+        declare function f(type: string, options: {
+            type: string;
+            payload: number;
+          }): void;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        "def f(type_: str, /, *, type: str, payload: int | float) -> None: ...",
+      );
+    });
   });
   describe("adjustments", () => {
     it("setTimeout", () => {
