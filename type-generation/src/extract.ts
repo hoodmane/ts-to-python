@@ -98,7 +98,7 @@ function adjustIR(topLevels: TopLevels): void {
   }
 }
 
-export function emitIR({ topLevels, typeParams }: ConversionResult): string[] {
+export function emitIR({ topLevels }: ConversionResult): string[] {
   adjustIR(topLevels);
   const typeAliasStrings = topLevels.typeAliases.map(typeAliasIRToString);
   const declarationStrings = topLevels.decls.map(declarationIRToString);
