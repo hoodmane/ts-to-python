@@ -1353,6 +1353,29 @@ describe("emit", () => {
       );
     });
   });
+  it("Type literal", () => {
+    const res = emitFile(`
+      type A = {
+          a?: 1 | 2 | 3 | 4 | 5;
+          b?: number;
+          c?: 'a' | 'b' | 'c';
+      };
+      declare function f(): A;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`
+        type A = A_iface
+
+        def f() -> A: ...
+
+        class A_iface(Protocol):
+            a: Literal[1, 2, 3, 4, 5] | None = ...
+            b: int | float | None = ...
+            c: Literal['a', 'b', 'c'] | None = ...
+      `).trim(),
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));

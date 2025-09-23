@@ -178,7 +178,7 @@ function declarationIR(name: string, type: TypeIR): DeclarationIR {
 
 const ANY_IR = simpleType("Any");
 
-function typeLiteralToIR(typeNode: LiteralTypeNode): TypeIR {
+function literalTypeToIR(typeNode: LiteralTypeNode): TypeIR {
   let text = typeNode.getText();
   if (text === "null") {
     return simpleType("None");
@@ -262,12 +262,16 @@ export class Converter {
   classTypeParams: Set<string>;
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
+  extraTopLevels: TopLevelIR[];
+  nameContext: string | undefined;
 
   constructor() {
     this.ifaceTypeParamConstraints = new Map();
     this.classTypeParams = new Set();
     this.neededSet = new Set();
     this.convertedSet = new Set(BUILTIN_NAMES);
+    this.extraTopLevels = [];
+    this.nameContext = undefined;
   }
 
   addNeededIdentifier(ident: Identifier): void {
@@ -418,6 +422,16 @@ export class Converter {
     }
     return { kind: "reference", name: name, typeArgs };
   }
+  typeLiteralToIR(node: TypeLiteralNode): ReferenceTypeIR | OtherTypeIR {
+    if (this.nameContext === undefined) {
+      return this.otherTypeToIR(node);
+    }
+    const name = this.nameContext + "_iface";
+    this.extraTopLevels.push(
+      this.interfaceToIR(name, [], node.getMembers(), [], [], []),
+    );
+    return { kind: "reference", name, typeArgs: [] };
+  }
 
   otherTypeToIR(node: Node): OtherTypeIR {
     const nodeKind = node.getKindName();
@@ -455,7 +469,10 @@ export class Converter {
       return simpleType("Self");
     }
     if (Node.isLiteralTypeNode(typeNode)) {
-      return typeLiteralToIR(typeNode);
+      return literalTypeToIR(typeNode);
+    }
+    if (Node.isTypeLiteral(typeNode)) {
+      return this.typeLiteralToIR(typeNode);
     }
     if (Node.isIntersectionTypeNode(typeNode)) {
       return this.intersectionToIR(typeNode);
@@ -1055,10 +1072,12 @@ export class Converter {
       case "class":
         throw new Error("Unhandled");
       case "typeAlias":
+        this.nameContext = name;
         const type = this.typeToIR(classified.decl.getTypeNode()!);
         const aliasTypeParams = classified.decl
           .getTypeParameters()
           .map((p) => p.getName());
+        this.nameContext = undefined;
         return { kind: "typeAlias", name, type, typeParams: aliasTypeParams };
       case "varDecl":
         console.warn("Skipping varDecl", ident.getText());
@@ -1180,6 +1199,9 @@ export function convertDecls(
       // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
       console.warn("No interface declaration for " + name);
     }
+  }
+  for (const tl of converter.extraTopLevels) {
+    pushTopLevel(tl);
   }
   return { topLevels };
 }
