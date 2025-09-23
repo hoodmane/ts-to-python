@@ -1,7 +1,6 @@
 import {
   CallSignatureDeclaration,
   ClassDeclaration,
-  ConstructSignatureDeclaration,
   EntityName,
   FunctionDeclaration,
   Identifier,
@@ -764,15 +763,6 @@ export class Converter {
           .getDeclaration()
           .getReturnTypeNode()!
           .asKindOrThrow(SyntaxKind.TypeReference);
-        if (
-          !["IterableIterator", "Iterator"].includes(
-            typeNode.getTypeName().getText(),
-          )
-        ) {
-          console.log(typeNode.getText());
-          console.log(getNodeLocation(typeNode));
-          throw new Error("Surprise!");
-        }
         const returns = this.typeToIR(typeNode);
         if (returns.kind === "parameterReference") {
           throw new Error("Cannot happen!");
