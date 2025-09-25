@@ -717,7 +717,12 @@ export class Converter {
       return arrayType(eltType);
     }
     if (Node.isTupleTypeNode(typeNode)) {
-      const elts = typeNode.getElements().map((elt) => this.typeToIR(elt));
+      const elts = typeNode.getElements().map((elt) => {
+        if (Node.isNamedTupleMember(elt)) {
+          return this.typeToIR(elt.getTypeNode());
+        }
+        return this.typeToIR(elt);
+      });
       return tupleType(elts);
     }
     if (Node.isTypePredicate(typeNode)) {
