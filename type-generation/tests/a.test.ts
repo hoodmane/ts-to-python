@@ -1696,6 +1696,92 @@ describe("emit", () => {
         );
       });
     });
+    describe("Partial", () => {
+      it("Partial literal type", () => {
+        const res = emitFile(`
+          type B = Partial<{
+              s: boolean;
+              t: string;
+          }>;
+          declare function f(): B;
+          def f() -> B: ...
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type B = B__Partial_iface
+
+            def f() -> B: ...
+
+            class B__Partial_iface(Protocol):
+                s: bool | None = ...
+                t: str | None = ...
+          `).trim(),
+        );
+      });
+      it("PartialAlias", () => {
+        const res = emitFile(`
+          type A = {
+              s: boolean;
+              t: string;
+          };
+          type B = Partial<A>;
+          declare function f(): B;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type B = B__Partial_iface
+
+            def f() -> B: ...
+
+            class B__Partial_iface(Protocol):
+                s: bool | None = ...
+                t: str | None = ...
+          `).trim(),
+        );
+      });
+      it("PartialInterface", () => {
+        const res = emitFile(`
+          interface A { a: string; b: string; }
+          type D = Partial<A>;
+          declare function f(): D;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type D = D__Partial__A_iface
+
+            def f() -> D: ...
+
+            class D__Partial__A_iface(Protocol):
+                a: str | None = ...
+                b: str | None = ...
+          `).trim(),
+        );
+      });
+    });
+    it("Composed type operators", () => {
+      const res = emitFile(`
+        interface V {
+          i: string;
+          v: number[];
+        };
+        type M = Pick<Partial<V>, "v">
+        declare function f(): M;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          type M = M__Pick__Partial__V_iface
+
+          def f() -> M: ...
+
+          class M__Pick__Partial__V_iface(Protocol):
+              v: JsArray[int | float] | None = ...
+        `).trim(),
+      );
+    });
   });
   describe("adjustments", () => {
     it("setTimeout", () => {
