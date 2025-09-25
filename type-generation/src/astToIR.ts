@@ -282,6 +282,10 @@ type SyntheticTypeRoot =
   | {
       kind: "typeLiteral";
       node: TypeLiteralNode;
+    }
+  | {
+      kind: "omit";
+      node: TypeReferenceNode;
     };
 
 function classifySyntheticType(node: TypeNode): SyntheticTypeRoot | undefined {
@@ -291,8 +295,20 @@ function classifySyntheticType(node: TypeNode): SyntheticTypeRoot | undefined {
   if (Node.isTypeLiteral(node)) {
     return { kind: "typeLiteral", node };
   }
+  if (!Node.isTypeReference(node)) {
+    return undefined;
+  }
+  const ident = node.getTypeName() as Identifier;
+  const name = ident.getText();
+  if (name === "Omit") {
+    return { kind: "omit", node };
+  }
   return undefined;
 }
+
+type Modifier = {
+  omitSet?: Set<string>;
+};
 
 class SyntheticTypeConverter {
   // Handling for converting types that have to create generated classes
@@ -305,18 +321,43 @@ class SyntheticTypeConverter {
     this.nameContext = nameContext;
   }
 
-  doConversion(nodes: Pick<TypeLiteralNode, "getMembers">[]): ReferenceTypeIR {
+  hasWork(base: TypeNode, modifiers: Modifier) {
+    const { omitSet } = modifiers;
+    if (omitSet) {
+      for (const prop of base.getType().getProperties()) {
+        if (omitSet.has(prop.getName())) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  doConversion(
+    nodes: Pick<TypeLiteralNode, "getMembers">[],
+    modifiers: Modifier,
+  ): ReferenceTypeIR {
     let name = this.nameContext.join("__");
     if (!name.endsWith("_iface")) {
       name += "_iface";
     }
     let members = nodes.flatMap((x) => x.getMembers());
+    const { omitSet } = modifiers;
+    if (omitSet) {
+      members = members.filter(
+        (x) => !Node.isPropertyNamed(x) || !omitSet.has(x.getName()),
+      );
+    }
     const result = this.converter.interfaceToIR(name, [], members, [], [], []);
     this.converter.extraTopLevels.push(result);
     return { kind: "reference", name, typeArgs: [] };
   }
 
-  classifiedTypeToIr(typeRoot: SyntheticTypeRoot): TypeIR {
+  classifiedTypeToIr(
+    typeRoot: SyntheticTypeRoot,
+    modifiersArg?: Modifier,
+  ): TypeIR {
+    let modifiers = modifiersArg ?? {};
     switch (typeRoot.kind) {
       case "intersection": {
         const node = typeRoot.node;
@@ -324,7 +365,7 @@ class SyntheticTypeConverter {
           .getTypeNodes()
           .map((ty, idx) => {
             this.nameContext.push(`Intersection${idx}`);
-            const res = this.typeToIR(ty);
+            const res = this.typeToIR(ty, modifiers);
             this.nameContext.pop();
             return res;
           })
@@ -341,17 +382,49 @@ class SyntheticTypeConverter {
         return { kind: "reference", name, typeArgs: [] };
       }
       case "typeLiteral": {
-        return this.doConversion([typeRoot.node]);
+        return this.doConversion([typeRoot.node], modifiers);
+      }
+      case "omit": {
+        const node = typeRoot.node;
+        const base = node.getTypeArguments()[0]!;
+        const toOmitType = node.getTypeArguments()[1]!;
+        modifiers = structuredClone(modifiers);
+        modifiers.omitSet = getLiteralTypeArgSet(toOmitType);
+        this.nameContext.push("Omit");
+        const result = this.typeToIR(base, modifiers);
+        this.nameContext.pop();
+        return result;
       }
     }
   }
 
-  typeToIR(n: TypeNode): TypeIR {
+  typeToIR(n: TypeNode, modifiers: Modifier): TypeIR {
     const typeRoot = classifySyntheticType(n);
     if (typeRoot) {
-      return this.classifiedTypeToIr(typeRoot);
+      return this.classifiedTypeToIr(typeRoot, modifiers);
     }
-    return this.converter.typeToIR(n);
+    if (!this.hasWork(n, modifiers)) {
+      return this.converter.typeToIR(n);
+    }
+    if (Node.isTypeReference(n)) {
+      const res = classifyIdentifier(n.getTypeName() as Identifier);
+      if (res.kind === "typeAlias") {
+        return this.typeToIR(res.decl.getTypeNode()!, modifiers);
+      }
+      if (res.kind === "interfaces") {
+        const { name, ifaces } = res;
+        const typeParams = this.converter.getTypeParamsFromDecls(ifaces);
+        if (typeParams.length > 0) {
+          throw new Error("Not handled");
+        }
+        this.nameContext.push(name);
+        const result = this.doConversion(ifaces, modifiers);
+        this.nameContext.pop();
+        return result;
+      }
+      throw new Error(`Not handled ${res.kind}`);
+    }
+    throw new Error(`Not handled ${n.getKindName()}`);
   }
 }
 

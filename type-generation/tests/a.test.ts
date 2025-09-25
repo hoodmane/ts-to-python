@@ -1473,6 +1473,131 @@ describe("emit", () => {
       );
     });
   });
+  describe("Type operators", () => {
+    describe("Omit", () => {
+      it("OmitLiteral1", () => {
+        const res = emitFile(`
+          type D = Omit<{ a: string; b: number; }, "b">;
+          declare function f(): D;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type D = D__Omit_iface
+
+            def f() -> D: ...
+
+            class D__Omit_iface(Protocol):
+                a: str = ...
+          `).trim(),
+        );
+      });
+      it("OmitLiteral2", () => {
+        const res = emitFile(`
+          type D = Omit<{ a: string; b: string; c: number; }, "b" | "c">;
+          declare function f(): D;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type D = D__Omit_iface
+
+            def f() -> D: ...
+
+            class D__Omit_iface(Protocol):
+                a: str = ...
+          `).trim(),
+        );
+      });
+      it("OmitIntersection", () => {
+        const res = emitFile(`
+          type D = Omit<{ a: string; b: string; } & { c : string; }, "b">;
+          declare function f(): D;
+        `);
+        // Not ideal generation here...
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type D = D__Omit_iface
+
+            def f() -> D: ...
+
+            class D__Omit__Intersection0_iface(Protocol):
+                a: str = ...
+
+            class D__Omit__Intersection1_iface(Protocol):
+                c: str = ...
+
+            class D__Omit_iface(D__Omit__Intersection1_iface, D__Omit__Intersection0_iface, Protocol):
+                pass
+          `).trim(),
+        );
+      });
+      it("OmitInterface", () => {
+        const res = emitFile(`
+          interface A { a: string; b: string; }
+          type D = Omit<A, "b">;
+          declare function f(): D;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type D = D__Omit__A_iface
+
+            def f() -> D: ...
+
+            class D__Omit__A_iface(Protocol):
+                a: str = ...
+          `).trim(),
+        );
+      });
+      it("OmitAlias", () => {
+        const res = emitFile(`
+          type A = {
+              s?: boolean;
+              t?: string;
+          };
+          type B = Omit<A, 's'>;
+          declare function f(): B;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type B = B__Omit_iface
+
+            def f() -> B: ...
+
+            class B__Omit_iface(Protocol):
+                t: str | None = ...
+          `).trim(),
+        );
+      });
+      it("Omit NoOp", () => {
+        const res = emitFile(`
+          type A = {
+              s?: boolean;
+              t?: string;
+          };
+          type B = Omit<A, 'x'>;
+          declare function f(a: A, b: B): void;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type A = A_iface
+
+            type B = A
+
+            def f(a: A, b: B, /) -> None: ...
+
+            class A_iface(Protocol):
+                s: bool | None = ...
+                t: str | None = ...
+          `).trim(),
+        );
+      });
+    });
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
