@@ -1418,6 +1418,60 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("intersection", () => {
+      const res = emitFile(`
+        type A = { a: number } & { b: string };
+        declare function f(): A;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          type A = A_iface
+
+          def f() -> A: ...
+
+          class A__Intersection0_iface(Protocol):
+              a: int | float = ...
+
+          class A__Intersection1_iface(Protocol):
+              b: str = ...
+
+          class A_iface(A__Intersection1_iface, A__Intersection0_iface, Protocol):
+              pass
+        `).trim(),
+      );
+    });
+    it("intersection2", () => {
+      const res = emitFile(`
+        type F = {
+            a: string;
+        };
+        type D = F & {
+            readonly id: number;
+        };
+        declare function f(): D;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          type D = D_iface
+
+          type F = F_iface
+
+          def f() -> D: ...
+
+          class D__Intersection1_iface(Protocol):
+              @property
+              def id(self, /) -> int | float: ...
+
+          class D_iface(F_iface, D__Intersection1_iface, Protocol):
+              pass
+
+          class F_iface(Protocol):
+              a: str = ...
+        `).trim(),
+      );
+    });
   });
   describe("adjustments", () => {
     it("setTimeout", () => {
