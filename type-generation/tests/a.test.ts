@@ -1783,6 +1783,20 @@ describe("emit", () => {
       );
     });
   });
+  it("named tuple", () => {
+    const res = emitFile(`
+      declare var x: [
+        key: string,
+        value: string
+      ];
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`
+        x: tuple[str, str] = ...
+      `).trim(),
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
