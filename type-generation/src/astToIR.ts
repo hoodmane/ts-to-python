@@ -14,6 +14,7 @@ import {
   SignaturedDeclaration,
   SourceFile,
   SyntaxKind,
+  ts,
   TypeElementTypes,
   TypeLiteralNode,
   TypeNode,
@@ -178,8 +179,7 @@ function declarationIR(name: string, type: TypeIR): DeclarationIR {
 
 const ANY_IR = simpleType("Any");
 
-function literalTypeToIR(typeNode: LiteralTypeNode): TypeIR {
-  let text = typeNode.getText();
+function literalType(text: string): TypeIR {
   if (text === "null") {
     return simpleType("None");
   }
@@ -190,6 +190,10 @@ function literalTypeToIR(typeNode: LiteralTypeNode): TypeIR {
     text = "False";
   }
   return simpleType(`Literal[${text}]`);
+}
+
+function literalTypeToIR(typeNode: LiteralTypeNode): TypeIR {
+  return literalType(typeNode.getText());
 }
 
 /**
@@ -236,6 +240,18 @@ function getFilteredTypeParams<T extends TypeParameteredNode>(
     .filter((p) => p.getConstraint()?.getText() !== "string");
 }
 
+function getLiteralTypeArgSet(node: TypeNode): Set<string> {
+  const ty = node.getType();
+  if (ty.isLiteral()) {
+    return new Set([ty.getLiteralValueOrThrow()]) as Set<string>;
+  } else if (ty.isUnion()) {
+    return new Set(
+      ty.getUnionTypes().map((x) => x.getLiteralValueOrThrow()),
+    ) as Set<string>;
+  }
+  throw new Error("Unexpected type");
+}
+
 /**
  * Helper for getting the bases in membersDeclarationToIR
  */
@@ -251,11 +267,93 @@ function getInterfaceTypeArgs(ident: EntityName): TypeIR[] {
 }
 
 const operatorToName: {
-  [K in SyntaxKind]?: string;
+  [K in ts.TypeOperatorNode["operator"]]: string;
 } = {
   [SyntaxKind.ReadonlyKeyword]: "readonly",
   [SyntaxKind.UniqueKeyword]: "unique",
+  [SyntaxKind.KeyOfKeyword]: "keyof",
 };
+
+type SyntheticTypeRoot =
+  | {
+      kind: "intersection";
+      node: IntersectionTypeNode;
+    }
+  | {
+      kind: "typeLiteral";
+      node: TypeLiteralNode;
+    };
+
+function classifySyntheticType(node: TypeNode): SyntheticTypeRoot | undefined {
+  if (Node.isIntersectionTypeNode(node)) {
+    return { kind: "intersection", node };
+  }
+  if (Node.isTypeLiteral(node)) {
+    return { kind: "typeLiteral", node };
+  }
+  return undefined;
+}
+
+class SyntheticTypeConverter {
+  // Handling for converting types that have to create generated classes
+  // Currently it has no state (other than recording that nameContext is not
+  // undefined) and is just factored away from converter to keep things tidier.
+  converter: Converter;
+  nameContext: string[];
+  constructor(converter: Converter, nameContext: string[]) {
+    this.converter = converter;
+    this.nameContext = nameContext;
+  }
+
+  doConversion(nodes: Pick<TypeLiteralNode, "getMembers">[]): ReferenceTypeIR {
+    let name = this.nameContext.join("__");
+    if (!name.endsWith("_iface")) {
+      name += "_iface";
+    }
+    let members = nodes.flatMap((x) => x.getMembers());
+    const result = this.converter.interfaceToIR(name, [], members, [], [], []);
+    this.converter.extraTopLevels.push(result);
+    return { kind: "reference", name, typeArgs: [] };
+  }
+
+  classifiedTypeToIr(typeRoot: SyntheticTypeRoot): TypeIR {
+    switch (typeRoot.kind) {
+      case "intersection": {
+        const node = typeRoot.node;
+        const types = node
+          .getTypeNodes()
+          .map((ty, idx) => {
+            this.nameContext.push(`Intersection${idx}`);
+            const res = this.typeToIR(ty);
+            this.nameContext.pop();
+            return res;
+          })
+          .filter((x): x is ReferenceTypeIR => !!x && x.kind === "reference");
+        for (const x of types) {
+          if (!x.name.endsWith("_iface")) {
+            x.name += "_iface";
+          }
+        }
+        const name = this.nameContext.join("__") + "_iface";
+        this.converter.extraTopLevels.push(
+          this.converter.interfaceToIR(name, types, [], [], [], []),
+        );
+        return { kind: "reference", name, typeArgs: [] };
+      }
+      case "typeLiteral": {
+        return this.doConversion([typeRoot.node]);
+      }
+    }
+  }
+
+  typeToIR(n: TypeNode): TypeIR {
+    const typeRoot = classifySyntheticType(n);
+    if (typeRoot) {
+      return this.classifiedTypeToIr(typeRoot);
+    }
+    return this.converter.typeToIR(n);
+  }
+}
 
 export class Converter {
   ifaceTypeParamConstraints: Map<string, string>;
@@ -328,14 +426,12 @@ export class Converter {
       unionTypes,
       Node.isLiteralTypeNode,
     );
-    const nameContext = this.nameContext;
     const types = rest.map((ty, idx) => {
       this.pushNameContext(`Union${idx}`);
       const res = this.typeToIR(ty, false);
       this.popNameContext();
       return res;
     });
-    this.nameContext = nameContext;
     const lits = literals
       .map((lit) => lit.getText())
       .filter((txt) => {
@@ -366,30 +462,6 @@ export class Converter {
     return unionType(types);
   }
 
-  intersectionToIR(typeNode: IntersectionTypeNode) {
-    const filteredTypes = typeNode
-      .getTypeNodes()
-      .filter(
-        (type) =>
-          !(
-            Node.isThisTypeNode(type) || type.getText().startsWith("ThisType<")
-          ),
-      );
-    if (filteredTypes.length === 1) {
-      return this.typeToIR(filteredTypes[0]);
-    }
-    const typeString = typeNode.getType().getText();
-    if (typeString === "Window & typeof globalThis") {
-      return ANY_IR;
-    }
-    if (typeString === "ArrayBufferLike & { BYTES_PER_ELEMENT?: never; }") {
-      return simpleType("ArrayBuffer");
-    }
-    const location = getNodeLocation(typeNode);
-    console.warn("No conversion for intersection at " + location);
-    return ANY_IR;
-  }
-
   typeReferenceToIR(typeNode: TypeReferenceNode): TypeIR {
     const ident = typeNode.getTypeName();
     if (typeNode.getType().isTypeParameter()) {
@@ -413,7 +485,6 @@ export class Converter {
     }
     const { name, kind } = classifyIdentifier(ident);
 
-    // Filter out type arguments that correspond to type parameters that extend string
     if (kind === "interfaces") {
       const interfaceDefs = (ident as Identifier)
         .getDefinitionNodes()
@@ -441,21 +512,25 @@ export class Converter {
     }
     return { kind: "reference", name: name, typeArgs };
   }
-  typeLiteralToIR(node: TypeLiteralNode): ReferenceTypeIR | OtherTypeIR {
-    if (this.nameContext === undefined) {
-      return this.otherTypeToIR(node);
-    }
-    const name = this.nameContext.join("__") + "_iface";
-    this.extraTopLevels.push(
-      this.interfaceToIR(name, [], node.getMembers(), [], [], []),
-    );
-    return { kind: "reference", name, typeArgs: [] };
-  }
 
   otherTypeToIR(node: Node): OtherTypeIR {
     const nodeKind = node.getKindName();
     const location = getNodeLocation(node);
     return { kind: "other", nodeKind, location };
+  }
+
+  maybeSyntheticTypeToIR(node: TypeNode): TypeIR | undefined {
+    if (!this.nameContext) {
+      return undefined;
+    }
+    const typeRoot = classifySyntheticType(node);
+    if (!typeRoot) {
+      return undefined;
+    }
+    return new SyntheticTypeConverter(
+      this,
+      this.nameContext,
+    ).classifiedTypeToIr(typeRoot);
   }
 
   typeToIR(
@@ -464,6 +539,10 @@ export class Converter {
   ): ReferenceTypeIR | ParameterReferenceTypeIR;
   typeToIR(typeNode: TypeNode, isOptional?: boolean): TypeIR;
   typeToIR(typeNode: TypeNode, isOptional: boolean = false): TypeIR {
+    const synthResult = this.maybeSyntheticTypeToIR(typeNode);
+    if (synthResult) {
+      return synthResult;
+    }
     const typeText = typeNode.getText();
     if (typeText === "number") {
       return { kind: "number" };
@@ -491,10 +570,8 @@ export class Converter {
       return literalTypeToIR(typeNode);
     }
     if (Node.isTypeLiteral(typeNode)) {
-      return this.typeLiteralToIR(typeNode);
-    }
-    if (Node.isIntersectionTypeNode(typeNode)) {
-      return this.intersectionToIR(typeNode);
+      // If there is a nameContext, this was handled by syntheticTypeToIr.
+      return this.otherTypeToIR(typeNode);
     }
     if (Node.isTypeOperatorTypeNode(typeNode)) {
       return this.typeOperatorToIR(typeNode);
@@ -899,6 +976,7 @@ export class Converter {
       ),
     ];
   }
+
   getBasesOfDecls(
     decls: (InterfaceDeclaration | ClassDeclaration)[],
   ): BaseIR[] {
