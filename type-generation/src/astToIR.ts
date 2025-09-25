@@ -290,6 +290,10 @@ type SyntheticTypeRoot =
   | {
       kind: "pick";
       node: TypeReferenceNode;
+    }
+  | {
+      kind: "partial";
+      node: TypeReferenceNode;
     };
 
 function classifySyntheticType(node: TypeNode): SyntheticTypeRoot | undefined {
@@ -307,6 +311,9 @@ function classifySyntheticType(node: TypeNode): SyntheticTypeRoot | undefined {
   if (name === "Omit") {
     return { kind: "omit", node };
   }
+  if (name === "Partial") {
+    return { kind: "partial", node };
+  }
   if (name === "Pick") {
     return { kind: "pick", node };
   }
@@ -314,6 +321,7 @@ function classifySyntheticType(node: TypeNode): SyntheticTypeRoot | undefined {
 }
 
 type Modifier = {
+  partial: boolean;
   omitSet?: Set<string>;
   pickSet?: Set<string>;
 };
@@ -330,7 +338,10 @@ class SyntheticTypeConverter {
   }
 
   hasWork(base: TypeNode, modifiers: Modifier) {
-    const { omitSet, pickSet } = modifiers;
+    const { partial, omitSet, pickSet } = modifiers;
+    if (partial) {
+      return true;
+    }
     if (omitSet) {
       for (const prop of base.getType().getProperties()) {
         if (omitSet.has(prop.getName())) {
@@ -357,7 +368,7 @@ class SyntheticTypeConverter {
       name += "_iface";
     }
     let members = nodes.flatMap((x) => x.getMembers());
-    const { omitSet, pickSet } = modifiers;
+    const { omitSet, partial, pickSet } = modifiers;
     if (omitSet) {
       members = members.filter(
         (x) => !Node.isPropertyNamed(x) || !omitSet.has(x.getName()),
@@ -369,6 +380,11 @@ class SyntheticTypeConverter {
       );
     }
     const result = this.converter.interfaceToIR(name, [], members, [], [], []);
+    if (partial) {
+      for (const prop of result.properties) {
+        prop.isOptional = true;
+      }
+    }
     this.converter.extraTopLevels.push(result);
     return { kind: "reference", name, typeArgs: [] };
   }
@@ -377,7 +393,7 @@ class SyntheticTypeConverter {
     typeRoot: SyntheticTypeRoot,
     modifiersArg?: Modifier,
   ): TypeIR {
-    let modifiers = modifiersArg ?? {};
+    let modifiers = modifiersArg ?? { partial: false };
     switch (typeRoot.kind) {
       case "intersection": {
         const node = typeRoot.node;
@@ -425,6 +441,16 @@ class SyntheticTypeConverter {
         const res = this.typeToIR(base, modifiers);
         this.nameContext.pop();
         return res;
+      }
+      case "partial": {
+        const node = typeRoot.node;
+        const base = node.getTypeArguments()[0]!;
+        modifiers = structuredClone(modifiers);
+        modifiers.partial = true;
+        this.nameContext.push("Partial");
+        const result = this.typeToIR(base, modifiers);
+        this.nameContext.pop();
+        return result;
       }
     }
   }
