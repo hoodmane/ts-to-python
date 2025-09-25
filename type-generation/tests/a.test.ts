@@ -1796,7 +1796,7 @@ describe("emit", () => {
         x: tuple[str, str] = ...
       `).trim(),
     );
-  })
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
