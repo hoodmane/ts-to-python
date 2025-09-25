@@ -286,6 +286,10 @@ type SyntheticTypeRoot =
   | {
       kind: "omit";
       node: TypeReferenceNode;
+    }
+  | {
+      kind: "pick";
+      node: TypeReferenceNode;
     };
 
 function classifySyntheticType(node: TypeNode): SyntheticTypeRoot | undefined {
@@ -303,11 +307,15 @@ function classifySyntheticType(node: TypeNode): SyntheticTypeRoot | undefined {
   if (name === "Omit") {
     return { kind: "omit", node };
   }
+  if (name === "Pick") {
+    return { kind: "pick", node };
+  }
   return undefined;
 }
 
 type Modifier = {
   omitSet?: Set<string>;
+  pickSet?: Set<string>;
 };
 
 class SyntheticTypeConverter {
@@ -322,10 +330,17 @@ class SyntheticTypeConverter {
   }
 
   hasWork(base: TypeNode, modifiers: Modifier) {
-    const { omitSet } = modifiers;
+    const { omitSet, pickSet } = modifiers;
     if (omitSet) {
       for (const prop of base.getType().getProperties()) {
         if (omitSet.has(prop.getName())) {
+          return true;
+        }
+      }
+    }
+    if (pickSet) {
+      for (const prop of base.getType().getProperties()) {
+        if (!pickSet.has(prop.getName())) {
           return true;
         }
       }
@@ -342,10 +357,15 @@ class SyntheticTypeConverter {
       name += "_iface";
     }
     let members = nodes.flatMap((x) => x.getMembers());
-    const { omitSet } = modifiers;
+    const { omitSet, pickSet } = modifiers;
     if (omitSet) {
       members = members.filter(
         (x) => !Node.isPropertyNamed(x) || !omitSet.has(x.getName()),
+      );
+    }
+    if (pickSet) {
+      members = members.filter(
+        (x) => !Node.isPropertyNamed(x) || pickSet.has(x.getName()),
       );
     }
     const result = this.converter.interfaceToIR(name, [], members, [], [], []);
@@ -394,6 +414,17 @@ class SyntheticTypeConverter {
         const result = this.typeToIR(base, modifiers);
         this.nameContext.pop();
         return result;
+      }
+      case "pick": {
+        const node = typeRoot.node;
+        const base = node.getTypeArguments()[0]!;
+        const toPickType = node.getTypeArguments()[1]!;
+        modifiers = structuredClone(modifiers);
+        modifiers.pickSet = getLiteralTypeArgSet(toPickType);
+        this.nameContext.push("Pick");
+        const res = this.typeToIR(base, modifiers);
+        this.nameContext.pop();
+        return res;
       }
     }
   }

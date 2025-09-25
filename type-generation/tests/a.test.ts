@@ -1597,6 +1597,105 @@ describe("emit", () => {
         );
       });
     });
+    describe("Pick", () => {
+      it("PickLiteral1", () => {
+        const res = emitFile(`
+          type D = Pick<{ a: string; b: number; }, "b">;
+          declare function f(): D;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type D = D__Pick_iface
+
+            def f() -> D: ...
+
+            class D__Pick_iface(Protocol):
+                b: int | float = ...
+          `).trim(),
+        );
+      });
+      it("PickLiteral2", () => {
+        const res = emitFile(`
+          type D = Pick<{ a: string; b: string; c: number; }, "b" | "c">;
+          declare function f(): D;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type D = D__Pick_iface
+
+            def f() -> D: ...
+
+            class D__Pick_iface(Protocol):
+                b: str = ...
+                c: int | float = ...
+          `).trim(),
+        );
+      });
+      it("PickIntersection", () => {
+        const res = emitFile(`
+          type D = Pick<{ a: string; b: string; } & { c : string; }, "b">;
+          declare function f(): D;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type D = D__Pick_iface
+
+            def f() -> D: ...
+
+            class D__Pick__Intersection0_iface(Protocol):
+                b: str = ...
+
+            class D__Pick__Intersection1_iface(Protocol):
+                pass
+
+            class D__Pick_iface(D__Pick__Intersection1_iface, D__Pick__Intersection0_iface, Protocol):
+                pass
+          `).trim(),
+        );
+      });
+      it("PickInterface", () => {
+        const res = emitFile(`
+          interface A { a: string; b: string; }
+          type D = Pick<A, "b">;
+          declare function f(): D;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type D = D__Pick__A_iface
+
+            def f() -> D: ...
+
+            class D__Pick__A_iface(Protocol):
+                b: str = ...
+          `).trim(),
+        );
+      });
+      it("PickAlias", () => {
+        const res = emitFile(`
+          type A = {
+              s?: boolean;
+              t?: string;
+          };
+          type B = Pick<A, 's'>;
+          declare function f(): B;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type B = B__Pick_iface
+
+            def f() -> B: ...
+
+            class B__Pick_iface(Protocol):
+                s: bool | None = ...
+          `).trim(),
+        );
+      });
+    });
   });
   describe("adjustments", () => {
     it("setTimeout", () => {
