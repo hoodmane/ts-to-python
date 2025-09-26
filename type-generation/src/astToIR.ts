@@ -411,7 +411,9 @@ class SyntheticTypeConverter {
             // alias. So if the reference target is a type alias, we have to
             // unwind it until we hit something we can inherit.
             while (Node.isTypeReference(ty)) {
-              const classified = classifyIdentifier(ty.getTypeName() as Identifier);
+              const classified = classifyIdentifier(
+                ty.getTypeName() as Identifier,
+              );
               if (classified.kind !== "typeAlias") {
                 break;
               }
