@@ -1797,6 +1797,50 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  describe("type literals", () => {
+    it("type literal in class property", () => {
+      const res = emitFile(`
+        declare class T {
+          a: {x: string, y: boolean};
+        }
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          class T_iface(Protocol):
+              a: T__a_iface = ...
+
+          class T(T_iface, _JsObject):
+              pass
+
+          class T__a_iface(Protocol):
+              x: str = ...
+              y: bool = ...
+        `).trim(),
+      );
+    });
+    it("type literal in class method signature", () => {
+      const res = emitFile(`
+        declare class T {
+          f(a: {x: string, y: boolean}, b: boolean): void;
+        }
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          class T_iface(Protocol):
+              def f(self, a: T__f__Sig0__a_iface, b: bool, /) -> None: ...
+
+          class T(T_iface, _JsObject):
+              pass
+
+          class T__f__Sig0__a_iface(Protocol):
+              x: str = ...
+              y: bool = ...
+        `).trim(),
+      );
+    });
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
