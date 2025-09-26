@@ -754,9 +754,12 @@ export class Converter {
       for (const param of decl.getParameters()) {
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
+        const name = param.getName();
+        this.pushNameContext(name);
         const type = this.typeToIR(param.getTypeNode()!, optional);
+        this.popNameContext();
         const pyParam: ParamIR = {
-          name: param.getName(),
+          name,
           type,
           isOptional: optional,
         };
@@ -896,7 +899,14 @@ export class Converter {
     signatures: Signature[],
     isStatic?: boolean,
   ): CallableIR {
-    const sigs = signatures.flatMap((sig) => this.sigToIRDestructure(sig));
+    this.pushNameContext(name);
+    const sigs = signatures.flatMap((sig, idx) => {
+      this.pushNameContext(`Sig${idx}`);
+      const result = this.sigToIRDestructure(sig);
+      this.popNameContext();
+      return result;
+    });
+    this.popNameContext();
 
     const result: CallableIR = {
       kind: "callable",
@@ -1091,25 +1101,25 @@ export class Converter {
     const typeArgs = typeParams.map((param) => simpleType(param));
     const concreteBases = [{ name: ifaceName, typeArgs }];
     const constructors = classDecl.getConstructors();
-
-    return [
-      this.interfaceToIR(
-        ifaceName,
-        bases,
-        [...methods, ...properties],
-        [],
-        [],
-        typeParams,
-      ),
-      this.interfaceToIR(
-        name,
-        concreteBases,
-        [],
-        [...constructors, ...staticMethods, ...staticProperties],
-        [],
-        typeParams,
-      ),
-    ];
+    this.nameContext = [name];
+    const ifaceIR = this.interfaceToIR(
+      ifaceName,
+      bases,
+      [...methods, ...properties],
+      [],
+      [],
+      typeParams,
+    );
+    const concreteIR = this.interfaceToIR(
+      name,
+      concreteBases,
+      [],
+      [...constructors, ...staticMethods, ...staticProperties],
+      [],
+      typeParams,
+    );
+    this.nameContext = undefined;
+    return [ifaceIR, concreteIR];
   }
 
   getBasesOfDecls(
