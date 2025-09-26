@@ -402,6 +402,19 @@ class SyntheticTypeConverter {
     switch (typeRoot.kind) {
       case "intersection": {
         const node = typeRoot.node;
+        for (const ty of node.getTypeNodes()) {
+          if (ty.getType().isTypeParameter()) {
+            // Can't intersect with a type parameter...
+            return ANY_IR;
+          }
+          if (
+            Node.isTypeReference(ty) &&
+            Node.isQualifiedName(ty.getTypeName())
+          ) {
+            // We don't handle QualifiedNames yet
+            return ANY_IR;
+          }
+        }
         const types = node
           .getTypeNodes()
           .map((ty, idx) => {
@@ -424,6 +437,11 @@ class SyntheticTypeConverter {
             return res;
           })
           .filter((x): x is ReferenceTypeIR => !!x && x.kind === "reference");
+        for (const node of types) {
+          if (!node.name.endsWith("_iface")) {
+            node.name += "_iface";
+          }
+        }
         const name = this.nameContext.join("__") + "_iface";
         this.converter.extraTopLevels.push(
           this.converter.interfaceToIR(name, types, [], [], [], []),
@@ -1453,6 +1471,7 @@ export function convertDecls(
           .getBasesOfDecls(defs)
           .filter((base) => base.name !== name);
         const typeParams = converter.getTypeParamsFromDecls(defs);
+        converter.nameContext = [name];
         const res = converter.interfaceToIR(
           name,
           baseNames,
@@ -1461,6 +1480,7 @@ export function convertDecls(
           defs.flatMap((def) => def.getCallSignatures()),
           typeParams,
         );
+        converter.nameContext = undefined;
         pushTopLevel(res);
 
         // Clear interface type parameter constraints after processing interface

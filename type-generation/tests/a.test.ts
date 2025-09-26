@@ -1882,6 +1882,26 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("type literal in interface", () => {
+      const res = emitFile(`
+        interface O {
+          x?: { a: string; };
+        };
+        declare function f(): O<string>;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f() -> O_iface[str]: ...
+
+          class O_iface(Protocol):
+              x: O_iface__x_iface | None = ...
+
+          class O_iface__x_iface(Protocol):
+              a: str = ...
+        `).trim(),
+      );
+    });
   });
   describe("adjustments", () => {
     it("setTimeout", () => {
