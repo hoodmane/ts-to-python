@@ -331,10 +331,15 @@ class SyntheticTypeConverter {
   // Currently it has no state (other than recording that nameContext is not
   // undefined) and is just factored away from converter to keep things tidier.
   converter: Converter;
-  nameContext: string[];
-  constructor(converter: Converter, nameContext: string[]) {
+  constructor(converter: Converter) {
     this.converter = converter;
-    this.nameContext = nameContext;
+  }
+  get nameContext(): string[] {
+    const ctx = this.converter.nameContext;
+    if (!ctx) {
+      throw new Error("Should not happen");
+    }
+    return ctx;
   }
 
   hasWork(base: TypeNode, modifiers: Modifier) {
@@ -657,10 +662,7 @@ export class Converter {
     if (!typeRoot) {
       return undefined;
     }
-    return new SyntheticTypeConverter(
-      this,
-      this.nameContext,
-    ).classifiedTypeToIr(typeRoot);
+    return new SyntheticTypeConverter(this).classifiedTypeToIr(typeRoot);
   }
 
   typeToIR(
@@ -751,13 +753,27 @@ export class Converter {
 
       const pyParams: ParamIR[] = [];
       let spreadParam: ParamIR | undefined;
-      for (const param of decl.getParameters()) {
+      const params = decl.getParameters();
+      for (let idx = 0; idx < params.length; idx++) {
+        const param = params[idx];
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
         const name = param.getName();
-        this.pushNameContext(name);
-        const type = this.typeToIR(param.getTypeNode()!, optional);
-        this.popNameContext();
+        const isValidPythonIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_]*$/.test(name);
+        const oldNameContext = this.nameContext?.slice();
+        const paramType = param.getTypeNode()!;
+        const isLast = idx === params.length - 1;
+        if (isLast && Node.isTypeLiteral(paramType)) {
+          // If it's the last argument and the type is a type literal, we'll
+          // destructure it so don't make a type.
+          this.nameContext = undefined;
+        } else if (isValidPythonIdentifier) {
+          this.pushNameContext(name);
+        } else {
+          this.nameContext = undefined;
+        }
+        const type = this.typeToIR(paramType, optional);
+        this.nameContext = oldNameContext;
         const pyParam: ParamIR = {
           name,
           type,
@@ -934,7 +950,10 @@ export class Converter {
 
   funcDeclsToIR(name: string, decls: FunctionDeclaration[]): CallableIR {
     const astSigs = decls.map((x) => x.getSignature());
+    const origNameContext = this.nameContext;
+    this.nameContext ??= [];
     const result = this.callableToIR(name, astSigs, false);
+    this.nameContext = origNameContext;
     return result;
   }
 

@@ -1798,6 +1798,21 @@ describe("emit", () => {
     );
   });
   describe("type literals", () => {
+    it("type literal in function signature", () => {
+      const res = emitFile(`
+        declare function f(a: {x: string, y: boolean}, b: boolean): void;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f(a: f__Sig0__a_iface, b: bool, /) -> None: ...
+
+          class f__Sig0__a_iface(Protocol):
+              x: str = ...
+              y: bool = ...
+        `).trim(),
+      );
+    });
     it("type literal in class property", () => {
       const res = emitFile(`
         declare class T {
