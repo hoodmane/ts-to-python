@@ -1456,19 +1456,46 @@ describe("emit", () => {
         dedent(`
           type D = D_iface
 
-          type F = F_iface
-
           def f() -> D: ...
+
+          class D__Intersection0_iface(Protocol):
+              a: str = ...
 
           class D__Intersection1_iface(Protocol):
               @property
               def id(self, /) -> int | float: ...
 
-          class D_iface(F_iface, D__Intersection1_iface, Protocol):
+          class D_iface(D__Intersection1_iface, D__Intersection0_iface, Protocol):
               pass
+        `).trim(),
+      );
+    });
+    it("intersection3", () => {
+      const res = emitFile(`
+        interface I<T> {
+          x: T;
+        }
+        type F = I<string>;
+        type D = F & {
+            id: number;
+        };
+        declare function f(): D;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          type D = D_iface
 
-          class F_iface(Protocol):
-              a: str = ...
+          def f() -> D: ...
+
+          class I_iface[T](Protocol):
+              x: T = ...
+
+          class D__Intersection1_iface(Protocol):
+              id: int | float = ...
+
+          class D_iface(D__Intersection1_iface, I_iface[str], Protocol):
+              pass
         `).trim(),
       );
     });

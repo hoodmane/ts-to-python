@@ -406,16 +406,24 @@ class SyntheticTypeConverter {
           .getTypeNodes()
           .map((ty, idx) => {
             this.nameContext.push(`Intersection${idx}`);
+            // In TS it's just fine to use the LHS of a type alias in an
+            // intersection. However, in Python we can't inherit from a type
+            // alias. So if the reference target is a type alias, we have to
+            // unwind it until we hit something we can inherit.
+            while (Node.isTypeReference(ty)) {
+              const classified = classifyIdentifier(
+                ty.getTypeName() as Identifier,
+              );
+              if (classified.kind !== "typeAlias") {
+                break;
+              }
+              ty = classified.decl.getTypeNode()!;
+            }
             const res = this.typeToIR(ty, modifiers);
             this.nameContext.pop();
             return res;
           })
           .filter((x): x is ReferenceTypeIR => !!x && x.kind === "reference");
-        for (const x of types) {
-          if (!x.name.endsWith("_iface")) {
-            x.name += "_iface";
-          }
-        }
         const name = this.nameContext.join("__") + "_iface";
         this.converter.extraTopLevels.push(
           this.converter.interfaceToIR(name, types, [], [], [], []),
