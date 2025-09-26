@@ -1902,6 +1902,33 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("type literal in destructured option arg", () => {
+      const res = emitFile(`
+        interface O<T> {
+          x?: { a: T; };
+        ;
+        declare function f(options: O<string>): void;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          @overload
+          def f(options: O_iface[str], /) -> None: ...
+
+          @overload
+          def f(*, x: f__Sig0_iface | None = None) -> None: ...
+
+          class O_iface[T](Protocol):
+              x: O_iface__x_iface | None = ...
+
+          class f__Sig0_iface(Protocol):
+              a: str = ...
+
+          class O_iface__x_iface(Protocol):
+              a: T = ...
+        `).trim(),
+      );
+    });
   });
   describe("adjustments", () => {
     it("setTimeout", () => {

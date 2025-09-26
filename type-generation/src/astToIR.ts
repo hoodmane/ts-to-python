@@ -884,18 +884,20 @@ export class Converter {
       const name = prop.getName();
       const optional = !!prop.getQuestionTokenNode();
       // Try to get resolved type from the parameter type, fallback to interface definition
-      let type: TypeIR = this.typeToIR(prop.getTypeNode()!, optional);
       const propSymbol = paramType?.getProperty(name);
       if (!propSymbol) {
-        return type;
+        return this.typeToIR(prop.getTypeNode()!, optional);
       }
       const propType = propSymbol.getTypeAtLocation(lastParam!);
       // Convert the resolved type by getting a dummy type node
       // This is a bit hacky. Would be nice to create a synthetic node more
       // directly.
       const tempType = propType.getText();
-      if (tempType === prop.getTypeNode()?.getText()) {
-        return type;
+      if (
+        tempType.replaceAll(/\s/g, "") ===
+        prop.getTypeNode()?.getText().replaceAll(/\s/g, "")
+      ) {
+        return this.typeToIR(prop.getTypeNode()!, optional);
       }
 
       if (propType.isTypeParameter()) {
@@ -920,6 +922,7 @@ export class Converter {
       const typeAliasDecl = tempFile.getTypeAliases()[0];
       const dummyTypeNode = typeAliasDecl.getTypeNode()!;
       const res = this.typeToIR(dummyTypeNode, optional);
+      this.popNameContext();
       // Don't remove the temp file, it causes crashes. TODO: Fix this?
       return res;
     };
