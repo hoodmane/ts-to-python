@@ -1809,10 +1809,10 @@ describe("emit", () => {
         dedent(`
           class T_iface(Protocol):
               a: T__a_iface = ...
-  
+
           class T(T_iface, _JsObject):
               pass
-  
+
           class T__a_iface(Protocol):
               x: str = ...
               y: bool = ...
