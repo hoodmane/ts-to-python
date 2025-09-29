@@ -1379,6 +1379,46 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("don't destructure class", () => {
+      // At some point we had an extra popNameContext() in sigToIRDestructure()
+      // and this test failed.
+      const res = emitFile(`
+        interface C {
+          a: string;
+        }
+        declare var C: {
+            prototype: C;
+            new(): C;
+        };
+        declare function f(c: C): void;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f(c: C, /) -> None: ...
+
+          class C(C_iface, _JsObject):
+              @classmethod
+              def new(self, /) -> C: ...
+
+          class C_iface(Protocol):
+              a: str = ...
+        `).trim(),
+      );
+    });
+    it("don't destructure type param", () => {
+      // At some point we had an extra popNameContext() in sigToIRDestructure()
+      // and this test failed.
+      const res = emitFile(`
+        declare function f<T>(a : T): void
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f[T](a: T, /) -> None: ...
+        `).trim(),
+      );
+    });
   });
   describe("Type literals", () => {
     it("simple", () => {
