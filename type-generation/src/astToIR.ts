@@ -377,9 +377,6 @@ class SyntheticTypeConverter {
     const typeParams = this.converter.getTypeParamsFromDecls(res);
 
     let name = this.nameContext.join("__");
-    if (!name.endsWith("_iface")) {
-      name += "_iface";
-    }
     let members = nodes.flatMap((x) => x.getMembers());
     const { omitSet, partial, pickSet } = modifiers;
     if (omitSet) {
@@ -452,12 +449,7 @@ class SyntheticTypeConverter {
             return res;
           })
           .filter((x): x is ReferenceTypeIR => !!x && x.kind === "reference");
-        for (const node of types) {
-          if (!node.name.endsWith("_iface")) {
-            node.name += "_iface";
-          }
-        }
-        const name = this.nameContext.join("__") + "_iface";
+        const name = this.nameContext.join("__");
         this.converter.extraTopLevels.push(
           this.converter.interfaceToIR(name, types, [], [], [], []),
         );
@@ -1383,21 +1375,13 @@ export class Converter {
           .getTypeParameters()
           .map((p) => p.getName());
         const typeNode = classified.decl.getTypeNode()!;
-        // If the typeNode is a type literal, emit an interface instead of a
-        // type alias. This reduces redundancy. Also, interfaces can be used in
-        // bases.
-        if (Node.isTypeLiteral(typeNode)) {
-          return this.interfaceToIR(
-            name,
-            [],
-            typeNode.getMembers(),
-            [],
-            [],
-            aliasTypeParams,
-          );
-        }
         const type = this.typeToIR(typeNode);
         this.nameContext = undefined;
+        // If we just emitted a class definition with the same name, we can drop
+        // the type alias.
+        if (type.kind === "reference" && type.name === name) {
+          return undefined;
+        }
         return { kind: "typeAlias", name, type, typeParams: aliasTypeParams };
       case "varDecl":
         console.warn("Skipping varDecl", ident.getText());

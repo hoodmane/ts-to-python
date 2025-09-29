@@ -1366,17 +1366,15 @@ describe("emit", () => {
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
-          type Q = Q_iface
-
           def q() -> Q: ...
 
-          class Q__Intersection0_iface(Protocol):
+          class Q__Intersection0(Protocol):
               a: str = ...
 
-          class Q__Intersection1_iface(Protocol):
+          class Q__Intersection1(Protocol):
               def f(self, /, *, x: str | int | float) -> None: ...
 
-          class Q_iface(Q__Intersection1_iface, Q__Intersection0_iface, Protocol):
+          class Q(Q__Intersection1, Q__Intersection0, Protocol):
               pass
         `).trim(),
       );
@@ -1412,14 +1410,14 @@ describe("emit", () => {
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
-          type A = A__Union0_iface | A__Union1_iface
+          type A = A__Union0 | A__Union1
 
           def f() -> A: ...
 
-          class A__Union0_iface(Protocol):
+          class A__Union0(Protocol):
               a: int | float = ...
 
-          class A__Union1_iface(Protocol):
+          class A__Union1(Protocol):
               b: str = ...
         `).trim(),
       );
@@ -1434,12 +1432,12 @@ describe("emit", () => {
         dedent(`
           def f() -> A: ...
 
+          class A__b(Protocol):
+              c: int | float = ...
+
           class A(Protocol):
               a: int | float = ...
-              b: A__b_iface = ...
-
-          class A__b_iface(Protocol):
-              c: int | float = ...
+              b: A__b = ...
 
         `).trim(),
       );
@@ -1452,17 +1450,15 @@ describe("emit", () => {
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
-          type A = A_iface
-
           def f() -> A: ...
 
-          class A__Intersection0_iface(Protocol):
+          class A__Intersection0(Protocol):
               a: int | float = ...
 
-          class A__Intersection1_iface(Protocol):
+          class A__Intersection1(Protocol):
               b: str = ...
 
-          class A_iface(A__Intersection1_iface, A__Intersection0_iface, Protocol):
+          class A(A__Intersection1, A__Intersection0, Protocol):
               pass
         `).trim(),
       );
@@ -1480,18 +1476,16 @@ describe("emit", () => {
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
-          type D = D_iface
-
           def f() -> D: ...
 
-          class D__Intersection0_iface(Protocol):
+          class D__Intersection0(Protocol):
               a: str = ...
 
-          class D__Intersection1_iface(Protocol):
+          class D__Intersection1(Protocol):
               @property
               def id(self, /) -> int | float: ...
 
-          class D_iface(D__Intersection1_iface, D__Intersection0_iface, Protocol):
+          class D(D__Intersection1, D__Intersection0, Protocol):
               pass
         `).trim(),
       );
@@ -1510,17 +1504,15 @@ describe("emit", () => {
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
-          type D = D_iface
-
           def f() -> D: ...
 
           class I_iface[T](Protocol):
               x: T = ...
 
-          class D__Intersection1_iface(Protocol):
+          class D__Intersection1(Protocol):
               id: int | float = ...
 
-          class D_iface(D__Intersection1_iface, I_iface[str], Protocol):
+          class D(D__Intersection1, I_iface[str], Protocol):
               pass
         `).trim(),
       );
@@ -1536,11 +1528,11 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type D = D__Omit_iface
+            type D = D__Omit
 
             def f() -> D: ...
 
-            class D__Omit_iface(Protocol):
+            class D__Omit(Protocol):
                 a: str = ...
           `).trim(),
         );
@@ -1553,11 +1545,11 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type D = D__Omit_iface
+            type D = D__Omit
 
             def f() -> D: ...
 
-            class D__Omit_iface(Protocol):
+            class D__Omit(Protocol):
                 a: str = ...
           `).trim(),
         );
@@ -1571,17 +1563,17 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type D = D__Omit_iface
+            type D = D__Omit
 
             def f() -> D: ...
 
-            class D__Omit__Intersection0_iface(Protocol):
+            class D__Omit__Intersection0(Protocol):
                 a: str = ...
 
-            class D__Omit__Intersection1_iface(Protocol):
+            class D__Omit__Intersection1(Protocol):
                 c: str = ...
 
-            class D__Omit_iface(D__Omit__Intersection1_iface, D__Omit__Intersection0_iface, Protocol):
+            class D__Omit(D__Omit__Intersection1, D__Omit__Intersection0, Protocol):
                 pass
           `).trim(),
         );
@@ -1616,11 +1608,11 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type B = B__Omit_iface
+            type B = B__Omit
 
             def f() -> B: ...
 
-            class B__Omit_iface(Protocol):
+            class B__Omit(Protocol):
                 t: str | None = ...
           `).trim(),
         );
@@ -1657,11 +1649,11 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type D = D__Pick_iface
+            type D = D__Pick
 
             def f() -> D: ...
 
-            class D__Pick_iface(Protocol):
+            class D__Pick(Protocol):
                 b: int | float = ...
           `).trim(),
         );
@@ -1674,11 +1666,11 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type D = D__Pick_iface
+            type D = D__Pick
 
             def f() -> D: ...
 
-            class D__Pick_iface(Protocol):
+            class D__Pick(Protocol):
                 b: str = ...
                 c: int | float = ...
           `).trim(),
@@ -1692,17 +1684,17 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type D = D__Pick_iface
+            type D = D__Pick
 
             def f() -> D: ...
 
-            class D__Pick__Intersection0_iface(Protocol):
+            class D__Pick__Intersection0(Protocol):
                 b: str = ...
 
-            class D__Pick__Intersection1_iface(Protocol):
+            class D__Pick__Intersection1(Protocol):
                 pass
 
-            class D__Pick_iface(D__Pick__Intersection1_iface, D__Pick__Intersection0_iface, Protocol):
+            class D__Pick(D__Pick__Intersection1, D__Pick__Intersection0, Protocol):
                 pass
           `).trim(),
         );
@@ -1737,11 +1729,11 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type B = B__Pick_iface
+            type B = B__Pick
 
             def f() -> B: ...
 
-            class B__Pick_iface(Protocol):
+            class B__Pick(Protocol):
                 s: bool | None = ...
           `).trim(),
         );
@@ -1760,11 +1752,11 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type B = B__Partial_iface
+            type B = B__Partial
 
             def f() -> B: ...
 
-            class B__Partial_iface(Protocol):
+            class B__Partial(Protocol):
                 s: bool | None = ...
                 t: str | None = ...
           `).trim(),
@@ -1782,11 +1774,11 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type B = B__Partial_iface
+            type B = B__Partial
 
             def f() -> B: ...
 
-            class B__Partial_iface(Protocol):
+            class B__Partial(Protocol):
                 s: bool | None = ...
                 t: str | None = ...
           `).trim(),
@@ -1874,9 +1866,9 @@ describe("emit", () => {
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
-          def f(a: f__Sig0__a_iface, b: bool, /) -> None: ...
+          def f(a: f__Sig0__a, b: bool, /) -> None: ...
 
-          class f__Sig0__a_iface(Protocol):
+          class f__Sig0__a(Protocol):
               x: str = ...
               y: bool = ...
         `).trim(),
@@ -1892,12 +1884,12 @@ describe("emit", () => {
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
           class T_iface(Protocol):
-              a: T__a_iface = ...
+              a: T__a = ...
 
           class T(T_iface, _JsObject):
               pass
 
-          class T__a_iface(Protocol):
+          class T__a(Protocol):
               x: str = ...
               y: bool = ...
         `).trim(),
@@ -1913,12 +1905,12 @@ describe("emit", () => {
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
           class T_iface(Protocol):
-              def f(self, a: T__f__Sig0__a_iface, b: bool, /) -> None: ...
+              def f(self, a: T__f__Sig0__a, b: bool, /) -> None: ...
 
           class T(T_iface, _JsObject):
               pass
 
-          class T__f__Sig0__a_iface(Protocol):
+          class T__f__Sig0__a(Protocol):
               x: str = ...
               y: bool = ...
         `).trim(),
@@ -1937,9 +1929,9 @@ describe("emit", () => {
           def f() -> O_iface[str]: ...
 
           class O_iface(Protocol):
-              x: O_iface__x_iface | None = ...
+              x: O_iface__x | None = ...
 
-          class O_iface__x_iface(Protocol):
+          class O_iface__x(Protocol):
               a: str = ...
         `).trim(),
       );
@@ -1958,15 +1950,15 @@ describe("emit", () => {
           def f(options: O_iface[str], /) -> None: ...
 
           @overload
-          def f(*, x: f__Sig0_iface | None = None) -> None: ...
+          def f(*, x: f__Sig0 | None = None) -> None: ...
 
           class O_iface[T](Protocol):
-              x: O_iface__x_iface | None = ...
+              x: O_iface__x | None = ...
 
-          class f__Sig0_iface(Protocol):
+          class f__Sig0(Protocol):
               a: str = ...
 
-          class O_iface__x_iface(Protocol):
+          class O_iface__x(Protocol):
               a: T = ...
         `).trim(),
       );
