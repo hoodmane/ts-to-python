@@ -1395,11 +1395,9 @@ describe("emit", () => {
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
-          type A = A_iface
-
           def f() -> A: ...
 
-          class A_iface(Protocol):
+          class A(Protocol):
               a: Literal[1, 2, 3, 4, 5] | None = ...
               b: int | float | None = ...
               c: Literal['a', 'b', 'c'] | None = ...
@@ -1434,16 +1432,15 @@ describe("emit", () => {
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
-          type A = A_iface
-
           def f() -> A: ...
+
+          class A(Protocol):
+              a: int | float = ...
+              b: A__b_iface = ...
 
           class A__b_iface(Protocol):
               c: int | float = ...
 
-          class A_iface(Protocol):
-              a: int | float = ...
-              b: A__b_iface = ...
         `).trim(),
       );
     });
@@ -1640,13 +1637,11 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type A = A_iface
-
             type B = A
 
             def f(a: A, b: B, /) -> None: ...
 
-            class A_iface(Protocol):
+            class A(Protocol):
                 s: bool | None = ...
                 t: str | None = ...
           `).trim(),
