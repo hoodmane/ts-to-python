@@ -932,7 +932,6 @@ export class Converter {
       const typeAliasDecl = tempFile.getTypeAliases()[0];
       const dummyTypeNode = typeAliasDecl.getTypeNode()!;
       const res = this.typeToIR(dummyTypeNode, optional);
-      this.popNameContext();
       // Don't remove the temp file, it causes crashes. TODO: Fix this?
       return res;
     };
