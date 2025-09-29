@@ -128,6 +128,7 @@ export type InterfaceIR = {
   extraBases?: string[];
   // This is used to decide whether the class should be a Protocol or not.
   concrete?: boolean;
+  jsobject?: boolean;
   // Control how numbers are rendered in the class. Normally they are rendered
   // as int | float, but sometimes we just want it to be written as int.
   // This is handled in an adhoc manner in adjustInterfaceIR.
@@ -1175,6 +1176,7 @@ export class Converter {
       [],
       typeParams,
     );
+    concreteIR.jsobject = true;
     this.nameContext = undefined;
     return [ifaceIR, concreteIR];
   }
@@ -1278,7 +1280,9 @@ export class Converter {
       //
       // Otherwise it's a global namespace object?
       try {
-        return this.membersDeclarationToIR(name, typeNode, [], []);
+        const res = this.membersDeclarationToIR(name, typeNode, [], []);
+        res.jsobject = true;
+        return res;
       } catch (e) {
         console.warn(varDecl.getText());
         console.warn(getNodeLocation(varDecl));
@@ -1326,6 +1330,7 @@ export class Converter {
         [],
         typeParams,
       );
+      result.jsobject = true;
 
       this.ifaceTypeParamConstraints.clear();
 

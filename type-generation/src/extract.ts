@@ -67,10 +67,10 @@ function fixupClassBases(nameToCls: Map<string, InterfaceIR>): void {
         }
       }
     }
-    if (cls.name.endsWith("_iface") && !cls.concrete) {
+    if (!cls.jsobject && !cls.concrete) {
       cls.extraBases.push("Protocol");
     }
-    if (!cls.name.endsWith("_iface")) {
+    if (cls.jsobject) {
       cls.extraBases.push("_JsObject");
     }
     cls.bases.sort(({ name: a }, { name: b }) => {

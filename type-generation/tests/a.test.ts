@@ -472,7 +472,7 @@ describe("emit", () => {
       const res = emitFile("declare var a : boolean;");
       assert.strictEqual(removeTypeIgnores(res.at(-1)!), "a: bool = ...");
     });
-    it("extends", () => {
+    it("interface extends tests", () => {
       const res = emitFile(`
         interface B {
             b: number;
