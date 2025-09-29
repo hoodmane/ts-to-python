@@ -1804,7 +1804,7 @@ describe("emit", () => {
                 a: T | None = ...
           `).trim(),
         );
-      })
+      });
     });
     it("Composed type operators", () => {
       const res = emitFile(`

@@ -369,7 +369,10 @@ class SyntheticTypeConverter {
     nodes: (TypeElementMemberedNode & Node)[],
     modifiers: Modifier,
   ): ReferenceTypeIR {
-    const res = nodes.filter((x): x is (TypeElementMemberedNode & TypeParameteredNode & Node) => Node.isTypeParametered(x));
+    const res = nodes.filter(
+      (x): x is TypeElementMemberedNode & TypeParameteredNode & Node =>
+        Node.isTypeParametered(x),
+    );
     const typeParams = this.converter.getTypeParamsFromDecls(res);
 
     let name = this.nameContext.join("__");
@@ -388,7 +391,14 @@ class SyntheticTypeConverter {
         (x) => !Node.isPropertyNamed(x) || pickSet.has(x.getName()),
       );
     }
-    const result = this.converter.interfaceToIR(name, [], members, [], [], typeParams);
+    const result = this.converter.interfaceToIR(
+      name,
+      [],
+      members,
+      [],
+      [],
+      typeParams,
+    );
     if (partial) {
       for (const prop of result.properties) {
         prop.isOptional = true;
