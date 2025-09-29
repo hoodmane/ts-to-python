@@ -15,6 +15,7 @@ import {
   SourceFile,
   SyntaxKind,
   ts,
+  TypeElementMemberedNode,
   TypeElementTypes,
   TypeLiteralNode,
   TypeNode,
@@ -365,9 +366,12 @@ class SyntheticTypeConverter {
   }
 
   doConversion(
-    nodes: Pick<TypeLiteralNode, "getMembers">[],
+    nodes: (TypeElementMemberedNode & Node)[],
     modifiers: Modifier,
   ): ReferenceTypeIR {
+    const res = nodes.filter((x): x is (TypeElementMemberedNode & TypeParameteredNode & Node) => Node.isTypeParametered(x));
+    const typeParams = this.converter.getTypeParamsFromDecls(res);
+
     let name = this.nameContext.join("__");
     if (!name.endsWith("_iface")) {
       name += "_iface";
@@ -384,7 +388,7 @@ class SyntheticTypeConverter {
         (x) => !Node.isPropertyNamed(x) || pickSet.has(x.getName()),
       );
     }
-    const result = this.converter.interfaceToIR(name, [], members, [], [], []);
+    const result = this.converter.interfaceToIR(name, [], members, [], [], typeParams);
     if (partial) {
       for (const prop of result.properties) {
         prop.isOptional = true;
@@ -501,10 +505,6 @@ class SyntheticTypeConverter {
       }
       if (res.kind === "interfaces") {
         const { name, ifaces } = res;
-        const typeParams = this.converter.getTypeParamsFromDecls(ifaces);
-        if (typeParams.length > 0) {
-          throw new Error("Not handled");
-        }
         this.nameContext.push(name);
         const result = this.doConversion(ifaces, modifiers);
         this.nameContext.pop();

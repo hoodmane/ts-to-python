@@ -1787,6 +1787,24 @@ describe("emit", () => {
           `).trim(),
         );
       });
+      it("PartialTypeArg", () => {
+        const res = emitFile(`
+          interface A<T> { a: T; }
+          type D = Partial<A<string>>;
+          declare function f(): D;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            type D = D__Partial__A_iface
+
+            def f() -> D: ...
+
+            class D__Partial__A_iface[T](Protocol):
+                a: T | None = ...
+          `).trim(),
+        );
+      })
     });
     it("Composed type operators", () => {
       const res = emitFile(`
