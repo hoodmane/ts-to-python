@@ -1379,10 +1379,24 @@ export class Converter {
         throw new Error("Unhandled");
       case "typeAlias":
         this.nameContext = [name];
-        const type = this.typeToIR(classified.decl.getTypeNode()!);
         const aliasTypeParams = classified.decl
           .getTypeParameters()
           .map((p) => p.getName());
+        const typeNode = classified.decl.getTypeNode()!;
+        // If the typeNode is a type literal, emit an interface instead of a
+        // type alias. This reduces redundancy. Also, interfaces can be used in
+        // bases.
+        if (Node.isTypeLiteral(typeNode)) {
+          return this.interfaceToIR(
+            name,
+            [],
+            typeNode.getMembers(),
+            [],
+            [],
+            aliasTypeParams,
+          );
+        }
+        const type = this.typeToIR(typeNode);
         this.nameContext = undefined;
         return { kind: "typeAlias", name, type, typeParams: aliasTypeParams };
       case "varDecl":
