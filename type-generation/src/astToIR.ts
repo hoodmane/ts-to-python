@@ -204,8 +204,6 @@ function literalTypeToIR(typeNode: LiteralTypeNode): TypeIR {
  * If the parameter of sig is an Interface, from Python we allow the interface
  * entries to be passed as keyword arguments. Return the InterfaceDeclaration if
  * the last parameter is an interface, else return undefined.
- *
- * TODO: make this work for type literals too?
  */
 function getInterfaceDeclToDestructure(
   sig: Signature,
@@ -221,17 +219,23 @@ function getInterfaceDeclToDestructure(
   if (typeLiteral) {
     return typeLiteral;
   }
-
-  // Handle named interface types (TypeReference)
-  const defs = typeNode
-    .asKind(SyntaxKind.TypeReference)
-    ?.getTypeName()
-    ?.asKind(SyntaxKind.Identifier)
-    ?.getDefinitionNodes();
-  if (!defs?.length) {
+  // If it's a type parameter, don't try to destructure.
+  if (typeNode.getType().isTypeParameter()) {
     return undefined;
   }
-  return defs[0].asKind(SyntaxKind.InterfaceDeclaration);
+  // Handle named interface types (TypeReference)
+  const ident = typeNode
+    .asKind(SyntaxKind.TypeReference)
+    ?.getTypeName()
+    .asKind(SyntaxKind.Identifier);
+  if (!ident) {
+    return undefined;
+  }
+  const classified = classifyIdentifier(ident);
+  if (classified.kind === "interfaces") {
+    return classified.ifaces[0];
+  }
+  return undefined;
 }
 
 function getFilteredTypeParams<T extends TypeParameteredNode>(
