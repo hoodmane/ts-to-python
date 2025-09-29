@@ -1352,6 +1352,35 @@ describe("emit", () => {
         "def f(type_: str, /, *, type: str, payload: int | float) -> None: ...",
       );
     });
+    it("destructure getProp regression test", () => {
+      // At some point we had an extra popNameContext() in sigToIRDestructure()
+      // and this test failed.
+      const res = emitFile(`
+        type Q = {a: string} & {
+          f(options?: {
+            x: number | string;
+          }): void;
+        };
+        declare function q(): Q;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          type Q = Q_iface
+
+          def q() -> Q: ...
+
+          class Q__Intersection0_iface(Protocol):
+              a: str = ...
+
+          class Q__Intersection1_iface(Protocol):
+              def f(self, /, *, x: str | int | float) -> None: ...
+
+          class Q_iface(Q__Intersection1_iface, Q__Intersection0_iface, Protocol):
+              pass
+        `).trim(),
+      );
+    });
   });
   describe("Type literals", () => {
     it("simple", () => {
