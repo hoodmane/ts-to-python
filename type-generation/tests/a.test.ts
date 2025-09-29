@@ -2004,6 +2004,39 @@ describe("emit", () => {
       );
     });
   });
+  it("inheriting from jsobject is also jsobject", () => {
+    const res = emitFile(`
+      interface C {
+        a: string;
+      }
+      declare var C: {
+          prototype: C;
+          new(): C;
+      };
+      declare function f(a: C & {b: string}): void;
+    `);
+    // Maybe f__Sig0__a should inherit from C_iface instead? This doesn't happen
+    // in many places though so for now I am just trying to make it not broken.
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`
+        def f(a: f__Sig0__a, /) -> None: ...
+
+        class C(C_iface, _JsObject):
+            @classmethod
+            def new(self, /) -> C: ...
+
+        class C_iface(Protocol):
+            a: str = ...
+
+        class f__Sig0__a__Intersection1(Protocol):
+            b: str = ...
+
+        class f__Sig0__a(f__Sig0__a__Intersection1, C, _JsObject):
+            pass
+      `).trim(),
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));

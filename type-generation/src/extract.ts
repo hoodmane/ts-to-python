@@ -65,6 +65,12 @@ function fixupClassBases(nameToCls: Map<string, InterfaceIR>): void {
           cls.concrete = true;
           break;
         }
+        // If the base is a jsobject set the subclass to be a jsobject. This
+        // probably shouldn't be necessary and indicates an issue somewhere
+        // else.
+        if (s?.jsobject) {
+          cls.jsobject = true;
+        }
       }
     }
     if (!cls.jsobject && !cls.concrete) {
