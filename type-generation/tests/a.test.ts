@@ -2003,6 +2003,25 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("Type literal with keys that aren't identifiers", () => {
+      // Maybe we can do something with typed-dict for this? For now, just
+      // filter them out.
+      const res = emitFile(`
+        interface T {
+          "x-y": { x:  string; };
+        };
+        declare function f(): T;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f() -> T_iface: ...
+
+          class T_iface(Protocol):
+              pass
+        `).trim(),
+      );
+    });
   });
   it("inheriting from jsobject is also jsobject", () => {
     const res = emitFile(`
