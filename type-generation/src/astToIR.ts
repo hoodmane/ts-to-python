@@ -792,12 +792,21 @@ export class Converter {
         const param = params[idx];
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
-        const name = param.getName();
-        const isIdentifier = isValidPythonIdentifier(name);
+        let name = param.getName();
+        let isIdentifier = isValidPythonIdentifier(name);
         const oldNameContext = this.nameContext?.slice();
         const paramType = param.getTypeNode()!;
         const isLast = idx === params.length - 1;
-        if (isLast && Node.isTypeLiteral(paramType)) {
+        const destructureOnly = isLast && Node.isTypeLiteral(paramType);
+        if (!destructureOnly && !isIdentifier) {
+          // Replace name with args${idx}. This is an unfortunate case so we log it.
+          console.log("Encountered argument with non identifier name");
+          console.log(params[idx].print());
+          console.log(getNodeLocation(params[idx]));
+          name = `args${idx}`;
+          isIdentifier = true;
+        }
+        if (destructureOnly) {
           // If it's the last argument and the type is a type literal, we'll
           // destructure it so don't make a type.
           this.nameContext = undefined;
