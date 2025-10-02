@@ -2056,6 +2056,23 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("Weird spread function signature", () => {
+    const res = emitFile(`
+      declare function f(...[value]: [] | [string]): void;
+    `);
+    // This output isn't correct, but at least it isn't a syntax error.
+    // We actually should produce:
+    // @overload
+    // def f(*args0: tuple[()]) -> None: ...
+    // @overload
+    // def f(*args0: tuple[str]) -> None:
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`
+        def f(*args0: tuple[()] | tuple[str]) -> None: ...
+      `).trim(),
+    );
+  })
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
