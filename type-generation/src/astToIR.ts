@@ -794,12 +794,11 @@ export class Converter {
         const optional = !!param.hasQuestionToken();
         let name = param.getName();
         let isIdentifier = isValidPythonIdentifier(name);
-        console.log({name, isIdentifier});
         const oldNameContext = this.nameContext?.slice();
         const paramType = param.getTypeNode()!;
         const isLast = idx === params.length - 1;
         const destructureOnly = isLast && Node.isTypeLiteral(paramType);
-        if (!destructureOnly) {
+        if (!destructureOnly && !isIdentifier) {
           // Replace name with args${idx}. This is an unfortunate case so we log it.
           console.log("Encountered argument with non identifier name");
           console.log(params[idx].print());

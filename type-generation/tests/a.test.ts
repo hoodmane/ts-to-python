@@ -2072,7 +2072,7 @@ describe("emit", () => {
         def f(*args0: tuple[()] | tuple[str]) -> None: ...
       `).trim(),
     );
-  })
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));
