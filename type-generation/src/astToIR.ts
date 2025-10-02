@@ -34,6 +34,7 @@ import {
   getExpressionTypeArgs,
   getNodeLocation,
   groupMembers,
+  isValidPythonIdentifier,
 } from "./astUtils";
 import { sanitizeReservedWords, uniqBy } from "./irToString";
 import { Needed } from "./types";
@@ -792,7 +793,7 @@ export class Converter {
         const spread = !!param.getDotDotDotToken();
         const optional = !!param.hasQuestionToken();
         const name = param.getName();
-        const isValidPythonIdentifier = /^[a-zA-Z_$][a-zA-Z0-9_]*$/.test(name);
+        const isIdentifier = isValidPythonIdentifier(name);
         const oldNameContext = this.nameContext?.slice();
         const paramType = param.getTypeNode()!;
         const isLast = idx === params.length - 1;
@@ -800,7 +801,7 @@ export class Converter {
           // If it's the last argument and the type is a type literal, we'll
           // destructure it so don't make a type.
           this.nameContext = undefined;
-        } else if (isValidPythonIdentifier) {
+        } else if (isIdentifier) {
           this.pushNameContext(name);
         } else {
           this.nameContext = undefined;
@@ -1119,10 +1120,12 @@ export class Converter {
         isStatic: false,
       });
       const irProps = ([] as PropertyIR[]).concat(
-        astProperties.map((prop) => this.propertySignatureToIR(prop, false)),
-        staticAstProperties.map((prop) =>
-          this.propertySignatureToIR(prop, true),
-        ),
+        astProperties
+          .filter((x) => isValidPythonIdentifier(x.getName()))
+          .map((prop) => this.propertySignatureToIR(prop, false)),
+        staticAstProperties
+          .filter((x) => isValidPythonIdentifier(x.getName()))
+          .map((prop) => this.propertySignatureToIR(prop, true)),
       );
       const props = uniqBy(irProps, ({ name }) => name);
       return {
