@@ -841,6 +841,17 @@ export class Converter {
           pyParams.push(pyParam);
         }
       }
+      if (spreadParam) {
+        const type = spreadParam.type;
+        if (type.kind === "array") {
+          spreadParam.type = type.type;
+        } else {
+          console.warn(
+            `expected type array for spread param, got ${type.kind}`,
+          );
+          spreadParam.type = type;
+        }
+      }
       const retNode = decl.getReturnTypeNode();
       let returns: TypeIR;
       if (retNode) {
