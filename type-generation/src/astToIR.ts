@@ -721,7 +721,7 @@ export class Converter {
       const sigs = typeNode
         .getType()
         .getCallSignatures()
-        .map((sig) => this.sigToIR(sig));
+        .flatMap((sig) => this.sigToIRDestructure(sig));
       return { kind: "callable", signatures: sigs };
     }
     if (Node.isUnionTypeNode(typeNode)) {
