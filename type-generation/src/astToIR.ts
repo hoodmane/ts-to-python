@@ -777,7 +777,7 @@ export class Converter {
     param: ParameterDeclaration,
     idx: number,
     isLast: boolean,
-  ): { isSpread: boolean, param: ParamIR } | undefined {
+  ): { isSpread: boolean; param: ParamIR } | undefined {
     const spread = !!param.getDotDotDotToken();
     const optional = !!param.hasQuestionToken();
     let name = param.getName();
@@ -817,7 +817,7 @@ export class Converter {
         pyParam.type = type;
       }
     }
-    return {param: pyParam, isSpread: spread};
+    return { param: pyParam, isSpread: spread };
   }
 
   sigToIR(sig: Signature): SigIR {
@@ -843,7 +843,7 @@ export class Converter {
         if (!res) {
           continue;
         }
-        const {isSpread, param: pyParam} = res;
+        const { isSpread, param: pyParam } = res;
         if (isSpread) {
           spreadParam = pyParam;
         } else {
