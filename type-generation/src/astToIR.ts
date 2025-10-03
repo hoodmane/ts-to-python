@@ -777,8 +777,7 @@ export class Converter {
     param: ParameterDeclaration,
     idx: number,
     isLast: boolean,
-  ): { isSpread: boolean; param: ParamIR } | undefined {
-    const spread = !!param.getDotDotDotToken();
+  ): ParamIR | undefined {
     const optional = !!param.hasQuestionToken();
     let name = param.getName();
     let isIdentifier = isValidPythonIdentifier(name);
@@ -809,15 +808,7 @@ export class Converter {
       type,
       isOptional: optional,
     };
-    if (spread) {
-      if (type.kind === "array") {
-        pyParam.type = type.type;
-      } else {
-        console.warn(`expected type array for spread param, got ${type.kind}`);
-        pyParam.type = type;
-      }
-    }
-    return { param: pyParam, isSpread: spread };
+    return pyParam;
   }
 
   sigToIR(sig: Signature): SigIR {
@@ -839,12 +830,12 @@ export class Converter {
       for (let idx = 0; idx < params.length; idx++) {
         const param = params[idx];
         const isLast = idx === params.length - 1;
-        const res = this.paramToIR(param, idx, isLast);
-        if (!res) {
+        const spread = !!param.getDotDotDotToken();
+        const pyParam = this.paramToIR(param, idx, isLast);
+        if (!pyParam) {
           continue;
         }
-        const { isSpread, param: pyParam } = res;
-        if (isSpread) {
+        if (spread) {
           spreadParam = pyParam;
         } else {
           pyParams.push(pyParam);
