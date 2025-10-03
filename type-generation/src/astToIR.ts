@@ -77,7 +77,6 @@ export type ParamIR = {
   name: string;
   type: TypeIR;
   isOptional: boolean;
-  isSpread?: boolean;
 };
 export type SigIR = {
   params: ParamIR[];
@@ -778,7 +777,7 @@ export class Converter {
     param: ParameterDeclaration,
     idx: number,
     isLast: boolean,
-  ): ParamIR | undefined {
+  ): { isSpread: boolean, param: ParamIR } | undefined {
     const spread = !!param.getDotDotDotToken();
     const optional = !!param.hasQuestionToken();
     let name = param.getName();
@@ -809,7 +808,6 @@ export class Converter {
       name,
       type,
       isOptional: optional,
-      isSpread: spread,
     };
     if (spread) {
       if (type.kind === "array") {
@@ -819,7 +817,7 @@ export class Converter {
         pyParam.type = type;
       }
     }
-    return pyParam;
+    return {param: pyParam, isSpread: spread};
   }
 
   sigToIR(sig: Signature): SigIR {
@@ -841,11 +839,12 @@ export class Converter {
       for (let idx = 0; idx < params.length; idx++) {
         const param = params[idx];
         const isLast = idx === params.length - 1;
-        const pyParam = this.paramToIR(param, idx, isLast);
-        if (!pyParam) {
+        const res = this.paramToIR(param, idx, isLast);
+        if (!res) {
           continue;
         }
-        if (pyParam.isSpread) {
+        const {isSpread, param: pyParam} = res;
+        if (isSpread) {
           spreadParam = pyParam;
         } else {
           pyParams.push(pyParam);
