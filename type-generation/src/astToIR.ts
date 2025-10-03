@@ -77,7 +77,7 @@ export type ParamIR = {
   name: string;
   type: TypeIR;
   isOptional: boolean;
-  isSpread: boolean;
+  isSpread?: boolean;
 };
 export type SigIR = {
   params: ParamIR[];
