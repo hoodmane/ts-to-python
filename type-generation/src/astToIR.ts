@@ -8,6 +8,7 @@ import {
   IntersectionTypeNode,
   LiteralTypeNode,
   Node,
+  ParameterDeclaration,
   PropertyDeclaration,
   PropertySignature,
   Signature,
@@ -772,6 +773,44 @@ export class Converter {
     return this.otherTypeToIR(typeNode);
   }
 
+  paramToIR(
+    param: ParameterDeclaration,
+    idx: number,
+    isLast: boolean,
+  ): ParamIR | undefined {
+    const optional = !!param.hasQuestionToken();
+    let name = param.getName();
+    let isIdentifier = isValidPythonIdentifier(name);
+    const oldNameContext = this.nameContext?.slice();
+    const paramType = param.getTypeNode()!;
+    const destructureOnly = isLast && Node.isTypeLiteral(paramType);
+    if (!destructureOnly && !isIdentifier) {
+      // Replace name with args${idx}. This is an unfortunate case so we log it.
+      console.log("Encountered argument with non identifier name");
+      console.log(param.print());
+      console.log(getNodeLocation(param));
+      name = `args${idx}`;
+      isIdentifier = true;
+    }
+    if (destructureOnly) {
+      // If it's the last argument and the type is a type literal, we'll
+      // destructure it so don't make a type.
+      this.nameContext = undefined;
+    } else if (isIdentifier) {
+      this.pushNameContext(name);
+    } else {
+      this.nameContext = undefined;
+    }
+    const type = this.typeToIR(paramType, optional);
+    this.nameContext = oldNameContext;
+    const pyParam: ParamIR = {
+      name,
+      type,
+      isOptional: optional,
+    };
+    return pyParam;
+  }
+
   sigToIR(sig: Signature): SigIR {
     const decl1 = sig.getDeclaration();
     const decl =
@@ -790,51 +829,28 @@ export class Converter {
       const params = decl.getParameters();
       for (let idx = 0; idx < params.length; idx++) {
         const param = params[idx];
-        const spread = !!param.getDotDotDotToken();
-        const optional = !!param.hasQuestionToken();
-        let name = param.getName();
-        let isIdentifier = isValidPythonIdentifier(name);
-        const oldNameContext = this.nameContext?.slice();
-        const paramType = param.getTypeNode()!;
         const isLast = idx === params.length - 1;
-        const destructureOnly = isLast && Node.isTypeLiteral(paramType);
-        if (!destructureOnly && !isIdentifier) {
-          // Replace name with args${idx}. This is an unfortunate case so we log it.
-          console.log("Encountered argument with non identifier name");
-          console.log(params[idx].print());
-          console.log(getNodeLocation(params[idx]));
-          name = `args${idx}`;
-          isIdentifier = true;
-        }
-        if (destructureOnly) {
-          // If it's the last argument and the type is a type literal, we'll
-          // destructure it so don't make a type.
-          this.nameContext = undefined;
-        } else if (isIdentifier) {
-          this.pushNameContext(name);
-        } else {
-          this.nameContext = undefined;
-        }
-        const type = this.typeToIR(paramType, optional);
-        this.nameContext = oldNameContext;
-        const pyParam: ParamIR = {
-          name,
-          type,
-          isOptional: optional,
-        };
-        if (spread) {
-          spreadParam = pyParam;
-          if (type.kind === "array") {
-            pyParam.type = type.type;
-          } else {
-            console.warn(
-              `expected type array for spread param, got ${type.kind}`,
-            );
-            pyParam.type = type;
-          }
+        const spread = !!param.getDotDotDotToken();
+        const pyParam = this.paramToIR(param, idx, isLast);
+        if (!pyParam) {
           continue;
         }
-        pyParams.push(pyParam);
+        if (spread) {
+          spreadParam = pyParam;
+        } else {
+          pyParams.push(pyParam);
+        }
+      }
+      if (spreadParam) {
+        const type = spreadParam.type;
+        if (type.kind === "array") {
+          spreadParam.type = type.type;
+        } else {
+          console.warn(
+            `expected type array for spread param, got ${type.kind}`,
+          );
+          spreadParam.type = type;
+        }
       }
       const retNode = decl.getReturnTypeNode();
       let returns: TypeIR;
