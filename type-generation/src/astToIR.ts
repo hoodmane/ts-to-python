@@ -234,10 +234,15 @@ function getInterfaceDeclToDestructure(
     return undefined;
   }
   const classified = classifyIdentifier(ident);
-  if (classified.kind === "interfaces") {
-    return classified.ifaces[0];
+  if (classified.kind !== "interfaces") {
+    return undefined;
   }
-  return undefined;
+  // Don't destructure Iterable.
+  // We will probably want to add other ad-hoc excludes here eventually.
+  if (ident.getText() === "Iterable") {
+    return undefined;
+  }
+  return classified.ifaces[0];
 }
 
 function getFilteredTypeParams<T extends TypeParameteredNode>(
@@ -721,7 +726,7 @@ export class Converter {
       const sigs = typeNode
         .getType()
         .getCallSignatures()
-        .map((sig) => this.sigToIR(sig));
+        .flatMap((sig) => this.sigToIRDestructure(sig));
       return { kind: "callable", signatures: sigs };
     }
     if (Node.isUnionTypeNode(typeNode)) {
