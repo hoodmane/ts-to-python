@@ -182,7 +182,7 @@ function declarationIR(name: string, type: TypeIR): DeclarationIR {
 }
 
 function referenceType(name: string, typeArgs: TypeIR[] = []): ReferenceTypeIR {
-  return {kind: "reference", name, typeArgs};
+  return { kind: "reference", name, typeArgs };
 }
 
 const ANY_IR = simpleType("Any");
