@@ -532,6 +532,7 @@ export class Converter {
   convertedSet: Set<string>;
   extraTopLevels: TopLevelIR[];
   nameContext: string[] | undefined;
+  typeMap: Map<number, TypeIR>;
 
   constructor() {
     this.ifaceTypeParamConstraints = new Map();
@@ -540,6 +541,7 @@ export class Converter {
     this.convertedSet = new Set(BUILTIN_NAMES);
     this.extraTopLevels = [];
     this.nameContext = undefined;
+    this.typeMap = new Map();
   }
 
   pushNameContext(ctx: string): void {
@@ -689,6 +691,20 @@ export class Converter {
     return { kind: "other", nodeKind, location };
   }
 
+  lookupTypeIR(node: TypeNode): TypeIR | undefined {
+    const t = node.getType();
+    // @ts-expect-error
+    const id = t.compilerType.id;
+    return this.typeMap.get(id);
+  }
+
+  cacheTypeIR(node: TypeNode, ir: TypeIR): void {
+    const t = node.getType();
+    // @ts-expect-error
+    const id = t.compilerType.id;
+    this.typeMap.set(id, ir);
+  }
+
   maybeSyntheticTypeToIR(node: TypeNode): TypeIR | undefined {
     if (!this.nameContext) {
       return undefined;
@@ -697,7 +713,13 @@ export class Converter {
     if (!typeRoot) {
       return undefined;
     }
-    return new SyntheticTypeConverter(this).classifiedTypeToIr(typeRoot);
+    const lookup = this.lookupTypeIR(node);
+    if (lookup) {
+      return lookup;
+    }
+    const res = new SyntheticTypeConverter(this).classifiedTypeToIr(typeRoot);
+    this.cacheTypeIR(node, res);
+    return res;
   }
 
   typeToIR(

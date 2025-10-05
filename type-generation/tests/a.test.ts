@@ -1883,6 +1883,21 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("Repeated type operator", () => {
+      const res = emitFile(`
+        interface V { x: string; };
+        declare function f(a: Partial<V>, b: Partial<V>): vod;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f(a: f__Sig0__a__Partial__V_iface, b: f__Sig0__a__Partial__V_iface, /) -> vod_iface: ...
+
+          class f__Sig0__a__Partial__V_iface(Protocol):
+              x: str | None = ...
+        `).trim(),
+      );
+    });
   });
   it("named tuple", () => {
     const res = emitFile(`
