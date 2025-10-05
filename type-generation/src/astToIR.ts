@@ -139,10 +139,14 @@ function getInterfaceDeclToDestructure(
     return undefined;
   }
   const classified = classifyIdentifier(ident);
-  if (classified.kind === "interfaces") {
-    return [classified.ifaces[0], refNode.getTypeArguments()];
+  if (classified.kind !== "interfaces") {
+    return undefined;
   }
-  return undefined;
+  const iface = classified.ifaces[0];
+  if (iface.getName() === "Iterable") {
+    return undefined;
+  }
+  return [iface, refNode.getTypeArguments()];
 }
 
 function getFilteredTypeParams<T extends TypeParameteredNode>(
@@ -426,6 +430,9 @@ class SyntheticTypeConverter {
       }
       throw new Error(`Not handled ${res.kind}`);
     }
+    if (Node.isMappedTypeNode(n)) {
+      return ANY_IR;
+    }
     throw new Error(`Not handled ${n.getKindName()}`);
   }
 }
@@ -634,11 +641,33 @@ export class Converter {
       return simpleType(TYPE_TEXT_MAP[typeText]);
     }
     if (Node.isFunctionTypeNode(typeNode)) {
-      const sigs = typeNode
-        .getType()
-        .getCallSignatures()
-        .map((sig) => this.sigToIR(sig));
-      return { kind: "callable", signatures: sigs };
+      let name = "";
+      if (this.nameContext) {
+        name = this.nameContext.join("__");
+      }
+      const iface = this.interfaceToIR(name, [], [], [], [typeNode], []);
+      const ir = iface.methods[0];
+      const sigs = ir.signatures;
+      if (sigs.length === 1) {
+        const sig = sigs[0];
+        if (
+          sig.kwparams === undefined &&
+          sig.spreadParam === undefined &&
+          sig.typeParams === undefined
+        ) {
+          delete ir.name;
+          delete ir.isStatic;
+          return ir;
+        }
+      }
+      if (name === "") {
+        console.log(typeNode.print());
+        console.log(getNodeLocation(typeNode));
+        throw new Error("Oops...");
+      }
+      this.addExtraTopLevel(iface);
+      const ref = referenceType(name);
+      return ref;
     }
     if (Node.isUnionTypeNode(typeNode)) {
       return this.unionToIR(typeNode, isOptional);
@@ -935,7 +964,7 @@ export class Converter {
     bases: BaseIR[],
     members: Node[],
     staticMembers: Node[],
-    callSignatures: CallSignatureDeclaration[],
+    callSignatures: Pick<CallSignatureDeclaration, "getSignature">[],
     typeParams: string[],
   ): InterfaceIR {
     // Set class-level type parameters before processing methods
@@ -1021,15 +1050,15 @@ export class Converter {
       redirectMethod("get", "__getitem__");
       redirectMethod("set", "__setitem__");
       redirectMethod("delete", "__delitem__");
-      if (constructors) {
+      if (constructors.length > 0) {
         staticAstMethods["new"] = constructors.map((decl) =>
           decl.getSignature(),
         );
       }
       const irMethods = ([] as CallableIR[]).concat(
-        Object.entries(astMethods).map(([name, sigs]) =>
-          this.callableToIR(name, sigs, false),
-        ),
+        Object.entries(astMethods)
+          .filter(([name, sigs]) => isValidPythonIdentifier(name))
+          .map(([name, sigs]) => this.callableToIR(name, sigs, false)),
         Object.entries(staticAstMethods).map(([name, sigs]) =>
           this.callableToIR(name, sigs, true),
         ),
@@ -1245,6 +1274,7 @@ export class Converter {
       const { ifaces } = classified;
       this.setIfaceTypeConstraints(ifaces);
       const typeParams = this.getTypeParamsFromDecls(ifaces);
+      this.nameContext = [name];
       const result = this.membersDeclarationToIR(
         name,
         {
@@ -1253,6 +1283,7 @@ export class Converter {
         [],
         typeParams,
       );
+      this.nameContext = undefined;
       result.jsobject = true;
 
       this.ifaceTypeParamConstraints.clear();
