@@ -181,6 +181,10 @@ function declarationIR(name: string, type: TypeIR): DeclarationIR {
   return { kind: "declaration", name, type };
 }
 
+function referenceType(name: string, typeArgs: TypeIR[] = []): ReferenceTypeIR {
+  return { kind: "reference", name, typeArgs };
+}
+
 const ANY_IR = simpleType("Any");
 
 function literalType(text: string): TypeIR {
@@ -409,7 +413,7 @@ class SyntheticTypeConverter {
       }
     }
     this.converter.extraTopLevels.push(result);
-    return { kind: "reference", name, typeArgs: [] };
+    return referenceType(name);
   }
 
   classifiedTypeToIr(
@@ -459,7 +463,7 @@ class SyntheticTypeConverter {
         this.converter.extraTopLevels.push(
           this.converter.interfaceToIR(name, types, [], [], [], []),
         );
-        return { kind: "reference", name, typeArgs: [] };
+        return referenceType(name);
       }
       case "typeLiteral": {
         return this.doConversion([typeRoot.node], modifiers);
@@ -682,7 +686,7 @@ export class Converter {
         this.addNeededIdentifier(ident);
       }
     }
-    return { kind: "reference", name: name, typeArgs };
+    return referenceType(name, typeArgs);
   }
 
   otherTypeToIR(node: Node): OtherTypeIR {
@@ -888,7 +892,7 @@ export class Converter {
         const typeArgs: ParameterReferenceTypeIR[] = classDecl
           .getTypeParameters()
           .map((x) => ({ kind: "parameterReference", name: x.getName() }));
-        returns = { kind: "reference", name, typeArgs };
+        returns = referenceType(name, typeArgs);
       }
 
       // Extract type parameters for this specific signature
