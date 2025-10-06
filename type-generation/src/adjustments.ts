@@ -1,5 +1,5 @@
 import { Variance, reverseVariance } from "./types";
-import { CallableIR, InterfaceIR, TypeIR, simpleType } from "./astToIR";
+import { CallableIR, InterfaceIR, TypeIR, simpleType } from "./ir";
 import { typeIRToString } from "./irToString";
 import { readFileSync } from "fs";
 

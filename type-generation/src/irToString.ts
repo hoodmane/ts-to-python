@@ -12,10 +12,9 @@ import {
   ParamIR,
   PropertyIR,
   SigIR,
-  TopLevelIR,
   TypeAliasIR,
   TypeIR,
-} from "./astToIR.ts";
+} from "./ir.ts";
 import { assertUnreachable } from "./astUtils.ts";
 import { Variance, reverseVariance } from "./types.ts";
 

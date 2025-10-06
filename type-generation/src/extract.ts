@@ -8,7 +8,6 @@ import {
 } from "./adjustments.ts";
 
 import {
-  InterfaceIR,
   convertFiles,
   ConversionResult,
   TopLevels,
@@ -19,6 +18,7 @@ import {
   interfaceIRToString,
   typeAliasIRToString,
 } from "./irToString.ts";
+import { InterfaceIR } from "./ir.ts";
 
 function topologicalSortClasses(
   nameToCls: Map<string, InterfaceIR>,
