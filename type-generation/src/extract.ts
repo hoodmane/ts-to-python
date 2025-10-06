@@ -7,11 +7,7 @@ import {
   handleBuiltinBases,
 } from "./adjustments.ts";
 
-import {
-  convertFiles,
-  ConversionResult,
-  TopLevels,
-} from "./astToIR.ts";
+import { convertFiles, ConversionResult, TopLevels } from "./astToIR.ts";
 import {
   callableIRToString,
   declarationIRToString,
