@@ -39,52 +39,48 @@ import {
 } from "./astUtils";
 import { sanitizeReservedWords, uniqBy } from "./irToString";
 import { Needed } from "./types";
+import {
+  TypeIR,
+  simpleType,
+  SigIR,
+  ANY_IR,
+  BaseIR,
+  CallableIR,
+  DeclarationIR,
+  InterfaceIR,
+  OtherTypeIR,
+  ParamIR,
+  ParameterReferenceTypeIR,
+  PropertyIR,
+  ReferenceTypeIR,
+  TopLevelIR,
+  TypeAliasIR,
+  TypeOperatorTypeIR,
+  arrayType,
+  declarationIR,
+  parameterReferenceType,
+  parenType,
+  referenceType,
+  tupleType,
+  unionType,
+} from "./ir";
 
-export type TypeIR =
-  | SimpleTypeIR
-  | UnionTypeIR
-  | ParenTypeIR
-  | ParameterReferenceTypeIR
-  | ReferenceTypeIR
-  | OtherTypeIR
-  | TypeOperatorTypeIR
-  | TupleTypeIR
-  | ArrayTypeIR
-  | CallableIR
-  | NumberTypeIR;
+export function literalType(text: string): TypeIR {
+  if (text === "null") {
+    return simpleType("None");
+  }
+  if (text === "true") {
+    text = "True";
+  }
+  if (text === "false") {
+    text = "False";
+  }
+  return simpleType(`Literal[${text}]`);
+}
 
-type SimpleTypeIR = { kind: "simple"; text: string };
-type NumberTypeIR = { kind: "number" };
-type UnionTypeIR = { kind: "union"; types: TypeIR[] };
-type TupleTypeIR = { kind: "tuple"; types: TypeIR[] };
-type ArrayTypeIR = { kind: "array"; type: TypeIR };
-type ParenTypeIR = { kind: "paren"; type: TypeIR };
-type TypeOperatorTypeIR = {
-  kind: "operator";
-  operatorName: string;
-  type: TypeIR;
-};
-type OtherTypeIR = { kind: "other"; nodeKind: string; location: string };
-
-type ParameterReferenceTypeIR = { kind: "parameterReference"; name: string };
-export type ReferenceTypeIR = {
-  kind: "reference";
-  name: string;
-  typeArgs: TypeIR[];
-};
-
-export type ParamIR = {
-  name: string;
-  type: TypeIR;
-  isOptional: boolean;
-};
-export type SigIR = {
-  params: ParamIR[];
-  spreadParam?: ParamIR;
-  kwparams?: ParamIR[];
-  returns: TypeIR;
-  typeParams?: string[];
-};
+export function literalTypeToIR(typeNode: LiteralTypeNode): TypeIR {
+  return literalType(typeNode.getText());
+}
 
 /**
  * Ad hoc depth 2 copy
@@ -102,110 +98,6 @@ function depth2CopySig({
   params = Array.from(params);
   kwparams = kwparams && Array.from(kwparams);
   return { params, spreadParam, kwparams, returns, typeParams };
-}
-
-export type CallableIR = {
-  kind: "callable";
-  name?: string;
-  signatures: SigIR[];
-  isStatic?: boolean;
-};
-
-export type PropertyIR = {
-  type: TypeIR;
-  name: string;
-  isOptional: boolean;
-  isStatic: boolean;
-  isReadonly: boolean;
-};
-
-export type InterfaceIR = {
-  kind: "interface";
-  name: string;
-  methods: CallableIR[];
-  properties: PropertyIR[];
-  typeParams: string[];
-  bases: BaseIR[];
-  // Synthetic bases adjusted into the class.
-  extraBases?: string[];
-  // This is used to decide whether the class should be a Protocol or not.
-  concrete?: boolean;
-  jsobject?: boolean;
-  // Control how numbers are rendered in the class. Normally they are rendered
-  // as int | float, but sometimes we just want it to be written as int.
-  // This is handled in an adhoc manner in adjustInterfaceIR.
-  numberType?: string;
-};
-
-export type BaseIR = {
-  name: string;
-  typeArgs: TypeIR[];
-};
-
-export type DeclarationIR = {
-  kind: "declaration";
-  name: string;
-  type: TypeIR;
-};
-
-export type TypeAliasIR = {
-  kind: "typeAlias";
-  name: string;
-  type: TypeIR;
-  typeParams: string[];
-};
-
-export type TopLevelIR = DeclarationIR | InterfaceIR | TypeAliasIR | CallableIR;
-
-export function simpleType(text: string): SimpleTypeIR {
-  return { kind: "simple", text };
-}
-
-function unionType(types: TypeIR[]): UnionTypeIR {
-  return { kind: "union", types };
-}
-
-function tupleType(types: TypeIR[]): TupleTypeIR {
-  return { kind: "tuple", types };
-}
-
-function arrayType(type: TypeIR): ArrayTypeIR {
-  return { kind: "array", type };
-}
-
-function parenType(type: TypeIR): ParenTypeIR {
-  return { kind: "paren", type };
-}
-
-function declarationIR(name: string, type: TypeIR): DeclarationIR {
-  return { kind: "declaration", name, type };
-}
-
-function referenceType(name: string, typeArgs: TypeIR[] = []): ReferenceTypeIR {
-  return { kind: "reference", name, typeArgs };
-}
-
-function parameterReferenceType(name: string): ParameterReferenceTypeIR {
-  return { kind: "parameterReference", name };
-}
-
-const ANY_IR = simpleType("Any");
-
-function literalType(text: string): TypeIR {
-  if (text === "null") {
-    return simpleType("None");
-  }
-  if (text === "true") {
-    text = "True";
-  }
-  if (text === "false") {
-    text = "False";
-  }
-  return simpleType(`Literal[${text}]`);
-}
-
-function literalTypeToIR(typeNode: LiteralTypeNode): TypeIR {
-  return literalType(typeNode.getText());
 }
 
 /**
