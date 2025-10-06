@@ -185,6 +185,10 @@ function referenceType(name: string, typeArgs: TypeIR[] = []): ReferenceTypeIR {
   return { kind: "reference", name, typeArgs };
 }
 
+function parameterReferenceType(name: string): ParameterReferenceTypeIR {
+  return { kind: "parameterReference", name };
+}
+
 const ANY_IR = simpleType("Any");
 
 function literalType(text: string): TypeIR {
@@ -275,7 +279,7 @@ function getInterfaceTypeArgs(ident: EntityName): TypeIR[] {
       .flatMap(getFilteredTypeParams)
       .map((param) => param.getName()),
     (param) => param,
-  ).map((name) => ({ kind: "parameterReference", name }));
+  ).map(parameterReferenceType);
 }
 
 const operatorToName: {
@@ -651,7 +655,7 @@ export class Converter {
         return simpleType("str");
       }
 
-      return { kind: "parameterReference", name };
+      return parameterReferenceType(name);
     }
     let typeArgs = getExpressionTypeArgs(ident, typeNode).map((ty) =>
       this.typeToIR(ty),
@@ -891,7 +895,7 @@ export class Converter {
         const name = classDecl.getName() + "_iface";
         const typeArgs: ParameterReferenceTypeIR[] = classDecl
           .getTypeParameters()
-          .map((x) => ({ kind: "parameterReference", name: x.getName() }));
+          .map((x) => parameterReferenceType(x.getName()));
         returns = referenceType(name, typeArgs);
       }
 
@@ -960,7 +964,7 @@ export class Converter {
       }
 
       if (propType.isTypeParameter()) {
-        return { kind: "parameterReference", name: tempType };
+        return parameterReferenceType(tempType);
       }
       // Create a dummy type node from the resolved type text
       const project = lastParam!.getProject();
@@ -1206,7 +1210,7 @@ export class Converter {
     const [staticProperties, properties] = split2(allProperties, (x) =>
       x.isStatic(),
     );
-    const typeArgs = typeParams.map((param) => simpleType(param));
+    const typeArgs = typeParams.map(parameterReferenceType);
     const concreteBases = [{ name: ifaceName, typeArgs }];
     const constructors = classDecl.getConstructors();
     this.nameContext = [name];
@@ -1387,7 +1391,7 @@ export class Converter {
       return result;
     }
     if (classified.kind === "class") {
-      return declarationIR(name, simpleType(classified.decl.getName()!));
+      return declarationIR(name, referenceType(classified.decl.getName()!));
     }
     if (classified.kind === "typeAlias") {
       return this.typeNodeToDeclaration(name, classified.decl.getTypeNode()!);
