@@ -2327,6 +2327,36 @@ describe("emit", () => {
       `).trim(),
     );
   });
+  it("Variable of vardecl type", () => {
+    // For some reason it behaves differently when default is in the property
+    // name.
+    const res = emitFile(`
+      interface DX {
+          readonly defaultX: {};
+      }
+      declare var DX: {
+          prototype: DX;
+          new(): DX;
+      };
+      declare var d: DX;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`
+        d: DX = ...
+
+        class DX(DX_iface, _JsObject):
+            @classmethod
+            def new(self, /) -> DX: ...
+
+        class DX_iface(Protocol):
+            DX_iface__defaultX
+
+        class DX_iface__defaultX(Protocol):
+            pass
+      `).trim(),
+    );
+  });
   describe("adjustments", () => {
     it("setTimeout", () => {
       const res = emitIRNoTypeIgnores(convertBuiltinFunction("setTimeout"));

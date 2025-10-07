@@ -1268,7 +1268,7 @@ export class Converter {
     if (classified.kind === "varDecl" && name !== classified.name) {
       // We have to check that name !== typeName or else we can pick up the decl
       // we're currently processing.
-      this.typeNodeToDeclaration(name, typeNode);
+      return this.typeNodeToDeclaration(name, typeNode);
     }
     if (classified.kind === "varDecl" || classified.kind === "interfaces") {
       const { ifaces } = classified;
