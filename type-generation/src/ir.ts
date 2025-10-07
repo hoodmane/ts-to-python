@@ -255,7 +255,7 @@ export function visitType(v: IRVisitor, a: TypeIR) {
   }
 }
 
-export function visitIR(v: IRVisitor, a: TopLevelIR): void {
+export function visitTopLevel(v: IRVisitor, a: TopLevelIR): void {
   switch (a.kind) {
     case "callable":
       enter(v.visitCallableIR?.(a), () => {
@@ -272,7 +272,7 @@ export function visitIR(v: IRVisitor, a: TopLevelIR): void {
     case "interface":
       enter(v.visitInterfaceIR?.(a), () => {
         for (const meth of a.methods) {
-          visitIR(v, meth);
+          visitTopLevel(v, meth);
         }
         for (const prop of a.properties) {
           visitProperty(v, prop);
