@@ -1560,7 +1560,8 @@ function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
         return;
       }
       rt.adjusted = true;
-      for (let i = 0; i < nparams - typeArgs.length; i++) {
+      const paramsToAdd = nparams - typeArgs.length;
+      for (let i = 0; i < paramsToAdd; i++) {
         typeArgs.push(parameterReferenceType(added[i]));
       }
       for (const param of added) {

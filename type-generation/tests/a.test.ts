@@ -1220,6 +1220,27 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("Multiple added type args", () => {
+      const res = emitFile(`
+        interface R<K, V> {
+          f(cb: (v: V, k: K) => void): void;
+        }
+        declare function f<K,V>(): R<K, V>;
+      `);
+      console.log(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+
+      )
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`\
+          def f[K, V]() -> R_iface[K, V]: ...
+
+          class R_iface[K, V](Protocol):
+              def f(self, cb: Callable[[V, K], None], /) -> None: ...
+        `).trim(),
+      );
+    });
   });
   it("Array converted to ArrayLike_iface", () => {
     const res = emitFile(`declare function f(x: Array<string>): void`);
