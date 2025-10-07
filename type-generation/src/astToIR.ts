@@ -436,6 +436,7 @@ export class Converter {
   neededSet: Set<Needed>;
   convertedSet: Set<string>;
   extraTopLevels: TopLevelIR[];
+  nameToExtraTopLevel: Map<string, TopLevelIR>;
   nameContext: string[] | undefined;
   typeMap: Map<number, TypeIR>;
   adjustedIfaces: AdjustedIfaces;
@@ -449,10 +450,12 @@ export class Converter {
     this.nameContext = undefined;
     this.typeMap = new Map();
     this.adjustedIfaces = new Map();
+    this.nameToExtraTopLevel = new Map();
   }
 
   addExtraTopLevel(tl: TopLevelIR) {
     addMissingTypeParametersToIface(tl, this.adjustedIfaces);
+    this.nameToExtraTopLevel.set(tl.name!, tl);
     this.extraTopLevels.push(tl);
   }
 
@@ -1327,6 +1330,10 @@ export class Converter {
         // If we just emitted a class definition with the same name, we can drop
         // the type alias.
         if (type.kind === "reference" && type.name === name) {
+          const tl = this.nameToExtraTopLevel.get(name);
+          if (tl?.kind === "interface") {
+            tl.typeParams = aliasTypeParams;
+          }
           return undefined;
         }
         return { kind: "typeAlias", name, type, typeParams: aliasTypeParams };
