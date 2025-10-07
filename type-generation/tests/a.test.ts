@@ -1167,6 +1167,40 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("No type alias duplication in union", () => {
+      const res = emitFile(`
+        interface I {
+          a: string;
+        }
+        interface B<H> {
+            h?: H;
+        }
+
+        type X<H = unknown> = Y<H> | {a: string};
+        type Y<H = unknown> = B<H> & I;
+        declare function f(): X;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`\
+          type X[H] = Y[H] | X__Union1
+
+          def f() -> X[Any]: ...
+
+          class B_iface[H](Protocol):
+              h: H | None = ...
+
+          class I_iface(Protocol):
+              a: str = ...
+
+          class X__Union1(Protocol):
+              a: str = ...
+
+          class Y[H](I_iface, B_iface[H], Protocol):
+              pass
+        `).trim(),
+      );
+    });
   });
   it("Array converted to ArrayLike_iface", () => {
     const res = emitFile(`declare function f(x: Array<string>): void`);

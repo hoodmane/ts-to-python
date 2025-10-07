@@ -438,7 +438,7 @@ export class Converter {
   extraTopLevels: TopLevelIR[];
   nameContext: string[] | undefined;
   typeMap: Map<number, TypeIR>;
-  adjustedIfaces: Map<string, string[]>;
+  adjustedIfaces: AdjustedIfaces;
 
   constructor() {
     this.ifaceTypeParamConstraints = new Map();
@@ -1465,10 +1465,12 @@ export function convertDecls(
   return { topLevels };
 }
 
+type AdjustedIfaces = Map<string, { nparams: number; added: string[] }>;
+
 function addMissingTypeParametersToIface(
   topLevel: TopLevelIR,
-  adjustedIfaces: Map<string, string[]>,
-): Map<string, string[]> {
+  adjustedIfaces: AdjustedIfaces,
+): void {
   const typeParams: Set<string>[] = [];
   const missingTypeParams: Set<string> = new Set();
   const visitor: IRVisitor = {
@@ -1483,7 +1485,11 @@ function addMissingTypeParametersToIface(
       typeParams.pop();
       if (missingTypeParams.size) {
         a.typeParams.push(...missingTypeParams);
-        adjustedIfaces.set(a.name, Array.from(missingTypeParams));
+        const nparams = a.typeParams.length;
+        adjustedIfaces.set(a.name, {
+          nparams,
+          added: Array.from(missingTypeParams),
+        });
         missingTypeParams.clear();
       }
     },
@@ -1505,12 +1511,9 @@ function addMissingTypeParametersToIface(
     },
   };
   visitTopLevel(visitor, topLevel);
-  return adjustedIfaces;
 }
 
-function addMissingTypeArgsVisitor(
-  adjustedIfaces: Map<string, string[]>,
-): IRVisitor {
+function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
   const typeParams: Set<string>[] = [];
   return {
     *visitSignature(a) {
@@ -1533,13 +1536,16 @@ function addMissingTypeArgsVisitor(
       if (adjusted) {
         return;
       }
-      const addedParams = adjustedIfaces.get(name);
-      if (!addedParams) {
+      const { added, nparams } = adjustedIfaces.get(name) ?? { nparams: 0 };
+      if (!added) {
         return;
       }
       rt.adjusted = true;
-      typeArgs.push(...addedParams.map(parameterReferenceType));
-      for (const param of addedParams) {
+      for (let i = 0; i < nparams - typeArgs.length; i++) {
+        typeArgs.push(parameterReferenceType(added[i]));
+      }
+      console.log("Added type args", rt);
+      for (const param of added) {
         let found = false;
         for (const s of typeParams) {
           if (s.has(param)) {
@@ -1557,14 +1563,11 @@ function addMissingTypeArgsVisitor(
 
 function addMissingTypeArgsToTopLevel(
   tl: TopLevelIR,
-  adjustedIfaces: Map<string, string[]>,
+  adjustedIfaces: AdjustedIfaces,
 ) {
   visitTopLevel(addMissingTypeArgsVisitor(adjustedIfaces), tl);
 }
 
-function addMissingTypeArgsToType(
-  t: TypeIR,
-  adjustedIfaces: Map<string, string[]>,
-) {
+function addMissingTypeArgsToType(t: TypeIR, adjustedIfaces: AdjustedIfaces) {
   visitType(addMissingTypeArgsVisitor(adjustedIfaces), t);
 }
