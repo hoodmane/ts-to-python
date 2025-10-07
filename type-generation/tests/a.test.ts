@@ -1140,6 +1140,33 @@ describe("emit", () => {
       `).trim(),
       );
     });
+    it("Type alias to intersection with type param", () => {
+      const res = emitFile(`
+        interface I {
+          a: string;
+        }
+        interface B<H> {
+          h?: H;
+        }
+        type X<H> = B<H> & I;
+        declare function f(): X<string>;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`\
+          def f() -> X[str]: ...
+
+          class B_iface[H](Protocol):
+              h: H | None = ...
+
+          class I_iface(Protocol):
+              a: str = ...
+
+          class X[H](I_iface, B_iface[H], Protocol):
+              pass
+        `).trim(),
+      );
+    });
   });
   it("Array converted to ArrayLike_iface", () => {
     const res = emitFile(`declare function f(x: Array<string>): void`);
