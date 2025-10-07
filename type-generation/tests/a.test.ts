@@ -1999,12 +1999,17 @@ describe("emit", () => {
         interface V { x: string; };
         declare function f(a: Partial<V>, b: Partial<V>): vod;
       `);
+      // Would be nice to deduplicate this. Probably we should switch to naming
+      // the resulting type Partial_V and then we could use that in both places.
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
-          def f(a: f__Sig0__a__Partial__V_iface, b: f__Sig0__a__Partial__V_iface, /) -> vod_iface: ...
+          def f(a: f__Sig0__a__Partial__V_iface, b: f__Sig0__b__Partial__V_iface, /) -> vod_iface: ...
 
           class f__Sig0__a__Partial__V_iface(Protocol):
+              x: str | None = ...
+
+          class f__Sig0__b__Partial__V_iface(Protocol):
               x: str | None = ...
         `).trim(),
       );
@@ -2119,9 +2124,12 @@ describe("emit", () => {
           def f(*, x: f__Sig0[str] | None = None) -> None: ...
 
           class O_iface[T](Protocol):
-              x: f__Sig0[T] | None = ...
+              x: O_iface__x[T] | None = ...
 
           class f__Sig0[T](Protocol):
+              a: T = ...
+
+          class O_iface__x[T](Protocol):
               a: T = ...
         `).trim(),
       );
