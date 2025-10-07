@@ -2,6 +2,7 @@ from collections.abc import (
   Callable,
   Iterable as PyIterable,
   Iterator as PyIterator,
+  Generator as PyGenerator,
   MutableSequence as PyMutableSequence,
   Sequence as PySequence,
   Awaitable,
@@ -20,6 +21,7 @@ from typing import (
 from pyodide.ffi import (
   JsProxy,
   JsIterable,
+  JsGenerator,
   JsIterator,
   JsArray,
   JsMutableMap,
