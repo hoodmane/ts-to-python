@@ -1215,7 +1215,7 @@ describe("emit", () => {
               pass
         `).trim(),
       );
-    })
+    });
   });
   it("Array converted to ArrayLike_iface", () => {
     const res = emitFile(`declare function f(x: Array<string>): void`);
