@@ -166,6 +166,7 @@ export function typeReferenceSubsitutions(
     return "Any";
   }
 
+  const argone = () => "[" + typeIRToString(typeArgs[0], { variance }) + "]";
   const args = () => typeArgs.map((arg) => typeIRToString(arg, { variance }));
   const fmtArgs = () => {
     const a = args();
@@ -183,9 +184,9 @@ export function typeReferenceSubsitutions(
   }
   if (name === "Iterable") {
     if (variance === Variance.contra) {
-      return "PyIterable" + fmtArgs();
+      return "PyIterable" + argone();
     } else {
-      return "JsIterable" + fmtArgs();
+      return "JsIterable" + argone();
     }
   }
   if (name === "Iterator") {
@@ -207,9 +208,9 @@ export function typeReferenceSubsitutions(
   }
   if (name === "IterableIterator") {
     if (variance === Variance.contra) {
-      return "PyIterator" + fmtArgs();
+      return "PyIterator" + argone();
     } else {
-      return "JsIterator" + fmtArgs();
+      return "JsIterator" + argone();
     }
   }
   if (name === "Array") {
