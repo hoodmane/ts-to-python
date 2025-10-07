@@ -1201,6 +1201,21 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("Type alias with unused type param", () => {
+      const res = emitFile(`
+        type F<T = undefined> = {};
+        declare function f(): F;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`\
+          def f() -> F[None]: ...
+
+          class F[T](Protocol):
+              pass
+        `).trim(),
+      );
+    });
   });
   it("Array converted to ArrayLike_iface", () => {
     const res = emitFile(`declare function f(x: Array<string>): void`);
