@@ -1419,6 +1419,41 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("destructure interface with type param", () => {
+      // Previously we failed to correctly substitute the type variable. Not
+      // entirely clear why the f field is relevant or why inlining the
+      // "unknown" instead of using a type alias breaks the repoducer.
+      const res = emitFile(`
+        interface CD {
+            x: string;
+        }
+        type F = unknown;
+        interface RI<C> {
+            f?: F;
+            c?: C;
+        }
+        declare function f(x: string, i?: RI<CD>): void;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          type F = Any
+
+          @overload
+          def f(x: str, i: RI_iface[CD_iface] | None = None, /) -> None: ...
+
+          @overload
+          def f(x: str, /, *, f: F | None = None, c: CD_iface | None = None) -> None: ...
+
+          class CD_iface(Protocol):
+              x: str = ...
+
+          class RI_iface[C](Protocol):
+              f: F | None = ...
+              c: C | None = ...
+        `).trim(),
+      );
+    });
   });
   describe("Type literals", () => {
     it("simple", () => {
