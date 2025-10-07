@@ -136,3 +136,151 @@ export function parameterReferenceType(name: string): ParameterReferenceTypeIR {
 }
 
 export const ANY_IR = simpleType("Any");
+
+export function replaceIR<T>(a: T, b: T): void {
+  const c = a as any;
+  for (const k in c) {
+    delete c[k];
+  }
+  Object.assign(c, b);
+}
+
+export const replaceType = replaceIR<TypeIR>;
+
+export type IRVisitor = {
+  [Property in TypeIR["kind"] as `visit${Capitalize<Property>}Type`]?: (
+    a: TypeIR & { kind: Property },
+  ) => Generator<void>;
+} & {
+  [Property in TopLevelIR["kind"] as `visit${Capitalize<Property>}IR`]?: (
+    a: TopLevelIR & { kind: Property },
+  ) => Generator<void>;
+} & {
+  visitSignature?: (a: SigIR) => Generator<void>;
+  visitParam?: (a: ParamIR) => Generator<void>;
+  visitProperty?: (a: PropertyIR) => Generator<void>;
+};
+
+function enter<T>(it: Generator<void> | undefined, cb: () => T): T {
+  if (!it) {
+    return cb();
+  }
+  it?.next();
+  let result;
+  try {
+    result = cb();
+  } catch (e) {
+    it.throw(e);
+  }
+  it?.next();
+  return result!;
+}
+
+function visitParam(v: IRVisitor, a: ParamIR) {
+  enter(v.visitParam?.(a), () => {
+    visitType(v, a.type);
+  });
+}
+
+function visitSignature(v: IRVisitor, a: SigIR) {
+  enter(v.visitSignature?.(a), () => {
+    for (const param of a.params) {
+      visitParam(v, param);
+    }
+    if (a.spreadParam) {
+      visitParam(v, a.spreadParam);
+    }
+    for (const param of a.kwparams ?? []) {
+      visitParam(v, param);
+    }
+  });
+}
+
+function visitProperty(v: IRVisitor, a: PropertyIR) {
+  enter(v.visitProperty?.(a), () => visitType(v, a.type));
+}
+
+export function visitType(v: IRVisitor, a: TypeIR) {
+  switch (a.kind) {
+    case "array":
+      enter(v.visitArrayType?.(a), () => visitType(v, a.type));
+      return;
+    case "callable":
+      enter(v.visitCallableType?.(a), () => {
+        for (const sig of a.signatures) {
+          visitSignature(v, sig);
+        }
+      });
+      return;
+    case "number": {
+      enter(v.visitNumberType?.(a), () => {});
+      return;
+    }
+    case "operator":
+      enter(v.visitOperatorType?.(a), () => visitType(v, a.type));
+      return;
+    case "other":
+      enter(v.visitOtherType?.(a), () => {});
+      return;
+    case "parameterReference":
+      enter(v.visitParameterReferenceType?.(a), () => {});
+      return;
+    case "paren":
+      enter(v.visitParenType?.(a), () => visitType(v, a.type));
+      return;
+    case "reference":
+      enter(v.visitReferenceType?.(a), () => {
+        for (const ty of a.typeArgs) {
+          visitType(v, ty);
+        }
+      });
+      return;
+    case "simple":
+      enter(v.visitSimpleType?.(a), () => {});
+      return;
+    case "tuple":
+      enter(v.visitTupleType?.(a), () => {
+        for (const ty of a.types) {
+          visitType(v, ty);
+        }
+      });
+      return;
+    case "union":
+      enter(v.visitUnionType?.(a), () => {
+        for (const ty of a.types) {
+          visitType(v, ty);
+        }
+      });
+      return;
+  }
+}
+
+export function visitIR(v: IRVisitor, a: TopLevelIR): void {
+  switch (a.kind) {
+    case "callable":
+      enter(v.visitCallableIR?.(a), () => {
+        for (const sig of a.signatures) {
+          visitSignature(v, sig);
+        }
+      });
+      return;
+    case "declaration":
+      enter(v.visitDeclarationIR?.(a), () => {
+        visitType(v, a.type);
+      });
+      return;
+    case "interface":
+      enter(v.visitInterfaceIR?.(a), () => {
+        for (const meth of a.methods) {
+          visitIR(v, meth);
+        }
+        for (const prop of a.properties) {
+          visitProperty(v, prop);
+        }
+      });
+      return;
+    case "typeAlias":
+      enter(v.visitTypeAliasIR?.(a), () => visitType(v, a.type));
+      return;
+  }
+}

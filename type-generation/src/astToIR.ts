@@ -63,6 +63,8 @@ import {
   referenceType,
   tupleType,
   unionType,
+  visitType,
+  replaceType,
 } from "./ir";
 
 export function literalType(text: string): TypeIR {
@@ -109,7 +111,7 @@ function depth2CopySig({
  */
 function getInterfaceDeclToDestructure(
   sig: Signature,
-): InterfaceDeclaration | TypeLiteralNode | undefined {
+): [InterfaceDeclaration | TypeLiteralNode, TypeNode[]] | undefined {
   const decl = sig.getDeclaration() as SignaturedDeclaration;
   const typeNode = decl.getParameters().at(-1)?.getTypeNode();
   if (!typeNode) {
@@ -119,23 +121,24 @@ function getInterfaceDeclToDestructure(
   // Handle inline object types (TypeLiteral)
   const typeLiteral = typeNode.asKind(SyntaxKind.TypeLiteral);
   if (typeLiteral) {
-    return typeLiteral;
+    return [typeLiteral, []];
   }
   // If it's a type parameter, don't try to destructure.
   if (typeNode.getType().isTypeParameter()) {
     return undefined;
   }
   // Handle named interface types (TypeReference)
-  const ident = typeNode
-    .asKind(SyntaxKind.TypeReference)
-    ?.getTypeName()
-    .asKind(SyntaxKind.Identifier);
+  const refNode = typeNode.asKind(SyntaxKind.TypeReference);
+  if (!refNode) {
+    return undefined;
+  }
+  const ident = refNode.getTypeName().asKind(SyntaxKind.Identifier);
   if (!ident) {
     return undefined;
   }
   const classified = classifyIdentifier(ident);
   if (classified.kind === "interfaces") {
-    return classified.ifaces[0];
+    return [classified.ifaces[0], refNode.getTypeArguments()];
   }
   return undefined;
 }
@@ -810,13 +813,13 @@ export class Converter {
    * 1. the original signature unaltered
    * 2. a signature where the entries of the last parameter are passed as key word
    *    arguments.
-   *
-   * TODO: is this correct when all entries of the interface are optional?
-   * TODO: What about if the last argument is an object type literal?
    */
   sigToIRDestructure(sig: Signature): [SigIR] | [SigIR, SigIR] {
     const sigIR = this.sigToIR(sig);
-    const toDestructure = getInterfaceDeclToDestructure(sig);
+    const [toDestructure, typeArgs] = getInterfaceDeclToDestructure(sig) ?? [
+      undefined,
+      [],
+    ];
     if (!toDestructure) {
       return [sigIR];
     }
@@ -829,55 +832,33 @@ export class Converter {
     }
     const sigIRDestructured = depth2CopySig(sigIR);
     sigIRDestructured.params.pop();
-
-    // Get the resolved property types from the actual parameter type instead of the interface definition
-    const decl = sig.getDeclaration() as SignaturedDeclaration;
-    const lastParam = decl.getParameters().at(-1);
-    const paramType = lastParam?.getType();
+    let typeParams: TypeParameterDeclaration[] = [];
+    if (Node.isInterfaceDeclaration(toDestructure)) {
+      typeParams = toDestructure.getTypeParameters();
+    }
+    const params = new Map(
+      typeParams.map((x, idx) => [
+        x.getName(),
+        typeArgs[idx] ?? x.getDefault(),
+      ]),
+    );
 
     const getPropType = (prop: PropertySignature): TypeIR => {
-      const name = prop.getName();
       const optional = !!prop.getQuestionTokenNode();
-      // Try to get resolved type from the parameter type, fallback to interface definition
-      const propSymbol = paramType?.getProperty(name);
-      if (!propSymbol) {
-        return this.typeToIR(prop.getTypeNode()!, optional);
-      }
-      const propType = propSymbol.getTypeAtLocation(lastParam!);
-      // Convert the resolved type by getting a dummy type node
-      // This is a bit hacky. Would be nice to create a synthetic node more
-      // directly.
-      const tempType = propType.getText();
-      if (
-        tempType.replaceAll(/\s/g, "") ===
-        prop.getTypeNode()?.getText().replaceAll(/\s/g, "")
-      ) {
-        return this.typeToIR(prop.getTypeNode()!, optional);
-      }
-
-      if (propType.isTypeParameter()) {
-        return parameterReferenceType(tempType);
-      }
-      // Create a dummy type node from the resolved type text
-      const project = lastParam!.getProject();
-
-      // Include type parameters in the temporary type definition
-      const sigTypeParams = sigIR.typeParams || [];
-      // Also include class-level type parameters
-      const allTypeParams = [
-        ...sigTypeParams,
-        ...Array.from(this.classTypeParams),
-      ];
-      const typeParamsString =
-        allTypeParams.length > 0 ? `<${allTypeParams.join(", ")}>` : "";
-      const tempFile = project.createSourceFile(
-        `__temp__${Math.random()}.ts`,
-        `type Temp${typeParamsString} = ${tempType};`,
+      const res = this.typeToIR(prop.getTypeNode()!, optional);
+      const converter = this;
+      visitType(
+        {
+          *visitParameterReferenceType(a) {
+            const param = params.get(a.name);
+            if (!param) {
+              return;
+            }
+            replaceType(a, converter.typeToIR(param));
+          },
+        },
+        res,
       );
-      const typeAliasDecl = tempFile.getTypeAliases()[0];
-      const dummyTypeNode = typeAliasDecl.getTypeNode()!;
-      const res = this.typeToIR(dummyTypeNode, optional);
-      // Don't remove the temp file, it causes crashes. TODO: Fix this?
       return res;
     };
     const kwargs: ParamIR[] = toDestructure.getProperties().map((prop) => {
