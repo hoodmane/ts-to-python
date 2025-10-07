@@ -2026,7 +2026,7 @@ describe("emit", () => {
         `).trim(),
       );
     });
-    it.skip("type literal in destructured option arg", () => {
+    it("type literal in destructured option arg", () => {
       const res = emitFile(`
         interface O<T> {
           x?: { a: T; };
@@ -2040,15 +2040,12 @@ describe("emit", () => {
           def f(options: O_iface[str], /) -> None: ...
 
           @overload
-          def f(*, x: f__Sig0 | None = None) -> None: ...
+          def f(*, x: f__Sig0[str] | None = None) -> None: ...
 
           class O_iface[T](Protocol):
-              x: O_iface__x | None = ...
+              x: f__Sig0[T] | None = ...
 
-          class f__Sig0(Protocol):
-              a: str = ...
-
-          class O_iface__x(Protocol):
+          class f__Sig0[T](Protocol):
               a: T = ...
         `).trim(),
       );
@@ -2069,6 +2066,37 @@ describe("emit", () => {
 
           class T_iface(Protocol):
               pass
+        `).trim(),
+      );
+    });
+    it("Type literal with type variable", () => {
+      const res = emitFile(`
+        declare function f<T>(a: { x: T }, b: string): void;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f[T](a: f__Sig0__a[T], b: str, /) -> None: ...
+
+          class f__Sig0__a[T](Protocol):
+              x: T = ...
+        `).trim(),
+      );
+    });
+    it("type variable adjustment 2", () => {
+      const res = emitFile(`
+        interface RS<R = any> {
+            p<T>(t: T, r: R): RS<T>;
+        }
+        declare function f(): RS<string>;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f() -> RS_iface[str]: ...
+
+          class RS_iface[R](Protocol):
+              def p[T](self, t: T, r: R, /) -> RS_iface[T]: ...
         `).trim(),
       );
     });

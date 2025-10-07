@@ -65,6 +65,8 @@ import {
   unionType,
   visitType,
   replaceType,
+  IRVisitor,
+  visitTopLevel,
 } from "./ir";
 
 export function literalType(text: string): TypeIR {
@@ -311,7 +313,7 @@ class SyntheticTypeConverter {
         prop.isOptional = true;
       }
     }
-    this.converter.extraTopLevels.push(result);
+    this.converter.addExtraTopLevel(result);
     return referenceType(name);
   }
 
@@ -359,7 +361,7 @@ class SyntheticTypeConverter {
           })
           .filter((x): x is ReferenceTypeIR => !!x && x.kind === "reference");
         const name = this.nameContext.join("__");
-        this.converter.extraTopLevels.push(
+        this.converter.addExtraTopLevel(
           this.converter.interfaceToIR(name, types, [], [], [], []),
         );
         return referenceType(name);
@@ -436,6 +438,7 @@ export class Converter {
   extraTopLevels: TopLevelIR[];
   nameContext: string[] | undefined;
   typeMap: Map<number, TypeIR>;
+  adjustedIfaces: Map<string, string[]>;
 
   constructor() {
     this.ifaceTypeParamConstraints = new Map();
@@ -445,6 +448,12 @@ export class Converter {
     this.extraTopLevels = [];
     this.nameContext = undefined;
     this.typeMap = new Map();
+    this.adjustedIfaces = new Map();
+  }
+
+  addExtraTopLevel(tl: TopLevelIR) {
+    addMissingTypeParametersToIface(tl, this.adjustedIfaces);
+    this.extraTopLevels.push(tl);
   }
 
   pushNameContext(ctx: string): void {
@@ -845,8 +854,11 @@ export class Converter {
 
     const getPropType = (prop: PropertySignature): TypeIR => {
       const optional = !!prop.getQuestionTokenNode();
-      const res = this.typeToIR(prop.getTypeNode()!, optional);
+      let res = this.typeToIR(prop.getTypeNode()!, optional);
       const converter = this;
+      addMissingTypeArgsToType(res, this.adjustedIfaces);
+      // Clone res before mutating it!
+      res = structuredClone(res);
       visitType(
         {
           *visitParameterReferenceType(a) {
@@ -1444,5 +1456,115 @@ export function convertDecls(
   for (const tl of converter.extraTopLevels) {
     pushTopLevel(tl);
   }
+  const flattenedTopLevels: TopLevelIR[] = Object.values(topLevels).flatMap(
+    (x) => x as TopLevelIR[],
+  );
+  for (const tl of flattenedTopLevels) {
+    addMissingTypeArgsToTopLevel(tl, converter.adjustedIfaces);
+  }
   return { topLevels };
+}
+
+function addMissingTypeParametersToIface(
+  topLevel: TopLevelIR,
+  adjustedIfaces: Map<string, string[]>,
+): Map<string, string[]> {
+  const typeParams: Set<string>[] = [];
+  const missingTypeParams: Set<string> = new Set();
+  const visitor: IRVisitor = {
+    *visitSignature(a) {
+      typeParams.push(new Set(a.typeParams));
+      yield;
+      typeParams.pop();
+    },
+    *visitInterfaceIR(a) {
+      typeParams.push(new Set(a.typeParams));
+      yield;
+      typeParams.pop();
+      if (missingTypeParams.size) {
+        a.typeParams.push(...missingTypeParams);
+        adjustedIfaces.set(a.name, Array.from(missingTypeParams));
+        missingTypeParams.clear();
+      }
+    },
+    *visitTypeAliasIR(a) {
+      typeParams.push(new Set(a.typeParams));
+      yield;
+      typeParams.pop();
+      if (missingTypeParams.size) {
+        throw new Error("Not implemented");
+      }
+    },
+    *visitParameterReferenceType({ name }) {
+      for (const p of typeParams) {
+        if (p.has(name)) {
+          return;
+        }
+      }
+      missingTypeParams.add(name);
+    },
+  };
+  visitTopLevel(visitor, topLevel);
+  return adjustedIfaces;
+}
+
+function addMissingTypeArgsVisitor(
+  adjustedIfaces: Map<string, string[]>,
+): IRVisitor {
+  const typeParams: Set<string>[] = [];
+  return {
+    *visitSignature(a) {
+      typeParams.push(new Set(a.typeParams));
+      yield;
+      typeParams.pop();
+    },
+    *visitInterfaceIR(a) {
+      typeParams.push(new Set(a.typeParams));
+      yield;
+      typeParams.pop();
+    },
+    *visitTypeAliasIR(a) {
+      typeParams.push(new Set(a.typeParams));
+      yield;
+      typeParams.pop();
+    },
+    *visitReferenceType(rt: ReferenceTypeIR & { adjusted?: boolean }) {
+      const { name, typeArgs, adjusted } = rt;
+      if (adjusted) {
+        return;
+      }
+      const addedParams = adjustedIfaces.get(name);
+      if (!addedParams) {
+        return;
+      }
+      rt.adjusted = true;
+      typeArgs.push(...addedParams.map(parameterReferenceType));
+      for (const param of addedParams) {
+        let found = false;
+        for (const s of typeParams) {
+          if (s.has(param)) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          console.log("Dangling type argument", name, param);
+        }
+      }
+    },
+  };
+}
+
+function addMissingTypeArgsToTopLevel(
+  tl: TopLevelIR,
+  adjustedIfaces: Map<string, string[]>,
+) {
+  visitTopLevel(addMissingTypeArgsVisitor(adjustedIfaces), tl);
+}
+
+function addMissingTypeArgsToType(
+  t: TypeIR,
+  adjustedIfaces: Map<string, string[]>,
+) {
+  visitType(addMissingTypeArgsVisitor(adjustedIfaces), t);
 }
