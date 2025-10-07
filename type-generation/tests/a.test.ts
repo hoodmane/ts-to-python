@@ -2257,7 +2257,7 @@ describe("emit", () => {
         `).trim(),
       );
     });
-  })
+  });
   it("inheriting from jsobject is also jsobject", () => {
     const res = emitFile(`
       interface C {
