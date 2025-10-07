@@ -1,7 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
 import { getTypeNode, typeToIR, makeProject } from "./helpers";
-import { typeAliasIRToString } from "../src/irToString.ts";
 import { Converter } from "../src/astToIR.ts";
 import { SyntaxKind } from "ts-morph";
 
