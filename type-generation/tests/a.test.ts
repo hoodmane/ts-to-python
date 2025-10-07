@@ -2176,6 +2176,27 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("Array of type literal", () => {
+      const res = emitFile(`
+        type X = {
+          a: number;
+          b: string;
+        }[];
+        declare function f(): X;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          type X = JsArray[X__array]
+
+          def f() -> X: ...
+
+          class X__array(Protocol):
+              a: int | float = ...
+              b: str = ...
+        `).trim(),
+      );
+    });
   });
   it("inheriting from jsobject is also jsobject", () => {
     const res = emitFile(`
