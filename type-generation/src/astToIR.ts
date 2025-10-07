@@ -687,7 +687,9 @@ export class Converter {
       return simpleType("str");
     }
     if (Node.isArrayTypeNode(typeNode)) {
+      this.pushNameContext("array");
       const eltType = this.typeToIR(typeNode.getElementTypeNode());
+      this.popNameContext();
       return arrayType(eltType);
     }
     if (Node.isTupleTypeNode(typeNode)) {
@@ -1551,7 +1553,6 @@ function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
       for (let i = 0; i < nparams - typeArgs.length; i++) {
         typeArgs.push(parameterReferenceType(added[i]));
       }
-      console.log("Added type args", rt);
       for (const param of added) {
         let found = false;
         for (const s of typeParams) {
