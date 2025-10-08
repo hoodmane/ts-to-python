@@ -68,6 +68,7 @@ import {
   IRVisitor,
   visitTopLevel,
 } from "./ir";
+import { logger } from "./logger";
 
 export function literalType(text: string): TypeIR {
   if (text === "null") {
@@ -664,8 +665,8 @@ export class Converter {
       }
       // If there's no name, we can't generate a new type.
       if (name === "") {
-        console.log(typeNode.print());
-        console.log(getNodeLocation(typeNode));
+        logger.error(typeNode.print());
+        logger.error(getNodeLocation(typeNode));
         throw new Error("Oops...");
       }
       this.addExtraTopLevel(iface);
@@ -736,9 +737,9 @@ export class Converter {
     const destructureOnly = isLast && Node.isTypeLiteral(paramType);
     if (!destructureOnly && !isIdentifier) {
       // Replace name with args${idx}. This is an unfortunate case so we log it.
-      console.log("Encountered argument with non identifier name");
-      console.log(param.print());
-      console.log(getNodeLocation(param));
+      logger.warn("Encountered argument with non identifier name");
+      logger.warn(param.print());
+      logger.warn(getNodeLocation(param));
       name = `args${idx}`;
       isIdentifier = true;
     }
@@ -796,9 +797,7 @@ export class Converter {
         if (type.kind === "array") {
           spreadParam.type = type.type;
         } else {
-          console.warn(
-            `expected type array for spread param, got ${type.kind}`,
-          );
+          logger.warn(`expected type array for spread param, got ${type.kind}`);
           spreadParam.type = type;
         }
       }
@@ -827,8 +826,8 @@ export class Converter {
       }
       return result;
     } catch (e) {
-      console.warn("failed to convert", sig.getDeclaration().getText());
-      console.warn(getNodeLocation(sig.getDeclaration()));
+      logger.warn("failed to convert", sig.getDeclaration().getText());
+      logger.warn(getNodeLocation(sig.getDeclaration()));
       throw e;
     }
   }
@@ -1177,7 +1176,7 @@ export class Converter {
     for (const proto of prototypes) {
       const typeNode = proto.getTypeNode();
       if (!Node.isTypeReference(typeNode)) {
-        console.warn(
+        logger.warn(
           "Excepted prototype type to be TypeReference",
           proto.getText(),
         );
@@ -1238,8 +1237,8 @@ export class Converter {
         res.jsobject = true;
         return res;
       } catch (e) {
-        console.warn(varDecl.getText());
-        console.warn(getNodeLocation(varDecl));
+        logger.warn(varDecl.getText());
+        logger.warn(getNodeLocation(varDecl));
         throw e;
       }
     }
@@ -1262,7 +1261,7 @@ export class Converter {
     //   o/w don't...
     const ident = typeNode.getTypeName() as Identifier;
     if (!ident.getDefinitionNodes) {
-      console.warn(ident.getText());
+      logger.warn(ident.getText());
       return undefined;
     }
 
@@ -1352,7 +1351,7 @@ export class Converter {
         }
         return { kind: "typeAlias", name, type, typeParams: aliasTypeParams };
       case "varDecl":
-        console.warn("Skipping varDecl", ident.getText());
+        logger.warn("Skipping varDecl", ident.getText());
     }
     return undefined;
   }
@@ -1471,7 +1470,7 @@ export function convertDecls(
         continue;
       }
       // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
-      console.warn("No interface declaration for " + name);
+      logger.warn("No interface declaration for " + name);
     }
   }
   for (const tl of converter.extraTopLevels) {
@@ -1608,7 +1607,7 @@ function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
       }
       for (const param of added) {
         if (context.has(param)) {
-          console.log("Dangling type argument", name, param);
+          logger.warn("Dangling type argument", name, param);
         }
       }
     },
