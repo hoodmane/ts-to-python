@@ -139,10 +139,17 @@ function getInterfaceDeclToDestructure(
     return undefined;
   }
   const classified = classifyIdentifier(ident);
-  if (classified.kind === "interfaces") {
-    return [classified.ifaces[0], refNode.getTypeArguments()];
+  if (classified.kind !== "interfaces") {
+    return undefined;
   }
-  return undefined;
+  const iface = classified.ifaces[0];
+  // Ad hoc special case: the Iterable interface is definitely not a collection
+  // of options we want to destructure. Maybe we can eventually figure out a
+  // better rule to exclude these?
+  if (iface.getName() === "Iterable") {
+    return undefined;
+  }
+  return [iface, refNode.getTypeArguments()];
 }
 
 function getFilteredTypeParams<T extends TypeParameteredNode>(
@@ -426,6 +433,9 @@ class SyntheticTypeConverter {
       }
       throw new Error(`Not handled ${res.kind}`);
     }
+    if (Node.isMappedTypeNode(n)) {
+      return ANY_IR;
+    }
     throw new Error(`Not handled ${n.getKindName()}`);
   }
 }
@@ -634,11 +644,33 @@ export class Converter {
       return simpleType(TYPE_TEXT_MAP[typeText]);
     }
     if (Node.isFunctionTypeNode(typeNode)) {
-      const sigs = typeNode
-        .getType()
-        .getCallSignatures()
-        .map((sig) => this.sigToIR(sig));
-      return { kind: "callable", signatures: sigs };
+      let name = "";
+      if (this.nameContext) {
+        name = this.nameContext.join("__");
+      }
+      const iface = this.interfaceToIR(name, [], [], [], [typeNode], []);
+      const ir = iface.methods[0];
+      const sigs = ir.signatures;
+      // Can we use an inline Callable[]? This works if it only has position
+      // only parameters.
+      if (
+        sigs.length === 1 &&
+        sigs[0].kwparams === undefined &&
+        sigs[0].spreadParam === undefined
+      ) {
+        delete ir.name;
+        delete ir.isStatic;
+        return ir;
+      }
+      // If there's no name, we can't generate a new type.
+      if (name === "") {
+        console.log(typeNode.print());
+        console.log(getNodeLocation(typeNode));
+        throw new Error("Oops...");
+      }
+      this.addExtraTopLevel(iface);
+      const ref = referenceType(name);
+      return ref;
     }
     if (Node.isUnionTypeNode(typeNode)) {
       return this.unionToIR(typeNode, isOptional);
@@ -890,7 +922,6 @@ export class Converter {
       signatures: sigs,
       isStatic,
     };
-
     return result;
   }
 
@@ -935,7 +966,7 @@ export class Converter {
     bases: BaseIR[],
     members: Node[],
     staticMembers: Node[],
-    callSignatures: CallSignatureDeclaration[],
+    callSignatures: Pick<CallSignatureDeclaration, "getSignature">[],
     typeParams: string[],
   ): InterfaceIR {
     // Set class-level type parameters before processing methods
@@ -1021,15 +1052,15 @@ export class Converter {
       redirectMethod("get", "__getitem__");
       redirectMethod("set", "__setitem__");
       redirectMethod("delete", "__delitem__");
-      if (constructors) {
+      if (constructors.length > 0) {
         staticAstMethods["new"] = constructors.map((decl) =>
           decl.getSignature(),
         );
       }
       const irMethods = ([] as CallableIR[]).concat(
-        Object.entries(astMethods).map(([name, sigs]) =>
-          this.callableToIR(name, sigs, false),
-        ),
+        Object.entries(astMethods)
+          .filter(([name, sigs]) => isValidPythonIdentifier(name))
+          .map(([name, sigs]) => this.callableToIR(name, sigs, false)),
         Object.entries(staticAstMethods).map(([name, sigs]) =>
           this.callableToIR(name, sigs, true),
         ),
@@ -1239,12 +1270,13 @@ export class Converter {
     if (classified.kind === "varDecl" && name !== classified.name) {
       // We have to check that name !== typeName or else we can pick up the decl
       // we're currently processing.
-      this.typeNodeToDeclaration(name, typeNode);
+      return this.typeNodeToDeclaration(name, typeNode);
     }
     if (classified.kind === "varDecl" || classified.kind === "interfaces") {
       const { ifaces } = classified;
       this.setIfaceTypeConstraints(ifaces);
       const typeParams = this.getTypeParamsFromDecls(ifaces);
+      this.nameContext = [name];
       const result = this.membersDeclarationToIR(
         name,
         {
@@ -1253,6 +1285,7 @@ export class Converter {
         [],
         typeParams,
       );
+      this.nameContext = undefined;
       result.jsobject = true;
 
       this.ifaceTypeParamConstraints.clear();
@@ -1455,22 +1488,52 @@ export function convertDecls(
 
 type AdjustedIfaces = Map<string, { nparams: number; added: string[] }>;
 
+class TypeParamContext {
+  typeParams: Set<string>[];
+  constructor() {
+    this.typeParams = [];
+  }
+
+  push(tps: Iterable<string> | undefined): void {
+    let res: Set<string>;
+    if (tps instanceof Set) {
+      res = tps;
+    } else {
+      res = new Set(tps);
+    }
+    this.typeParams.push(res);
+  }
+
+  pop(): void {
+    this.typeParams.pop();
+  }
+
+  has(x: string) {
+    for (const p of this.typeParams) {
+      if (p.has(x)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
 function addMissingTypeParametersToIface(
   topLevel: TopLevelIR,
   adjustedIfaces: AdjustedIfaces,
 ): void {
-  const typeParams: Set<string>[] = [];
+  const context = new TypeParamContext();
   const missingTypeParams: Set<string> = new Set();
   const visitor: IRVisitor = {
     *visitSignature(a) {
-      typeParams.push(new Set(a.typeParams));
+      context.push(a.typeParams);
       yield;
-      typeParams.pop();
+      context.pop();
     },
     *visitInterfaceIR(a) {
-      typeParams.push(new Set(a.typeParams));
+      context.push(a.typeParams);
       yield;
-      typeParams.pop();
+      context.pop();
       if (missingTypeParams.size) {
         a.typeParams.push(...missingTypeParams);
         const nparams = a.typeParams.length;
@@ -1482,42 +1545,52 @@ function addMissingTypeParametersToIface(
       }
     },
     *visitTypeAliasIR(a) {
-      typeParams.push(new Set(a.typeParams));
+      context.push(a.typeParams);
       yield;
-      typeParams.pop();
+      context.pop();
       if (missingTypeParams.size) {
         throw new Error("Not implemented");
       }
     },
     *visitParameterReferenceType({ name }) {
-      for (const p of typeParams) {
-        if (p.has(name)) {
-          return;
-        }
+      if (!context.has(name)) {
+        missingTypeParams.add(name);
       }
-      missingTypeParams.add(name);
     },
   };
   visitTopLevel(visitor, topLevel);
 }
 
 function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
-  const typeParams: Set<string>[] = [];
+  const context = new TypeParamContext();
   return {
     *visitSignature(a) {
-      typeParams.push(new Set(a.typeParams));
+      // Sometimes the signature has the same type parameter as an ambient
+      // class. Remove these duplicates.
+      const s = new Set(a.typeParams);
+      let removedTypeParam = false;
+      for (const x of a.typeParams ?? []) {
+        if (context.has(x)) {
+          s.delete(x);
+          removedTypeParam = true;
+        }
+      }
+      if (removedTypeParam) {
+        a.typeParams = Array.from(s);
+      }
+      context.push(s);
       yield;
-      typeParams.pop();
+      context.pop();
     },
     *visitInterfaceIR(a) {
-      typeParams.push(new Set(a.typeParams));
+      context.push(a.typeParams);
       yield;
-      typeParams.pop();
+      context.pop();
     },
     *visitTypeAliasIR(a) {
-      typeParams.push(new Set(a.typeParams));
+      context.push(a.typeParams);
       yield;
-      typeParams.pop();
+      context.pop();
     },
     *visitReferenceType(rt: ReferenceTypeIR & { adjusted?: boolean }) {
       const { name, typeArgs, adjusted } = rt;
@@ -1529,18 +1602,12 @@ function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
         return;
       }
       rt.adjusted = true;
-      for (let i = 0; i < nparams - typeArgs.length; i++) {
+      const paramsToAdd = nparams - typeArgs.length;
+      for (let i = 0; i < paramsToAdd; i++) {
         typeArgs.push(parameterReferenceType(added[i]));
       }
       for (const param of added) {
-        let found = false;
-        for (const s of typeParams) {
-          if (s.has(param)) {
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
+        if (context.has(param)) {
           console.log("Dangling type argument", name, param);
         }
       }

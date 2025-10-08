@@ -34,6 +34,7 @@ import {
   ConversionResult,
   convertDecls,
 } from "../src/astToIR";
+import { InterfaceIR } from "../src/ir.ts";
 
 function propertySignatureToIR(
   member: PropertySignature,
@@ -148,39 +149,36 @@ describe("typeToPython", () => {
   });
   describe("variance", () => {
     it("variance 1", () => {
-      const typeNode = getTypeNode(
-        "(a: Iterable<string>) => Iterable<boolean>;",
-      );
-      const conversion = removeTypeIgnores(
-        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
-      );
+      const res = emitFile(`\
+        type T = (a: Iterable<string>) => Iterable<boolean>;
+        declare function f(): T;
+      `);
+      const conversion = removeTypeIgnores(res[1]);
       assert.strictEqual(
         conversion,
-        "def myFunc(self, a: PyIterable[str], /) -> JsIterable[bool]: ...",
+        "type T = Callable[[PyIterable[str]], JsIterable[bool]]",
       );
     });
     it("variance 2", () => {
-      const typeNode = getTypeNode(
-        "(a: Iterable<IterableIterator<boolean>> ) => void;",
-      );
-      const conversion = removeTypeIgnores(
-        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
-      );
+      const res = emitFile(`\
+        type T = (a: Iterable<IterableIterator<boolean>> ) => void;
+        declare function f(): T;
+      `);
+      const conversion = removeTypeIgnores(res[1]);
       assert.strictEqual(
         conversion,
-        "def myFunc(self, a: PyIterable[PyIterator[bool]], /) -> None: ...",
+        "type T = Callable[[PyIterable[PyIterator[bool]]], None]",
       );
     });
     it("variance 3", () => {
-      const typeNode = getTypeNode(
-        "(a: (b: Iterable<string>) => Iterable<boolean> ) => void;",
-      );
-      const conversion = removeTypeIgnores(
-        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
-      );
+      const res = emitFile(`\
+        type T = (a: (b: Iterable<string>) => Iterable<boolean> ) => void;
+        declare function f(): T;
+      `);
+      const conversion = removeTypeIgnores(res[1]);
       assert.strictEqual(
         conversion,
-        "def myFunc(self, a: Callable[[JsIterable[str]], PyIterable[bool]], /) -> None: ...",
+        "type T = Callable[[Callable[[JsIterable[str]], PyIterable[bool]]], None]",
       );
     });
   });
@@ -229,12 +227,18 @@ describe("typeToPython", () => {
     });
     it("dotdotdot arg", () => {
       const typeNode = getTypeNode("(...a: string[][]) => void;");
+      const c = new AstConverter();
+      c.nameContext = ["Name"];
+      const resIR = c.typeToIR(typeNode);
       const conversion = removeTypeIgnores(
-        typeAstToString(typeNode, false, Variance.covar, "myFunc"),
+        interfaceIRToString(c.extraTopLevels[0] as InterfaceIR),
       );
       assert.strictEqual(
         conversion,
-        "def myFunc(self, /, *a: PyMutableSequence[str]) -> None: ...",
+        dedent(`\
+          class Name:
+              def __call__(self, /, *a: PyMutableSequence[str]) -> None: ...
+        `).trim(),
       );
     });
   });
@@ -1216,6 +1220,46 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("Multiple added type args", () => {
+      const res = emitFile(`
+        interface R<K, V> {
+          f(cb: (v: V, k: K) => void): void;
+        }
+        declare function f<K,V>(): R<K, V>;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`\
+          def f[K, V]() -> R_iface[K, V]: ...
+
+          class R_iface[K, V](Protocol):
+              def f(self, cb: Callable[[V, K], None], /) -> None: ...
+        `).trim(),
+      );
+    });
+    it("Type param on iface and on new", () => {
+      const res = emitFile(`
+        interface F<T> { t: T }
+        interface FConstructor {
+            readonly prototype: F<any>;
+            new <T>(cb: (t: T) => void): F<T>;
+        }
+        declare var F: FConstructor;
+      `);
+      // Because new ends up on the class, the type parameter is redundant so we
+      // have to remove it.
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`\
+          class F[T](F_iface[T], _JsObject):
+              @classmethod
+              def new(self, cb: Callable[[T], None], /) -> F[T]: ...
+
+          class F_iface[T](Protocol):
+              t: T = ...
+        `).trim(),
+      );
+    });
   });
   it("Array converted to ArrayLike_iface", () => {
     const res = emitFile(`declare function f(x: Array<string>): void`);
@@ -1527,6 +1571,20 @@ describe("emit", () => {
           class RI_iface[C](Protocol):
               f: F | None = ...
               c: C | None = ...
+        `).trim(),
+      );
+    });
+    it("Destructure callable type", () => {
+      const res = emitFile(`
+        declare function f(cb: (x: { t: string }) => void): void;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f(cb: f__Sig0__cb, /) -> None: ...
+
+          class f__Sig0__cb(Protocol):
+              def __call__(self, /, *, t: str) -> None: ...
         `).trim(),
       );
     });
@@ -2205,6 +2263,40 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("Type literal with symbol keys", () => {
+      const res = emitFile(`
+        interface X {
+          [Symbol.replace](z: {x: string}, y: string): void;
+        };
+        declare function f(): X;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f() -> X_iface: ...
+
+          class X_iface(Protocol):
+              pass
+        `).trim(),
+      );
+    });
+  });
+  describe("Callable types", () => {
+    it("Callable top level type arguments adjusted correctly", () => {
+      const res = emitFile(`
+        declare function f<Args extends any[]>(cb: (...args: Args) => void, ...args: Args): void;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f[Args](cb: f__Sig0__cb[Args], /, *args: Args) -> None: ...
+
+          class f__Sig0__cb[Args](Protocol):
+              def __call__(self, /, *args: Args) -> None: ...
+
+        `).trim(),
+      );
+    });
   });
   it("inheriting from jsobject is also jsobject", () => {
     const res = emitFile(`
@@ -2253,6 +2345,55 @@ describe("emit", () => {
       removeTypeIgnores(res.slice(1).join("\n\n")),
       dedent(`
         def f(*args0: tuple[()] | tuple[str]) -> None: ...
+      `).trim(),
+    );
+  });
+  it("const interface type name context", () => {
+    const res = emitFile(`
+      interface I {
+        f(cb: (...args: any[]) => void): void;
+      }
+      declare const x: I;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`
+        class x(_JsObject):
+            @classmethod
+            def f(self, cb: x__f__Sig0__cb, /) -> None: ...
+
+        class x__f__Sig0__cb(Protocol):
+            def __call__(self, /, *args: Any) -> None: ...
+      `).trim(),
+    );
+  });
+  it("Variable of vardecl type", () => {
+    // For some reason it behaves differently when default is in the property
+    // name.
+    const res = emitFile(`
+      interface DX {
+          readonly defaultX: {};
+      }
+      declare var DX: {
+          prototype: DX;
+          new(): DX;
+      };
+      declare var d: DX;
+    `);
+    assert.strictEqual(
+      removeTypeIgnores(res.slice(1).join("\n\n")),
+      dedent(`
+        d: DX = ...
+
+        class DX(DX_iface, _JsObject):
+            @classmethod
+            def new(self, /) -> DX: ...
+
+        class DX_iface(Protocol):
+            DX_iface__defaultX
+
+        class DX_iface__defaultX(Protocol):
+            pass
       `).trim(),
     );
   });

@@ -3,6 +3,7 @@ import assert from "node:assert";
 import { getTypeNode, typeToIR, makeProject } from "./helpers";
 import { Converter } from "../src/astToIR.ts";
 import { SyntaxKind } from "ts-morph";
+import { InterfaceIR } from "../src/ir.ts";
 
 function typeToIRHelper(tsType: string) {
   const typeNode = getTypeNode(tsType);
@@ -190,9 +191,16 @@ describe("typeToIR", () => {
       });
     });
     it("spread arg", () => {
-      const typeIR = typeToIRHelper("(...a: string[][]) => void;");
+      const typeNode = getTypeNode("(...a: string[][]) => void;");
+      const c = new Converter();
+      c.nameContext = ["Name"];
+      const res = c.typeToIR(typeNode);
+      const ifaceIR = c.extraTopLevels[0] as InterfaceIR;
+      const typeIR = ifaceIR.methods[0];
       assert.deepStrictEqual(typeIR, {
         kind: "callable",
+        isStatic: false,
+        name: "__call__",
         signatures: [
           {
             params: [],
