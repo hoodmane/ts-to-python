@@ -2412,5 +2412,31 @@ describe("emit", () => {
         "def clearTimeout(id: int | JsProxy, /) -> None: ...",
       );
     });
+    it("Cloudflare Env", () => {
+      const res = emitFile(`
+        declare namespace Cloudflare {
+          interface GlobalProps {
+            mainModule: typeof import("./src/entry");
+          }
+          interface Env {
+            FOO: KVNamespace;
+          }
+        }
+        interface KVNamespace {
+          get(x: string): string;
+        }
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          class Env(Protocol):
+              FOO: KVNamespace_iface = ...
+
+          class KVNamespace_iface(Protocol):
+              def get(self, x: str, /) -> str: ...
+              def __getitem__(self, x: str, /) -> str: ...
+        `).trim(),
+      );
+    });
   });
 });

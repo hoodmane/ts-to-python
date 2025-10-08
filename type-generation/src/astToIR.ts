@@ -7,6 +7,7 @@ import {
   InterfaceDeclaration,
   IntersectionTypeNode,
   LiteralTypeNode,
+  ModuleDeclaration,
   Node,
   ParameterDeclaration,
   PropertyDeclaration,
@@ -1403,13 +1404,15 @@ export function convertFiles(files: SourceFile[]): ConversionResult {
   const varDecls = files.flatMap((file) => file.getVariableDeclarations());
   const funcDecls = files.flatMap((file) => file.getFunctions());
   const classDecls = files.flatMap((file) => file.getClasses());
-  return convertDecls(varDecls, funcDecls, classDecls);
+  const cf = files.flatMap((file) => file.getModule("Cloudflare") ?? []);
+  return convertDecls(varDecls, funcDecls, classDecls, cf[0]);
 }
 
 export function convertDecls(
   varDecls: VariableDeclaration[],
   funcDecls: FunctionDeclaration[],
   classDecls: ClassDeclaration[],
+  cf: ModuleDeclaration | undefined = undefined,
 ): ConversionResult {
   const converter = new Converter();
   const topLevels: TopLevels = {
@@ -1436,6 +1439,14 @@ export function convertDecls(
       case "typeAlias":
         topLevels.typeAliases.push(tl);
         break;
+    }
+  }
+
+  // Adhoc logic to convert Cloudflare Env interface if present
+  if (cf) {
+    const env = cf.getInterface("Env");
+    if (env) {
+      pushTopLevel(converter.topLevelInterfaceToIR("Env", [env]));
     }
   }
 
