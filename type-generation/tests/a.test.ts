@@ -181,6 +181,17 @@ describe("typeToPython", () => {
         "type T = Callable[[Callable[[JsIterable[str]], PyIterable[bool]]], None]",
       );
     });
+    it("variance async", () => {
+      const res = emitFile(`\
+        type T = (a: (b: AsyncIterable<string>) => AsyncIterable<boolean> ) => void;
+        declare function f(): T;
+      `);
+      const conversion = removeTypeIgnores(res[1]);
+      assert.strictEqual(
+        conversion,
+        "type T = Callable[[Callable[[JsAsyncIterable[str]], PyAsyncIterable[bool]]], None]",
+      );
+    });
   });
   describe("callable types", () => {
     it("basic", () => {

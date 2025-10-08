@@ -15,6 +15,8 @@ export const BUILTIN_NAMES = [
   "Iterator_iface",
   "IterableIterator",
   "IterableIterator_iface",
+  "AsyncIterableIterator",
+  "AsyncIterableIterator_iface",
   "ArrayLike",
   "ArrayLike_iface",
   "ConcatArray",
@@ -182,14 +184,15 @@ export function typeReferenceSubsitutions(
   if (name === "Promise") {
     return "Future" + fmtArgs();
   }
-  if (name === "Iterable") {
+  const async = name.includes("Async") ? "Async" : "";
+  if (name === "Iterable" || name === "AsyncIterable") {
     if (variance === Variance.contra) {
-      return "PyIterable" + argone();
+      return `Py${async}Iterable` + argone();
     } else {
-      return "JsIterable" + argone();
+      return `Js${async}Iterable` + argone();
     }
   }
-  if (name === "Iterator") {
+  if (name === "Iterator" || name === "AsyncIterator") {
     const T = typeIRToString(typeArgs[0], { variance });
     const TReturn = typeIRToString(typeArgs[1], { variance });
     const TNext = typeIRToString(typeArgs[2], {
@@ -197,20 +200,20 @@ export function typeReferenceSubsitutions(
     });
     const args = `[${T}, ${TNext}, ${TReturn}]`;
     if (variance === Variance.contra) {
-      return `PyGenerator` + args;
+      return `Py${async}Generator` + args;
     } else {
       if (TNext === "None" && TReturn === "Any") {
         // both return and next have their default value so this is a normal iterator
-        return `JsIterator[${T}]`;
+        return `Js${async}Iterator[${T}]`;
       }
-      return "JsGenerator" + args;
+      return `Js${async}Generator` + args;
     }
   }
-  if (name === "IterableIterator") {
+  if (name === "IterableIterator" || name === "AsyncIterableIterator") {
     if (variance === Variance.contra) {
-      return "PyIterator" + argone();
+      return `Py${async}Iterator` + argone();
     } else {
-      return "JsIterator" + argone();
+      return `Js${async}Iterator` + argone();
     }
   }
   if (name === "Array") {
