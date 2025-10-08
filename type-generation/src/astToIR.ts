@@ -32,6 +32,7 @@ import { groupBy, popElt, split, split2 } from "./groupBy";
 import {
   assertUnreachable,
   classifyIdentifier,
+  deduplicateBy,
   getExpressionTypeArgs,
   getNodeLocation,
   groupMembers,
@@ -67,6 +68,9 @@ import {
   replaceType,
   IRVisitor,
   visitTopLevel,
+  typeParam,
+  TypeParamIR,
+  spreadType,
 } from "./ir";
 import { logger } from "./logger";
 
@@ -796,6 +800,8 @@ export class Converter {
         const type = spreadParam.type;
         if (type.kind === "array") {
           spreadParam.type = type.type;
+        } else if (type.kind === "parameterReference") {
+          spreadParam.type = spreadType(type);
         } else {
           logger.warn(`expected type array for spread param, got ${type.kind}`);
           spreadParam.type = type;
@@ -924,17 +930,19 @@ export class Converter {
     return result;
   }
 
-  getTypeParamsFromDecl<T extends TypeParameteredNode>(decl: T): string[] {
+  getTypeParamsFromDecl<T extends TypeParameteredNode>(decl: T): TypeParamIR[] {
     return getFilteredTypeParams(decl)
       .filter(
         (p) =>
           // Filter out type parameters that are already declared at class level
           !this.classTypeParams.has(p.getName()),
       )
-      .map((p) => p.getName());
+      .map((p) => typeParam(p.getName()));
   }
 
-  getTypeParamsFromDecls<T extends TypeParameteredNode>(decls: T[]): string[] {
+  getTypeParamsFromDecls<T extends TypeParameteredNode>(
+    decls: T[],
+  ): TypeParamIR[] {
     return decls.flatMap((decl) => this.getTypeParamsFromDecl(decl));
   }
 
@@ -966,11 +974,11 @@ export class Converter {
     members: Node[],
     staticMembers: Node[],
     callSignatures: Pick<CallSignatureDeclaration, "getSignature">[],
-    typeParams: string[],
+    typeParams: TypeParamIR[],
   ): InterfaceIR {
     // Set class-level type parameters before processing methods
     for (const param of typeParams) {
-      this.classTypeParams.add(param);
+      this.classTypeParams.add(param.name);
     }
     try {
       const { methods: astMethods, properties: astProperties } =
@@ -986,7 +994,7 @@ export class Converter {
       for (const key of Object.keys(staticAstMethods)) {
         delete astMethods[key];
       }
-      typeParams = Array.from(new Set(typeParams));
+      typeParams = deduplicateBy(typeParams, (x) => x.name);
       const extraMethods: CallableIR[] = [];
 
       // If we extend record, add a __getattr__ impl as appropriate.
@@ -1109,7 +1117,7 @@ export class Converter {
     const [staticProperties, properties] = split2(allProperties, (x) =>
       x.isStatic(),
     );
-    const typeArgs = typeParams.map(parameterReferenceType);
+    const typeArgs = typeParams.map((x) => parameterReferenceType(x.name));
     const concreteBases = [{ name: ifaceName, typeArgs }];
     const constructors = classDecl.getConstructors();
     this.nameContext = [name];
@@ -1162,7 +1170,7 @@ export class Converter {
     name: string,
     type: { getMembers: TypeLiteralNode["getMembers"] },
     bases: BaseIR[] = [],
-    typeParams: string[],
+    typeParams: TypeParamIR[],
   ): InterfaceIR {
     const [prototypes, staticMembers] = split(
       type.getMembers(),
@@ -1202,7 +1210,9 @@ export class Converter {
 
     // Use inherited type parameters if none were explicitly provided
     if (typeParams.length === 0) {
-      typeParams = [...new Set(inheritedTypeParams)];
+      typeParams = Array.from(new Set(inheritedTypeParams), (x) =>
+        typeParam(x),
+      );
     }
     return this.interfaceToIR(
       name,
@@ -1321,7 +1331,7 @@ export class Converter {
         const baseNames = this.getBasesOfDecls(ifaces);
         const typeParams = ifaces
           .flatMap((i) => i.getTypeParameters())
-          .map((p) => p.getName());
+          .map((p) => typeParam(p.getName()));
         return this.interfaceToIR(
           name,
           baseNames,
@@ -1336,7 +1346,7 @@ export class Converter {
         this.nameContext = [name];
         const aliasTypeParams = classified.decl
           .getTypeParameters()
-          .map((p) => p.getName());
+          .map((p) => typeParam(p.getName()));
         const typeNode = classified.decl.getTypeNode()!;
         const type = this.typeToIR(typeNode);
         this.nameContext = undefined;
@@ -1488,17 +1498,19 @@ export function convertDecls(
 type AdjustedIfaces = Map<string, { nparams: number; added: string[] }>;
 
 class TypeParamContext {
-  typeParams: Set<string>[];
+  typeParams: Map<string, TypeParamIR>[];
   constructor() {
     this.typeParams = [];
   }
 
-  push(tps: Iterable<string> | undefined): void {
-    let res: Set<string>;
-    if (tps instanceof Set) {
+  push(
+    tps: Iterable<TypeParamIR> | Map<string, TypeParamIR> | undefined,
+  ): void {
+    let res: Map<string, TypeParamIR>;
+    if (tps instanceof Map) {
       res = tps;
     } else {
-      res = new Set(tps);
+      res = new Map(Array.from(tps ?? [], (x) => [x.name, x]));
     }
     this.typeParams.push(res);
   }
@@ -1507,7 +1519,17 @@ class TypeParamContext {
     this.typeParams.pop();
   }
 
-  has(x: string) {
+  get(x: string): TypeParamIR | undefined {
+    for (const p of this.typeParams) {
+      const res = p.get(x);
+      if (res) {
+        return res;
+      }
+    }
+    return undefined;
+  }
+
+  has(x: string): boolean {
     for (const p of this.typeParams) {
       if (p.has(x)) {
         return true;
@@ -1534,7 +1556,9 @@ function addMissingTypeParametersToIface(
       yield;
       context.pop();
       if (missingTypeParams.size) {
-        a.typeParams.push(...missingTypeParams);
+        a.typeParams.push(
+          ...Array.from(missingTypeParams, (x) => typeParam(x)),
+        );
         const nparams = a.typeParams.length;
         adjustedIfaces.set(a.name, {
           nparams,
@@ -1566,16 +1590,16 @@ function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
     *visitSignature(a) {
       // Sometimes the signature has the same type parameter as an ambient
       // class. Remove these duplicates.
-      const s = new Set(a.typeParams);
+      const s = new Map(a.typeParams?.map((x) => [x.name, x]));
       let removedTypeParam = false;
       for (const x of a.typeParams ?? []) {
-        if (context.has(x)) {
-          s.delete(x);
+        if (context.has(x.name)) {
+          s.delete(x.name);
           removedTypeParam = true;
         }
       }
       if (removedTypeParam) {
-        a.typeParams = Array.from(s);
+        a.typeParams = Array.from(s.values());
       }
       context.push(s);
       yield;
@@ -1590,6 +1614,15 @@ function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
       context.push(a.typeParams);
       yield;
       context.pop();
+    },
+    *visitSpreadType(a) {
+      if (a.type.kind === "parameterReference") {
+        const name = a.type.name;
+        const target = context.get(name);
+        if (target) {
+          target.spread = true;
+        }
+      }
     },
     *visitReferenceType(rt: ReferenceTypeIR & { adjusted?: boolean }) {
       const { name, typeArgs, adjusted } = rt;
@@ -1614,11 +1647,52 @@ function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
   };
 }
 
+function fixUpSpreadParameterReferences(tl: TopLevelIR) {
+  const context = new TypeParamContext();
+  let inSpread = false;
+  visitTopLevel(
+    {
+      *visitSignature(a) {
+        context.push(a.typeParams);
+        yield;
+        context.pop();
+      },
+      *visitInterfaceIR(a) {
+        context.push(a.typeParams);
+        yield;
+        context.pop();
+      },
+      *visitTypeAliasIR(a) {
+        context.push(a.typeParams);
+        yield;
+        context.pop();
+      },
+      *visitSpreadType(a) {
+        inSpread = true;
+      },
+      *visitParameterReferenceType(a) {
+        const isInSpread = inSpread;
+        inSpread = false;
+        const target = context.get(a.name);
+        if (!target) {
+          return;
+        }
+        if (target.spread && !isInSpread) {
+          const replacement = spreadType(structuredClone(a));
+          replaceType(a, replacement);
+        }
+      },
+    },
+    tl,
+  );
+}
+
 function addMissingTypeArgsToTopLevel(
   tl: TopLevelIR,
   adjustedIfaces: AdjustedIfaces,
 ) {
   visitTopLevel(addMissingTypeArgsVisitor(adjustedIfaces), tl);
+  fixUpSpreadParameterReferences(tl);
 }
 
 function addMissingTypeArgsToType(t: TypeIR, adjustedIfaces: AdjustedIfaces) {

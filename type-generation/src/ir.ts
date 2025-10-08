@@ -9,7 +9,8 @@ export type TypeIR =
   | TupleTypeIR
   | ArrayTypeIR
   | CallableIR
-  | NumberTypeIR;
+  | NumberTypeIR
+  | SpreadTypeIR;
 
 export type SimpleTypeIR = { kind: "simple"; text: string };
 export type NumberTypeIR = { kind: "number" };
@@ -17,6 +18,7 @@ export type UnionTypeIR = { kind: "union"; types: TypeIR[] };
 export type TupleTypeIR = { kind: "tuple"; types: TypeIR[] };
 export type ArrayTypeIR = { kind: "array"; type: TypeIR };
 export type ParenTypeIR = { kind: "paren"; type: TypeIR };
+export type SpreadTypeIR = { kind: "spread"; type: TypeIR };
 export type TypeOperatorTypeIR = {
   kind: "operator";
   operatorName: string;
@@ -39,12 +41,16 @@ export type ParamIR = {
   type: TypeIR;
   isOptional: boolean;
 };
+export type TypeParamIR = {
+  name: string;
+  spread?: boolean;
+};
 export type SigIR = {
   params: ParamIR[];
   spreadParam?: ParamIR;
   kwparams?: ParamIR[];
   returns: TypeIR;
-  typeParams?: string[];
+  typeParams?: TypeParamIR[];
 };
 
 export type CallableIR = {
@@ -67,7 +73,7 @@ export type InterfaceIR = {
   name: string;
   methods: CallableIR[];
   properties: PropertyIR[];
-  typeParams: string[];
+  typeParams: TypeParamIR[];
   bases: BaseIR[];
   // Synthetic bases adjusted into the class.
   extraBases?: string[];
@@ -95,7 +101,7 @@ export type TypeAliasIR = {
   kind: "typeAlias";
   name: string;
   type: TypeIR;
-  typeParams: string[];
+  typeParams: TypeParamIR[];
 };
 
 export type TopLevelIR = DeclarationIR | InterfaceIR | TypeAliasIR | CallableIR;
@@ -133,6 +139,14 @@ export function referenceType(
 
 export function parameterReferenceType(name: string): ParameterReferenceTypeIR {
   return { kind: "parameterReference", name };
+}
+
+export function typeParam(name: string, isSpread?: boolean) {
+  return { name, isSpread };
+}
+
+export function spreadType(type: TypeIR): SpreadTypeIR {
+  return { kind: "spread", type };
 }
 
 export const ANY_IR = simpleType("Any");
@@ -259,6 +273,11 @@ export function visitType(v: IRVisitor, a: TypeIR) {
         for (const ty of a.types) {
           visitType(v, ty);
         }
+      });
+      return;
+    case "spread":
+      enter(v.visitSpreadType?.(a), () => {
+        visitType(v, a.type);
       });
       return;
   }
