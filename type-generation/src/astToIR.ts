@@ -968,6 +968,32 @@ export class Converter {
     return { name, type, isOptional, isStatic, isReadonly };
   }
 
+  topLevelInterfaceToIR(
+    name: string,
+    defs: InterfaceDeclaration[],
+  ): InterfaceIR {
+    // Set type parameter constraints for interface type parameters
+    this.setIfaceTypeConstraints(defs);
+    const baseNames = this.getBasesOfDecls(defs).filter(
+      (base) => base.name !== name,
+    );
+    const typeParams = this.getTypeParamsFromDecls(defs);
+    this.nameContext = [name];
+    const res = this.interfaceToIR(
+      name,
+      baseNames,
+      defs.flatMap((def) => def.getMembers()),
+      [],
+      defs.flatMap((def) => def.getCallSignatures()),
+      typeParams,
+    );
+    this.nameContext = undefined;
+
+    // Clear interface type parameter constraints after processing interface
+    this.ifaceTypeParamConstraints.clear();
+    return res;
+  }
+
   interfaceToIR(
     name: string,
     bases: BaseIR[],
@@ -1334,19 +1360,7 @@ export class Converter {
     const classified = classifyIdentifier(ident);
     switch (classified.kind) {
       case "interfaces":
-        const ifaces = classified.ifaces;
-        const baseNames = this.getBasesOfDecls(ifaces);
-        const typeParams = ifaces
-          .flatMap((i) => i.getTypeParameters())
-          .map((p) => typeParam(p.getName()));
-        return this.interfaceToIR(
-          name,
-          baseNames,
-          ifaces.flatMap((def) => def.getMembers()),
-          [],
-          ifaces.flatMap((def) => def.getCallSignatures()),
-          typeParams,
-        );
+        return this.topLevelInterfaceToIR(name, classified.ifaces);
       case "class":
         throw new Error("Unhandled");
       case "typeAlias":
@@ -1464,26 +1478,7 @@ export function convertDecls(
         .getDefinitionNodes()
         .filter(Node.isInterfaceDeclaration);
       if (defs.length) {
-        // Set type parameter constraints for interface type parameters
-        converter.setIfaceTypeConstraints(defs);
-        const baseNames = converter
-          .getBasesOfDecls(defs)
-          .filter((base) => base.name !== name);
-        const typeParams = converter.getTypeParamsFromDecls(defs);
-        converter.nameContext = [name];
-        const res = converter.interfaceToIR(
-          name,
-          baseNames,
-          defs.flatMap((def) => def.getMembers()),
-          [],
-          defs.flatMap((def) => def.getCallSignatures()),
-          typeParams,
-        );
-        converter.nameContext = undefined;
-        pushTopLevel(res);
-
-        // Clear interface type parameter constraints after processing interface
-        converter.ifaceTypeParamConstraints.clear();
+        pushTopLevel(converter.topLevelInterfaceToIR(name, defs));
         continue;
       }
       // console.warn(ident.getDefinitionNodes().map(n => n.getText()).join("\n\n"))
