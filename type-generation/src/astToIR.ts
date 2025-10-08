@@ -1639,7 +1639,7 @@ function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
         typeArgs.push(parameterReferenceType(added[i]));
       }
       for (const param of added) {
-        if (context.has(param)) {
+        if (!context.has(param)) {
           logger.warn("Dangling type argument", name, param);
         }
       }
