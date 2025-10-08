@@ -152,7 +152,8 @@ function getInterfaceDeclToDestructure(
   // Ad hoc special case: the Iterable interface is definitely not a collection
   // of options we want to destructure. Maybe we can eventually figure out a
   // better rule to exclude these?
-  if (iface.getName() === "Iterable") {
+  const name = iface.getName();
+  if (name === "Iterable" || name === "AsyncIterable") {
     return undefined;
   }
   return [iface, refNode.getTypeArguments()];
