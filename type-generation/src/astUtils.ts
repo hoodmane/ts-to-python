@@ -226,7 +226,7 @@ export function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
     };
   }
   if (rest.length > 1) {
-    logger.info(
+    logger.debug(
       name,
       rest.map((x) => x.getKindName()),
     );
