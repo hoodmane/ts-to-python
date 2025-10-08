@@ -653,9 +653,10 @@ export class Converter {
       const sigs = ir.signatures;
       // Can we use an inline Callable[]? This works if it only has position
       // only parameters.
-      if (sigs.length === 1 &&
-          sigs[0].kwparams === undefined &&
-          sigs[0].spreadParam === undefined
+      if (
+        sigs.length === 1 &&
+        sigs[0].kwparams === undefined &&
+        sigs[0].spreadParam === undefined
       ) {
         delete ir.name;
         delete ir.isStatic;
