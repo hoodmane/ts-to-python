@@ -6,11 +6,11 @@ from io import StringIO
 from collections.abc import Callable
 import re
 
-
-def test_type_errors(tmp_path: Path) -> None:
+@pytest.mark.parametrize("file", ["__init__.pyi", "cloudflare.pyi"])
+def test_type_errors(tmp_path: Path, file) -> None:
     from mypy import api
 
-    source_path = Path(__file__).parent / "js/__init__.pyi"
+    source_path = Path(__file__).parent / "js" / file
     target_path = tmp_path / "js.pyi"
     text = source_path.read_text()
     removed_type_ignores = "".join(
@@ -43,12 +43,15 @@ def test_type_errors(tmp_path: Path) -> None:
                 r"Overloaded function signature [0-9]+ will never be matched: signature [0-9]+'s parameter type\(s\) are the same or broader"
             ),
             re.compile(
-                r'Invariant type variable "[A-Za-z]*" used in protocol where [a-zA-Z]*variant one is expected'
-            ),
-            re.compile(
                 r"Metaclass conflict: the metaclass of a derived class must be a \(non-strict\) subclass of the metaclasses of all its bases"
             ),
         ]
+        if file == "cloudflare.pyi":
+            pats.append(
+                re.compile(
+                    r'Definition of "[A-Za-z0-9_]*" in base class "[a-zA-Z0-9_]*" is incompatible with definition in base class "[a-zA-Z0-9_]*"'
+                ),
+            )
         for message, loc in warnings_by_code["misc"]:
             for pat in pats:
                 if pat.fullmatch(message):

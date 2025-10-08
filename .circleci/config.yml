@@ -34,10 +34,14 @@ jobs:
       - node/install-packages:
           app-dir: "input-projects/browser-dom"
       - node/install-packages:
+          app-dir: "input-projects/cloudflare-workers"
+      - node/install-packages:
           app-dir: "type-generation"
       - run: |
           mkdir -p generated/js/
           npm run -C type-generation build ../input-projects/browser-dom/ ../generated/js/__init__.pyi
+          (cd input-projects/cloudflare-workers/ && npx wrangler types)
+          npm run -C type-generation build ../input-projects/cloudflare-workers/ ../generated/js/cloudflare.pyi
       - persist_to_workspace:
           root: .
           paths:
