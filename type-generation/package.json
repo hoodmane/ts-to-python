@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "ts-morph": "^27.0.0",
+    "tslog": "^4.10.2",
     "tsx": "^4.6.2"
   },
   "devDependencies": {

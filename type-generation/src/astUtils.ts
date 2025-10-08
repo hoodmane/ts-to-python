@@ -21,6 +21,7 @@ import {
 } from "ts-morph";
 import { WrappedGen, groupBy, groupByGen, split } from "./groupBy";
 import { ClassifiedIdentifier, GroupedBySyntaxKind } from "./types";
+import { logger } from "./logger";
 
 export function assertUnreachable(_value: never): never {
   throw new Error("Statement should be unreachable");
@@ -223,7 +224,7 @@ export function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
     };
   }
   if (rest.length > 1) {
-    console.log(
+    logger.info(
       name,
       rest.map((x) => x.getKindName()),
     );
@@ -236,9 +237,9 @@ export function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
         ifaces,
       };
     }
-    console.log("Failed to classify", name, "locations:");
+    logger.error("Failed to classify", name, "locations:");
     for (const decl of rest) {
-      console.log(getNodeLocation(decl));
+      logger.error(getNodeLocation(decl));
     }
     throw new Error(`Unclear how to classify identifier ${name}`);
   }
