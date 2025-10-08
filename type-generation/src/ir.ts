@@ -208,6 +208,7 @@ function visitSignature(v: IRVisitor, a: SigIR) {
     for (const param of a.kwparams ?? []) {
       visitParam(v, param);
     }
+    visitType(v, a.returns);
   });
 }
 
