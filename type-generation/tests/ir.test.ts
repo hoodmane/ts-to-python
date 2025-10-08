@@ -3,7 +3,7 @@ import assert from "node:assert";
 import { getTypeNode, typeToIR, makeProject } from "./helpers";
 import { Converter } from "../src/astToIR.ts";
 import { SyntaxKind } from "ts-morph";
-import { InterfaceIR } from "../src/ir.ts";
+import { InterfaceIR, SigIR, typeParam } from "../src/ir.ts";
 
 function typeToIRHelper(tsType: string) {
   const typeNode = getTypeNode(tsType);
@@ -16,6 +16,10 @@ function makeTestSourceFile(body: string) {
   const project = makeProject();
   project.createSourceFile("/test.ts", body);
   return project.getSourceFileOrThrow("/test.ts");
+}
+
+function sigTypeParams(sig: SigIR): string[] | undefined {
+  return sig.typeParams?.map((x) => x.name);
 }
 
 describe("typeToIR", () => {
@@ -266,7 +270,7 @@ describe("typeToIR", () => {
             ],
             spreadParam: undefined,
             returns: { kind: "parameterReference", name: "T" },
-            typeParams: ["T"],
+            typeParams: [typeParam("T")],
           },
         ],
         isStatic: false,
@@ -342,7 +346,7 @@ describe("typeToIR", () => {
             ],
             spreadParam: undefined,
             returns: { kind: "parameterReference", name: "T" },
-            typeParams: ["T"],
+            typeParams: [typeParam("T")],
           },
         ],
         isStatic: false,
@@ -377,7 +381,7 @@ describe("typeToIR", () => {
               name: "Test_iface",
               typeArgs: [{ kind: "parameterReference", name: "T" }],
             },
-            typeParams: ["T"],
+            typeParams: [typeParam("T")],
           },
         ],
         isStatic: true,
@@ -431,7 +435,7 @@ describe("typeToIR", () => {
             { kind: "simple", text: "str" },
           ],
         },
-        typeParams: ["T"],
+        typeParams: [typeParam("T")],
       });
     });
   });
@@ -492,7 +496,7 @@ describe("typeToIR", () => {
               name: "XIface_iface",
               typeArgs: [{ kind: "parameterReference", name: "T" }],
             },
-            typeParams: ["T"],
+            typeParams: [typeParam("T")],
           },
         ],
         isStatic: true,
@@ -526,8 +530,8 @@ describe("typeToIR", () => {
       assert.strictEqual(ir.signatures.length, 2);
 
       // Both signatures should have type parameters
-      assert.deepStrictEqual(ir.signatures[0].typeParams, ["T"]);
-      assert.deepStrictEqual(ir.signatures[1].typeParams, ["T"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[0]), ["T"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[1]), ["T"]);
 
       // Second signature should have destructured kwparams
       assert.strictEqual(ir.signatures[1].kwparams?.length, 1);
@@ -553,14 +557,14 @@ describe("typeToIR", () => {
       assert.strictEqual(ir.signatures.length, 2);
 
       // First signature should have typeParams: ["T"]
-      assert.deepStrictEqual(ir.signatures[0].typeParams, ["T"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[0]), ["T"]);
       assert.deepStrictEqual(ir.signatures[0].returns, {
         kind: "parameterReference",
         name: "T",
       });
 
       // Second signature should have typeParams: ["U", "V"]
-      assert.deepStrictEqual(ir.signatures[1].typeParams, ["U", "V"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[1]), ["U", "V"]);
       assert.deepStrictEqual(ir.signatures[1].returns, {
         kind: "union",
         types: [
@@ -600,8 +604,8 @@ describe("typeToIR", () => {
       assert.strictEqual(ir.signatures.length, 2);
 
       // Both signatures should have type parameters
-      assert.deepStrictEqual(ir.signatures[0].typeParams, ["R"]);
-      assert.deepStrictEqual(ir.signatures[1].typeParams, ["R"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[0]), ["R"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[1]), ["R"]);
 
       // Second signature should have destructured kwparams with resolved type
       assert.strictEqual(ir.signatures[1].kwparams?.length, 1);
@@ -644,8 +648,8 @@ describe("typeToIR", () => {
       assert.strictEqual(ir.signatures.length, 2);
 
       // Both signatures should have type parameters
-      assert.deepStrictEqual(ir.signatures[0].typeParams, ["R"]);
-      assert.deepStrictEqual(ir.signatures[1].typeParams, ["R"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[0]), ["R"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[1]), ["R"]);
 
       // Second signature should have destructured kwparams with resolved type
       assert.strictEqual(ir.signatures[1].kwparams?.length, 1);
@@ -693,8 +697,8 @@ describe("typeToIR", () => {
       assert.strictEqual(ir.signatures.length, 2);
 
       // All signatures should have type parameters
-      assert.deepStrictEqual(ir.signatures[0].typeParams, ["R"]);
-      assert.deepStrictEqual(ir.signatures[1].typeParams, ["R"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[0]), ["R"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[1]), ["R"]);
 
       // Second and fourth signatures should have destructured kwparams with resolved types
       assert.strictEqual(ir.signatures[1].kwparams?.length, 2);
@@ -732,7 +736,7 @@ describe("typeToIR", () => {
         iface.getMembers(),
         [],
         [],
-        ["T"],
+        [typeParam("T")],
       );
 
       // Method with same-named type param should not duplicate it
@@ -779,8 +783,8 @@ describe("typeToIR", () => {
       assert.strictEqual(ir.signatures.length, 2);
 
       // Both signatures should have only method-level type parameters
-      assert.deepStrictEqual(ir.signatures[0].typeParams, ["U"]);
-      assert.deepStrictEqual(ir.signatures[1].typeParams, ["U"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[0]), ["U"]);
+      assert.deepStrictEqual(sigTypeParams(ir.signatures[1]), ["U"]);
 
       // Second signature should have destructured kwparams with class type param resolved
       assert.strictEqual(ir.signatures[1].kwparams?.length, 1);

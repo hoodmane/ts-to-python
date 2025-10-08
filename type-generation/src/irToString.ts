@@ -14,6 +14,7 @@ import {
   SigIR,
   TypeAliasIR,
   TypeIR,
+  TypeParamIR,
 } from "./ir.ts";
 import { assertUnreachable } from "./astUtils.ts";
 import { Variance, reverseVariance } from "./types.ts";
@@ -135,12 +136,20 @@ function pyParamToString({
   return `${name}: ${pyType}${maybeDefault}`;
 }
 
+function typeParamToString({ name, spread }: TypeParamIR): string {
+  let prefix = "";
+  if (spread) {
+    prefix = "*";
+  }
+  return prefix + name;
+}
+
 function pySigToDeclarationString(
   name: string,
   sig: PySig,
   decorators: string[] = [],
   isMethod: boolean = true,
-  typeParams?: string[],
+  typeParams?: TypeParamIR[],
 ): string {
   if (isIllegal(name)) {
     return "";
@@ -149,7 +158,8 @@ function pySigToDeclarationString(
 
   let typeParamsString = "";
   if (typeParams && typeParams.length > 0) {
-    typeParamsString = `[${typeParams.join(", ")}]`;
+    const typeParamsBody = typeParams.map(typeParamToString).join(", ");
+    typeParamsString = `[${typeParamsBody}]`;
   }
 
   const formattedParams = sig.params.map(pyParamToString);
@@ -196,7 +206,7 @@ export function typeAliasIRToString({
   const typeStr = typeIRToString(type);
   let typeParamsString = "";
   if (typeParams.length > 0) {
-    typeParamsString = `[${typeParams.join(", ")}]`;
+    typeParamsString = `[${typeParams.map(typeParamToString).join(", ")}]`;
   }
 
   return `type ${name}${typeParamsString} = ${typeStr}`;
@@ -220,7 +230,7 @@ export function interfaceIRToString({
 
   let typeParamsString = "";
   if (typeParams.length > 0) {
-    typeParamsString = `[${typeParams.join(", ")}]`;
+    typeParamsString = `[${typeParams.map(typeParamToString).join(", ")}]`;
   }
 
   const entries = ([] as string[]).concat(
@@ -490,6 +500,10 @@ function typeIRToStringHelper(
   }
   if (ir.kind === "number") {
     return numberType || "int | float";
+  }
+  if (ir.kind === "spread") {
+    const eltType = typeIRToString(ir.type, settings);
+    return `*${eltType}`;
   }
   assertUnreachable(ir);
 }

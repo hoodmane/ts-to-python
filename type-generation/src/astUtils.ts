@@ -277,3 +277,16 @@ export function classifyIdentifier(ident: Identifier): ClassifiedIdentifier {
 export function isValidPythonIdentifier(name: string): boolean {
   return /^[a-zA-Z_$][a-zA-Z0-9_]*$/.test(name);
 }
+
+export function deduplicateBy<T>(l: Iterable<T>, key: (t: T) => string): T[] {
+  const s = new Set();
+  const res = [];
+  for (const t of l) {
+    const k = key(t);
+    if (!s.has(k)) {
+      s.add(k);
+      res.push(t);
+    }
+  }
+  return res;
+}

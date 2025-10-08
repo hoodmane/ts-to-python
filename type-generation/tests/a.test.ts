@@ -2289,10 +2289,10 @@ describe("emit", () => {
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`
-          def f[Args](cb: f__Sig0__cb[Args], /, *args: Args) -> None: ...
+          def f[*Args](cb: f__Sig0__cb[*Args], /, *args: *Args) -> None: ...
 
-          class f__Sig0__cb[Args](Protocol):
-              def __call__(self, /, *args: Args) -> None: ...
+          class f__Sig0__cb[*Args](Protocol):
+              def __call__(self, /, *args: *Args) -> None: ...
 
         `).trim(),
       );
