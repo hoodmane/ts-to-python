@@ -46,7 +46,6 @@ import {
   simpleType,
   SigIR,
   ANY_IR,
-  BaseIR,
   CallableIR,
   DeclarationIR,
   InterfaceIR,
@@ -1009,7 +1008,7 @@ export class Converter {
 
   interfaceToIR(
     name: string,
-    bases: BaseIR[],
+    bases: ReferenceTypeIR[],
     members: Node[],
     staticMembers: Node[],
     callSignatures: Pick<CallSignatureDeclaration, "getSignature">[],
@@ -1037,12 +1036,12 @@ export class Converter {
       const extraMethods: CallableIR[] = [];
 
       // If we extend record, add a __getattr__ impl as appropriate.
-      let record1: BaseIR | undefined;
+      let record1: ReferenceTypeIR | undefined;
       [[record1 = undefined], bases] = split2(
         bases,
         (x) => x.name === "Record",
       );
-      const record = record1 as BaseIR | undefined;
+      const record = record1 as ReferenceTypeIR | undefined;
       if (record) {
         extraMethods.push({
           kind: "callable",
@@ -1157,7 +1156,7 @@ export class Converter {
       x.isStatic(),
     );
     const typeArgs = typeParams.map((x) => parameterReferenceType(x.name));
-    const concreteBases = [{ name: ifaceName, typeArgs }];
+    const concreteBases = [referenceType(ifaceName, typeArgs)];
     const constructors = classDecl.getConstructors();
     this.nameContext = [name];
     const ifaceIR = this.interfaceToIR(
@@ -1183,10 +1182,10 @@ export class Converter {
 
   getBasesOfDecls(
     decls: (InterfaceDeclaration | ClassDeclaration)[],
-  ): BaseIR[] {
+  ): ReferenceTypeIR[] {
     let extends_ = decls.flatMap((decl) => decl.getExtends() || []);
     extends_ = uniqBy(extends_, (base) => base.getText());
-    return extends_.flatMap((extend): BaseIR | [] => {
+    return extends_.flatMap((extend): ReferenceTypeIR | [] => {
       let ident = extend.getExpression();
       if (!Node.isIdentifier(ident)) {
         return [];
@@ -1197,18 +1196,18 @@ export class Converter {
       // Record is a special case. We don't want to addNeededInterface it, we'll
       // convert it to a __getattr__ impl.
       if (name === "Record") {
-        return { name, typeArgs };
+        return referenceType(name, typeArgs);
       }
       name += "_iface";
       this.addNeededInterface(ident as Identifier);
-      return { name, typeArgs };
+      return referenceType(name, typeArgs);
     });
   }
 
   membersDeclarationToIR(
     name: string,
     type: { getMembers: TypeLiteralNode["getMembers"] },
-    bases: BaseIR[] = [],
+    bases: ReferenceTypeIR[] = [],
     typeParams: TypeParamIR[],
   ): InterfaceIR {
     const [prototypes, staticMembers] = split(
@@ -1240,7 +1239,7 @@ export class Converter {
       const name = ident.getText() + "_iface";
       const typeArgs = getInterfaceTypeArgs(ident);
       this.addNeededInterface(ident);
-      bases.push({ name, typeArgs });
+      bases.push(referenceType(name, typeArgs));
 
       // Extract type parameters from the referenced interface
       const interfaceDefs = ident

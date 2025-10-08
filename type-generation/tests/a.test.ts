@@ -1757,6 +1757,30 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("Intersection type arg", () => {
+      const res = emitFile(`
+        interface D { x: string; }
+        type X<T = unknown> = D & {
+            r: T;
+        };
+        declare function f(): X;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f() -> X[Any]: ...
+
+          class D_iface(Protocol):
+              x: str = ...
+
+          class X__Intersection1[T](Protocol):
+              r: T = ...
+
+          class X[T](X__Intersection1[T], D_iface, Protocol):
+              pass
+        `).trim(),
+      );
+    });
   });
   describe("Type operators", () => {
     describe("Omit", () => {

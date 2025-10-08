@@ -5,12 +5,12 @@ import {
   typeReferenceSubsitutions,
 } from "./adjustments.ts";
 import {
-  BaseIR,
   CallableIR,
   DeclarationIR,
   InterfaceIR,
   ParamIR,
   PropertyIR,
+  ReferenceTypeIR,
   SigIR,
   TypeAliasIR,
   TypeIR,
@@ -246,7 +246,7 @@ export function interfaceIRToString({
   return `class ${name}${typeParamsString}${basesString}:${CLASS_TYPE_IGNORES}\n${body}`;
 }
 
-export function baseIRToString({ name, typeArgs }: BaseIR): string {
+export function baseIRToString({ name, typeArgs }: ReferenceTypeIR): string {
   if (typeArgs.length > 0) {
     const joined = typeArgs.map((t) => typeIRToString(t)).join(", ");
     name += `[${joined}]`;
