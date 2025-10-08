@@ -143,6 +143,9 @@ function getInterfaceDeclToDestructure(
     return undefined;
   }
   const iface = classified.ifaces[0];
+  // Ad hoc special case: the Iterable interface is definitely not a collection
+  // of options we want to destructure. Maybe we can eventually figure out a
+  // better rule to exclude these?
   if (iface.getName() === "Iterable") {
     return undefined;
   }
@@ -648,18 +651,17 @@ export class Converter {
       const iface = this.interfaceToIR(name, [], [], [], [typeNode], []);
       const ir = iface.methods[0];
       const sigs = ir.signatures;
-      if (sigs.length === 1) {
-        const sig = sigs[0];
-        if (
-          sig.kwparams === undefined &&
-          sig.spreadParam === undefined &&
-          sig.typeParams === undefined
-        ) {
-          delete ir.name;
-          delete ir.isStatic;
-          return ir;
-        }
+      // Can we use an inline Callable[]? This works if it only has position
+      // only parameters.
+      if (sigs.length === 1 &&
+          sigs[0].kwparams === undefined &&
+          sigs[0].spreadParam === undefined
+      ) {
+        delete ir.name;
+        delete ir.isStatic;
+        return ir;
       }
+      // If there's no name, we can't generate a new type.
       if (name === "") {
         console.log(typeNode.print());
         console.log(getNodeLocation(typeNode));
