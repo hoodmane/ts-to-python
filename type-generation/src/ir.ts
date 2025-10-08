@@ -74,7 +74,7 @@ export type InterfaceIR = {
   methods: CallableIR[];
   properties: PropertyIR[];
   typeParams: TypeParamIR[];
-  bases: BaseIR[];
+  bases: ReferenceTypeIR[];
   // Synthetic bases adjusted into the class.
   extraBases?: string[];
   // This is used to decide whether the class should be a Protocol or not.
@@ -84,11 +84,6 @@ export type InterfaceIR = {
   // as int | float, but sometimes we just want it to be written as int.
   // This is handled in an adhoc manner in adjustInterfaceIR.
   numberType?: string;
-};
-
-export type BaseIR = {
-  name: string;
-  typeArgs: TypeIR[];
 };
 
 export type DeclarationIR = {
@@ -173,7 +168,6 @@ export type IRVisitor = {
   visitSignature?: (a: SigIR) => Generator<void>;
   visitParam?: (a: ParamIR) => Generator<void>;
   visitProperty?: (a: PropertyIR) => Generator<void>;
-  visitBase?: (a: BaseIR) => Generator<void>;
 };
 
 function enter<T>(it: Generator<void> | undefined, cb: () => T): T {
@@ -214,14 +208,6 @@ function visitSignature(v: IRVisitor, a: SigIR) {
 
 function visitProperty(v: IRVisitor, a: PropertyIR) {
   enter(v.visitProperty?.(a), () => visitType(v, a.type));
-}
-
-function visitBase(v: IRVisitor, a: BaseIR) {
-  enter(v.visitBase?.(a), () => {
-    for (const t of a.typeArgs) {
-      visitType(v, t);
-    }
-  });
 }
 
 export function visitType(v: IRVisitor, a: TypeIR) {
@@ -301,7 +287,7 @@ export function visitTopLevel(v: IRVisitor, a: TopLevelIR): void {
     case "interface":
       enter(v.visitInterfaceIR?.(a), () => {
         for (const base of a.bases) {
-          visitBase(v, base);
+          visitType(v, base);
         }
         for (const meth of a.methods) {
           visitTopLevel(v, meth);
