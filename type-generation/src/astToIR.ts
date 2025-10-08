@@ -427,18 +427,29 @@ class SyntheticTypeConverter {
       return this.converter.typeToIR(n);
     }
     if (Node.isTypeReference(n)) {
-      const res = classifyIdentifier(n.getTypeName() as Identifier);
-      if (res.kind === "typeAlias") {
-        return this.typeToIR(res.decl.getTypeNode()!, modifiers);
+      const classified = classifyIdentifier(n.getTypeName() as Identifier);
+      if (classified.kind === "typeAlias") {
+        const result = this.typeToIR(classified.decl.getTypeNode()!, modifiers);
+        if (result.kind === "reference") {
+          const args = n
+            .getTypeArguments()
+            .map((x) => this.converter.typeToIR(x));
+          result.typeArgs = args;
+        }
+        return result;
       }
-      if (res.kind === "interfaces") {
-        const { name, ifaces } = res;
+      if (classified.kind === "interfaces") {
+        const { name, ifaces } = classified;
         this.nameContext.push(name);
         const result = this.doConversion(ifaces, modifiers);
         this.nameContext.pop();
+        const args = n
+          .getTypeArguments()
+          .map((x) => this.converter.typeToIR(x));
+        result.typeArgs = args;
         return result;
       }
-      throw new Error(`Not handled ${res.kind}`);
+      throw new Error(`Not handled ${classified.kind}`);
     }
     if (Node.isMappedTypeNode(n)) {
       return ANY_IR;

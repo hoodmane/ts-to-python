@@ -2052,12 +2052,35 @@ describe("emit", () => {
         assert.strictEqual(
           removeTypeIgnores(res.slice(1).join("\n\n")),
           dedent(`
-            type D = D__Partial__A_iface
+            type D = D__Partial__A_iface[str]
 
             def f() -> D: ...
 
             class D__Partial__A_iface[T](Protocol):
                 a: T | None = ...
+          `).trim(),
+        );
+      });
+      it("PartialTypeArg2", () => {
+        const res = emitFile(`
+          interface O<T> {
+              t: T;
+          };
+          interface K<Key = string> {
+            g(o?: Partial<O<undefined>>): void;
+          };
+          declare function f(): K;
+        `);
+        assert.strictEqual(
+          removeTypeIgnores(res.slice(1).join("\n\n")),
+          dedent(`
+            def f() -> K_iface[str]: ...
+
+            class K_iface[Key](Protocol):
+                def g(self, o: K_iface__g__Sig0__o__Partial__O_iface[None] | None = None, /) -> None: ...
+
+            class K_iface__g__Sig0__o__Partial__O_iface[T](Protocol):
+                t: T | None = ...
           `).trim(),
         );
       });
