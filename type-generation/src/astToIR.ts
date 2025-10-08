@@ -1183,10 +1183,17 @@ export class Converter {
     let inheritedTypeParams: string[] = [];
     for (const proto of prototypes) {
       const typeNode = proto.getTypeNode();
-      if (!Node.isTypeReference(typeNode)) {
+      if (Node.isTypeReference(typeNode)) {
+        // Handled below
+      } else if (Node.isArrayTypeNode(typeNode)) {
+        // One-off special case: ArrayConstructor has prototype any[]. Not sure
+        // if we need to do anything here? Code gen looks alright.
+        continue;
+      } else {
         logger.warn(
           "Excepted prototype type to be TypeReference",
           proto.getText(),
+          getNodeLocation(typeNode!),
         );
         continue;
       }

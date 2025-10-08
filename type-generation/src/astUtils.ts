@@ -27,7 +27,9 @@ export function assertUnreachable(_value: never): never {
   throw new Error("Statement should be unreachable");
 }
 
-export function getNodeLocation(node: Node): string {
+export function getNodeLocation(
+  node: Pick<Node, "getSourceFile" | "getStart">,
+): string {
   const sf = node.getSourceFile();
   const { line, column } = sf.getLineAndColumnAtPos(node.getStart());
   return `${sf.getFilePath()}:${line}:${column}`;
