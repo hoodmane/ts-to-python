@@ -919,7 +919,6 @@ export class Converter {
       signatures: sigs,
       isStatic,
     };
-
     return result;
   }
 
@@ -1486,22 +1485,52 @@ export function convertDecls(
 
 type AdjustedIfaces = Map<string, { nparams: number; added: string[] }>;
 
+class TypeParamContext {
+  typeParams: Set<string>[];
+  constructor() {
+    this.typeParams = [];
+  }
+
+  push(tps: Iterable<string> | undefined): void {
+    let res: Set<string>;
+    if (tps instanceof Set) {
+      res = tps;
+    } else {
+      res = new Set(tps);
+    }
+    this.typeParams.push(res);
+  }
+
+  pop(): void {
+    this.typeParams.pop();
+  }
+
+  has(x: string) {
+    for (const p of this.typeParams) {
+      if (p.has(x)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
 function addMissingTypeParametersToIface(
   topLevel: TopLevelIR,
   adjustedIfaces: AdjustedIfaces,
 ): void {
-  const typeParams: Set<string>[] = [];
+  const context = new TypeParamContext();
   const missingTypeParams: Set<string> = new Set();
   const visitor: IRVisitor = {
     *visitSignature(a) {
-      typeParams.push(new Set(a.typeParams));
+      context.push(a.typeParams);
       yield;
-      typeParams.pop();
+      context.pop();
     },
     *visitInterfaceIR(a) {
-      typeParams.push(new Set(a.typeParams));
+      context.push(a.typeParams);
       yield;
-      typeParams.pop();
+      context.pop();
       if (missingTypeParams.size) {
         a.typeParams.push(...missingTypeParams);
         const nparams = a.typeParams.length;
@@ -1513,42 +1542,52 @@ function addMissingTypeParametersToIface(
       }
     },
     *visitTypeAliasIR(a) {
-      typeParams.push(new Set(a.typeParams));
+      context.push(a.typeParams);
       yield;
-      typeParams.pop();
+      context.pop();
       if (missingTypeParams.size) {
         throw new Error("Not implemented");
       }
     },
     *visitParameterReferenceType({ name }) {
-      for (const p of typeParams) {
-        if (p.has(name)) {
-          return;
-        }
+      if (!context.has(name)) {
+        missingTypeParams.add(name);
       }
-      missingTypeParams.add(name);
     },
   };
   visitTopLevel(visitor, topLevel);
 }
 
 function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
-  const typeParams: Set<string>[] = [];
+  const context = new TypeParamContext();
   return {
     *visitSignature(a) {
-      typeParams.push(new Set(a.typeParams));
+      // Sometimes the signature has the same type parameter as an ambient
+      // class. Remove these duplicates.
+      const s = new Set(a.typeParams);
+      let removedTypeParam = false;
+      for (const x of a.typeParams ?? []) {
+        if (context.has(x)) {
+          s.delete(x);
+          removedTypeParam = true;
+        }
+      }
+      if (removedTypeParam) {
+        a.typeParams = Array.from(s);
+      }
+      context.push(s);
       yield;
-      typeParams.pop();
+      context.pop();
     },
     *visitInterfaceIR(a) {
-      typeParams.push(new Set(a.typeParams));
+      context.push(a.typeParams);
       yield;
-      typeParams.pop();
+      context.pop();
     },
     *visitTypeAliasIR(a) {
-      typeParams.push(new Set(a.typeParams));
+      context.push(a.typeParams);
       yield;
-      typeParams.pop();
+      context.pop();
     },
     *visitReferenceType(rt: ReferenceTypeIR & { adjusted?: boolean }) {
       const { name, typeArgs, adjusted } = rt;
@@ -1565,14 +1604,7 @@ function addMissingTypeArgsVisitor(adjustedIfaces: AdjustedIfaces): IRVisitor {
         typeArgs.push(parameterReferenceType(added[i]));
       }
       for (const param of added) {
-        let found = false;
-        for (const s of typeParams) {
-          if (s.has(param)) {
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
+        if (context.has(param)) {
           console.log("Dangling type argument", name, param);
         }
       }

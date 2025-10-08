@@ -1227,10 +1227,6 @@ describe("emit", () => {
         }
         declare function f<K,V>(): R<K, V>;
       `);
-      console.log(
-        removeTypeIgnores(res.slice(1).join("\n\n")),
-
-      )
       assert.strictEqual(
         removeTypeIgnores(res.slice(1).join("\n\n")),
         dedent(`\
@@ -1238,6 +1234,29 @@ describe("emit", () => {
 
           class R_iface[K, V](Protocol):
               def f(self, cb: Callable[[V, K], None], /) -> None: ...
+        `).trim(),
+      );
+    });
+    it("Type param on iface and on new", () => {
+      const res = emitFile(`
+        interface F<T> { t: T }
+        interface FConstructor {
+            readonly prototype: F<any>;
+            new <T>(cb: (t: T) => void): F<T>;
+        }
+        declare var F: FConstructor;
+      `);
+      // Because new ends up on the class, the type parameter is redundant so we
+      // have to remove it.
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`\
+          class F[T](F_iface[T], _JsObject):
+              @classmethod
+              def new(self, cb: Callable[[T], None], /) -> F[T]: ...
+
+          class F_iface[T](Protocol):
+              t: T = ...
         `).trim(),
       );
     });
