@@ -1271,6 +1271,26 @@ describe("emit", () => {
         `).trim(),
       );
     });
+    it("Type param on type literal in return type", () => {
+      const res = emitFile(`
+        interface X {
+          r<T>(): { t: T; };
+        }
+        declare function f(): X;
+      `);
+      assert.strictEqual(
+        removeTypeIgnores(res.slice(1).join("\n\n")),
+        dedent(`
+          def f() -> X_iface: ...
+
+          class X_iface(Protocol):
+              def r[T](self, /) -> X_iface__r__Sig0[T]: ...
+
+          class X_iface__r__Sig0[T](Protocol):
+              t: T = ...
+        `).trim(),
+      );
+    });
   });
   it("Array converted to ArrayLike_iface", () => {
     const res = emitFile(`declare function f(x: Array<string>): void`);
