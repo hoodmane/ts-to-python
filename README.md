@@ -1,14 +1,24 @@
 # ts-to-python
 
-This is an experimental alternate approach to
-[Webtypy](https://github.com/pyodide/webtypy).
+This is a project for converting typescript type definitions to Python type
+stubs for use with Pyodide.
+
+It uses the typescript compiler to generate a typescript abstract syntax tree
+for the types, converts the typescript ast into an IR, then it renders this IR
+into Python type hints. The most complicated step is converting the typescript
+ast to the IR.
 
 ## WebIDL vs TypeScript as a source of truth
 
-Webtypy ingests the webidl to produce type stubs for the Pyodide `js` module.
-`ts-to-python` produces the type stubs from TypeScript `.d.ts` files. The webidl
-and TypeScript type declarations contain different information. The ideal
-approach would combine both, but it will take some effort to implement.
+For the DOM it is also possible to generate type hints from the webidl.
+[Webtypy](https://github.com/pyodide/webtypy) ingests the webidl to produce type
+stubs for the Pyodide `js` module. `ts-to-python` produces the type stubs from
+TypeScript `.d.ts` files. The webidl and TypeScript type declarations contain
+different information. The ideal approach would combine both, but it will take
+some effort to implement.
+
+Of course many more projects have typescript type hints but no idl definitions
+so the typescript approach has much broader applicability.
 
 ### What information is in the webidl but not in TypeScript declarations?
 
@@ -21,41 +31,24 @@ choice but to use `float | int` as the number type everywhere.
 TypeScript declarations include types for ECMAScript builtins. They are also
 available for Node and for many other packages.
 
-## Development
-
-It seems to work with node >= 18.
-
-### Generating the types
-
-First you must install the two subdirectories:
-
-```sh
-npm install -C input-projects/browser-dom
-npm install -C type-generation
-```
-
-then to build the types, run:
-
-```sh
-npm run -C type-generation build ../input-projects/browser-dom
-```
-
 ### Running tests
 
-You can run the unit tests for the type generation with:
+You can run the TypeScript unit tests for the type generation with:
 
 ```sh
 npm run -C type-generation test
 ```
 
-To run the Python tests for the generated types requires the following setup
-first:
+To run the Python tests for the generated types, first you have to generate the
+types with:
+
+```sh
+./generate_types.sh
+```
+
+Then run the tests as follows:
 
 ```sh
 cd mypy-tests
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv run pytest
 ```
-
-Then from the `mypy-tests` directory run `pytest` to run the tests.
