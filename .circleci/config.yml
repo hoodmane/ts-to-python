@@ -38,7 +38,7 @@ jobs:
       - node/install-packages:
           app-dir: "type-generation"
       - run: |
-          ./generate_tests.sh
+          ./generate_types.sh
       - persist_to_workspace:
           root: .
           paths:
