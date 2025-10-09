@@ -11,7 +11,7 @@ import {
   TypeNode,
   VariableDeclaration,
 } from "ts-morph";
-import { emitFiles, emitIR } from "../src/extract.ts";
+import { emitFiles, emitIR } from "../src/extract.js";
 import {
   propertyIRToString,
   baseIRToString,
@@ -20,21 +20,21 @@ import {
   declarationIRToString,
   interfaceIRToString,
   typeAliasIRToString,
-} from "../src/irToString.ts";
-import { Variance } from "../src/types.ts";
+} from "../src/irToString.js";
+import { Variance } from "../src/types.js";
 import {
   dedent,
   getTypeNode,
   makeProject,
   removeTypeIgnores,
   typeToIR,
-} from "./helpers.ts";
+} from "./helpers.js";
 import {
   Converter as AstConverter,
   ConversionResult,
   convertDecls,
 } from "../src/astToIR";
-import { InterfaceIR } from "../src/ir.ts";
+import { InterfaceIR } from "../src/ir.js";
 
 function propertySignatureToIR(
   member: PropertySignature,
@@ -257,7 +257,7 @@ describe("typeToPython", () => {
 
 describe("property signature", () => {
   it("mandatory function", () => {
-    const fname = "/a.ts";
+    const fname = "/a.js";
     const project = makeProject();
     project.createSourceFile(fname, `declare var X: {f: () => void};`);
     const file = project.getSourceFileOrThrow(fname);
@@ -266,7 +266,7 @@ describe("property signature", () => {
     assert.strictEqual(res, "def f(self, /) -> None: ...");
   });
   it("optional function", () => {
-    const fname = "/a.ts";
+    const fname = "/a.js";
     const project = makeProject();
     project.createSourceFile(fname, `declare var X: {f?: () => void};`);
     const file = project.getSourceFileOrThrow(fname);
@@ -275,7 +275,7 @@ describe("property signature", () => {
     assert.strictEqual(res, "f: Callable[[], None] | None = ...");
   });
   it("alternatives function", () => {
-    const fname = "/a.ts";
+    const fname = "/a.js";
     const project = makeProject();
     project.createSourceFile(
       fname,

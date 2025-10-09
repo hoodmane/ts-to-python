@@ -28,8 +28,8 @@ import {
   UnionTypeNode,
   VariableDeclaration,
 } from "ts-morph";
-import { BUILTIN_NAMES, TYPE_TEXT_MAP } from "./adjustments";
-import { groupBy, popElt, split, split2 } from "./groupBy";
+import { BUILTIN_NAMES, TYPE_TEXT_MAP } from "./adjustments.js";
+import { groupBy, popElt, split, split2 } from "./groupBy.js";
 import {
   assertUnreachable,
   classifyIdentifier,
@@ -38,9 +38,9 @@ import {
   getNodeLocation,
   groupMembers,
   isValidPythonIdentifier,
-} from "./astUtils";
-import { sanitizeReservedWords, uniqBy } from "./irToString";
-import { Needed } from "./types";
+} from "./astUtils.js";
+import { sanitizeReservedWords, uniqBy } from "./irToString.js";
+import { Needed } from "./types.js";
 import {
   TypeIR,
   simpleType,
@@ -71,8 +71,8 @@ import {
   typeParam,
   TypeParamIR,
   spreadType,
-} from "./ir";
-import { logger } from "./logger";
+} from "./ir.js";
+import { logger } from "./logger.js";
 
 export function literalType(text: string): TypeIR {
   if (text === "null") {
