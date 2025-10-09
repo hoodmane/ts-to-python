@@ -1,15 +1,20 @@
 {
-  "name": "ts-compiler",
-  "version": "1.0.0",
-  "description": "",
+  "name": "@pyodide/ts-to-python",
+  "author": "Hood Chatham",
+  "version": "0.1.1",
+  "description": "Converting TypeScript types to Python types to use with Pyodide",
+  "license": "ISC",
+  "keywords": [],
+  "files": [
+    "src/*"
+  ],
   "scripts": {
     "test": "node --test --import=tsx 'tests/**/*.test.ts'",
     "build": "tsx src/main.ts",
-    "check": "npx tsc"
+    "check": "npx tsc",
+    "prepack": "cp ../LICENSE ../README.md .",
+    "postpack": "rm -f LICENSE README.md"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "ts-morph": "^27.0.0",
     "tslog": "^4.10.2",
