@@ -1,3 +1,20 @@
+[project]
+name = "dummy"
+version = "0"
+dependencies = [
+    "pyodide-py>=0.28.2",
+    "mypy>=1.17.1",
+]
+requires-python = ">=3.13"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-mypy-testing",
+    "typing-extensions >= 4.6.0",
+]
+
+
 [tool.mypy]
 python_version = "3.12"
 show_error_codes = true
