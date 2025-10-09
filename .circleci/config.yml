@@ -49,21 +49,19 @@ jobs:
   test:
     executor:
       name: python/default
-      tag: "3.12"
+      tag: "3.13"
     steps:
       - checkout
       - attach_workspace:
           at: .
-      - python/install-packages:
-          pip-dependency-file: mypy-tests/requirements.txt
-          pkg-manager: pip
       - run:
           name: Test
           command: |
+            cd mypy-tests
             mkdir test-results
-            pytest mypy-tests --junitxml=test-results/junit.xml --verbose --color=yes
+            uv run pytest --junitxml=test-results/junit.xml --verbose --color=yes
       - store_test_results:
-          path: test-results
+          path: mypy-tests/test-results
 workflows:
   build_and_test:
     jobs:

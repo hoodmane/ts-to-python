@@ -7,7 +7,7 @@ from collections.abc import Callable
 import re
 
 @pytest.mark.parametrize("file", ["__init__.pyi", "cloudflare.pyi"])
-def test_type_errors(tmp_path: Path, file) -> None:
+def test_type_errors(tmp_path: Path, file: str) -> None:
     from mypy import api
 
     source_path = Path(__file__).parent / "js" / file
