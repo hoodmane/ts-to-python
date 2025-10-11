@@ -1,14 +1,14 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
     "module": "esnext",
     "moduleResolution": "node",
     "esModuleInterop": true,
     "lib": ["ES2022"],
     "types": ["node"],
-    "strict": true
+    "strict": true,
+    "rootDir": "src",
+    "outDir": "dist"
   },
-  "include": ["src/*.ts", "tests/*.ts"]
+  "include": ["src/*.ts"]
 }

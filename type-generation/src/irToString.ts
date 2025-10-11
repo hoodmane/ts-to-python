@@ -3,7 +3,7 @@ import {
   METHOD_TYPE_IGNORES,
   PROPERTY_TYPE_IGNORES,
   typeReferenceSubsitutions,
-} from "./adjustments.ts";
+} from "./adjustments.js";
 import {
   CallableIR,
   DeclarationIR,
@@ -15,9 +15,9 @@ import {
   TypeAliasIR,
   TypeIR,
   TypeParamIR,
-} from "./ir.ts";
-import { assertUnreachable } from "./astUtils.ts";
-import { Variance, reverseVariance } from "./types.ts";
+} from "./ir.js";
+import { assertUnreachable } from "./astUtils.js";
+import { Variance, reverseVariance } from "./types.js";
 
 //
 // Utilities

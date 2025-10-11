@@ -1,9 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
 import { getTypeNode, typeToIR, makeProject } from "./helpers";
-import { Converter } from "../src/astToIR.ts";
+import { Converter } from "../src/astToIR.js";
 import { SyntaxKind } from "ts-morph";
-import { InterfaceIR, SigIR, typeParam } from "../src/ir.ts";
+import { InterfaceIR, SigIR, typeParam } from "../src/ir.js";
 
 function typeToIRHelper(tsType: string) {
   const typeNode = getTypeNode(tsType);

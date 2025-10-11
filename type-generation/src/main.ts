@@ -1,5 +1,6 @@
+#!/usr/bin/env node
 import { Project } from "ts-morph";
-import { emitFiles } from "./extract.ts";
+import { emitFiles } from "./extract.js";
 import { writeFileSync, readFileSync } from "fs";
 import { resolve } from "path";
 

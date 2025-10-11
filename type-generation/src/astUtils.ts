@@ -19,9 +19,9 @@ import {
   TypeNode,
   TypeParameterDeclaration,
 } from "ts-morph";
-import { WrappedGen, groupBy, groupByGen, split } from "./groupBy";
-import { ClassifiedIdentifier, GroupedBySyntaxKind } from "./types";
-import { logger } from "./logger";
+import { WrappedGen, groupBy, groupByGen, split } from "./groupBy.js";
+import { ClassifiedIdentifier, GroupedBySyntaxKind } from "./types.js";
+import { logger } from "./logger.js";
 
 export function assertUnreachable(_value: never): never {
   throw new Error("Statement should be unreachable");

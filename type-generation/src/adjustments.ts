@@ -1,10 +1,10 @@
-import { Variance, reverseVariance } from "./types";
-import { CallableIR, InterfaceIR, TypeIR, simpleType } from "./ir";
-import { typeIRToString } from "./irToString";
+import { Variance, reverseVariance } from "./types.js";
+import { CallableIR, InterfaceIR, TypeIR, simpleType } from "./ir.js";
+import { typeIRToString } from "./irToString.js";
 import { readFileSync } from "fs";
 
 import { URL } from "url";
-import { split2 } from "./groupBy";
+import { split2 } from "./groupBy.js";
 
 const PRELUDE_FILE = new URL("./prelude.pyi", import.meta.url).pathname;
 export const PRELUDE = readFileSync(PRELUDE_FILE, { encoding: "utf-8" });

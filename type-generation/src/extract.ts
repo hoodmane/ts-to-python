@@ -5,16 +5,16 @@ import {
   adjustInterfaceIR,
   getExtraBases,
   handleBuiltinBases,
-} from "./adjustments.ts";
+} from "./adjustments.js";
 
-import { convertFiles, ConversionResult, TopLevels } from "./astToIR.ts";
+import { convertFiles, ConversionResult, TopLevels } from "./astToIR.js";
 import {
   callableIRToString,
   declarationIRToString,
   interfaceIRToString,
   typeAliasIRToString,
-} from "./irToString.ts";
-import { InterfaceIR } from "./ir.ts";
+} from "./irToString.js";
+import { InterfaceIR } from "./ir.js";
 
 function topologicalSortClasses(
   nameToCls: Map<string, InterfaceIR>,
